@@ -122,6 +122,14 @@
             android:textStyle="bold"
             android:textColor="#666666"
             android:layout_marginBottom="8dp" />
+                <Button
+            android:id="@+id/btnHistory"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginBottom="16dp"
+            android:text="HISTORY / EDIT / DELETE ENTRIES"
+            android:backgroundTint="#6A1B9A" />
+        
 
         <LinearLayout
             android:layout_width="match_parent"
