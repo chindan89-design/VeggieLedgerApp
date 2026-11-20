@@ -48,7 +48,6 @@
                 android:layout_weight="1" />
         </LinearLayout>
 
-        <!-- Item & Supplier Stock Selection Box -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -85,7 +84,6 @@
                 android:layout_height="48dp"
                 android:layout_marginBottom="6dp" />
 
-            <!-- LIVE STOCK BANNER (Shows Available Bags & Kgs automatically) -->
             <TextView
                 android:id="@+id/tvLiveStockBanner"
                 android:layout_width="match_parent"
@@ -98,7 +96,6 @@
                 android:padding="10dp"
                 android:layout_marginBottom="8dp" />
 
-            <!-- Onion Specific Section -->
             <LinearLayout
                 android:id="@+id/layoutSalesOnion"
                 android:layout_width="match_parent"
@@ -176,7 +173,6 @@
                 android:backgroundTint="#2E7D32" />
         </LinearLayout>
 
-        <!-- Added Items Cart Preview -->
         <TextView
             android:id="@+id/tvSalesCartList"
             android:layout_width="match_parent"
@@ -203,3 +199,6 @@
             android:layout_height="54dp"
             android:text="SAVE SALES BILL &amp; UPDATE STOCK"
             android:backgroundTint="#1B5E20" />
+
+    </LinearLayout>
+</ScrollView>
