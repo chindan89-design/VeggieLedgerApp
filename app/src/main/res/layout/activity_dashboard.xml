@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvWelcome"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Veggie Mandi Dashboard"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Daily Transactions Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DAILY ENTRIES"
+            android:textStyle="bold"
+            android:textColor="#666666"
+            android:layout_marginBottom="8dp" />
+
+        <GridLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:columnCount="2"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/btnSales"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="SALES BILL"
+                android:backgroundTint="#2E7D32" />
+
+            <Button
+                android:id="@+id/btnPurchase"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="PURCHASE"
+                android:backgroundTint="#1565C0" />
+
+            <Button
+                android:id="@+id/btnSalesReceipt"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="SALES RECEIPT"
+                android:backgroundTint="#00838F" />
+
+            <Button
+                android:id="@+id/btnPurchasePayment"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="SUPPLIER PAY"
+                android:backgroundTint="#4527A0" />
+
+            <Button
+                android:id="@+id/btnExpenseIncome"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_columnWeight="2"
+                android:layout_margin="4dp"
+                android:text="EXPENSES &amp; EXTRA INCOME"
+                android:backgroundTint="#EF6C00" />
+        </GridLayout>
+
+        <!-- Reports & Sheets Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OUTSTANDING &amp; P&amp;L SHEETS"
+            android:textStyle="bold"
+            android:textColor="#666666"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnCustomerOutstanding"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginBottom="8dp"
+            android:text="CUSTOMER OUTSTANDING SHEET"
+            android:backgroundTint="#37474F" />
+
+        <Button
+            android:id="@+id/btnSupplierOutstanding"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginBottom="8dp"
+            android:text="SUPPLIER OUTSTANDING SHEET"
+            android:backgroundTint="#37474F" />
+
+        <Button
+            android:id="@+id/btnProfitLoss"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginBottom="16dp"
+            android:text="PROFIT &amp; LOSS (P&amp;L) REPORT"
+            android:backgroundTint="#AD1457" />
+
+        <!-- Masters Section -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="MASTERS SETUP"
+            android:textStyle="bold"
+            android:textColor="#666666"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnCustomers"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1"
+                android:layout_margin="3dp"
+                android:text="+ Customer"
+                android:textSize="12sp"
+                android:backgroundTint="#546E7A" />
+
+            <Button
+                android:id="@+id/btnSuppliers"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1"
+                android:layout_margin="3dp"
+                android:text="+ Supplier"
+                android:textSize="12sp"
+                android:backgroundTint="#546E7A" />
+
+            <Button
+                android:id="@+id/btnItems"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1"
+                android:layout_margin="3dp"
+                android:text="+ Items"
+                android:textSize="12sp"
+                android:backgroundTint="#546E7A" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
