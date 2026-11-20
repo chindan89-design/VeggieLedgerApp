@@ -17,6 +17,9 @@ class DashboardActivity : AppCompatActivity() {
         val role = intent.getStringExtra("USER_ROLE") ?: "STAFF"
         binding.tvWelcome.text = "Veggie Mandi ($role)"
 
+        binding.btnHistory.setOnClickListener { startActivity(Intent(this, TransactionHistoryActivity::class.java)) }
+                
+
         // Masters
         binding.btnCustomers.setOnClickListener { startActivity(Intent(this, CustomerMasterActivity::class.java)) }
         binding.btnSuppliers.setOnClickListener { startActivity(Intent(this, SupplierMasterActivity::class.java)) }
