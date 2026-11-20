@@ -1,0 +1,291 @@
+package com.shop.veggieledger
+
+import android.app.AlertDialog
+import android.os.Bundle
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.shop.veggieledger.databinding.ActivityHistoryBinding
+
+class TransactionHistoryActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityHistoryBinding
+    private val db = FirebaseFirestore.getInstance()
+
+    data class HistoryRecord(
+        val id: String,
+        val category: String, // "SALES", "PURCHASE", "SALES_RECEIPT", "PURCHASE_PAYMENT", "EXPENSE", "INCOME"
+        val date: String,
+        val title: String,
+        val subtitle: String,
+        val amount: Double,
+        val partyId: String = "",
+        val payMode: String = "",
+        val billTx: BillTransaction? = null,
+        val payTx: PaymentEntry? = null,
+        val expTx: ExpenseIncomeEntry? = null
+    )
+
+    private val allRecords = mutableListOf<HistoryRecord>()
+    private val filteredRecords = mutableListOf<HistoryRecord>()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityHistoryBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        val filters = listOf("ALL ENTRIES", "SALES", "PURCHASE", "SALES_RECEIPT", "PURCHASE_PAYMENT", "EXPENSE", "INCOME")
+        binding.spHistoryFilter.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, filters)
+
+        binding.spHistoryFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                applyFilter()
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
+        binding.etSearchHistory.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) { applyFilter() }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+
+        binding.lvHistory.setOnItemClickListener { _, _, pos, _ ->
+            if (pos < filteredRecords.size) {
+                showActionDialog(filteredRecords[pos])
+            }
+        }
+
+        loadAllHistory()
+    }
+
+    private fun loadAllHistory() {
+        allRecords.clear()
+
+        // 1. Load Sales & Purchase Bills
+        db.collection("transactions").get().addOnSuccessListener { txSnap ->
+            for (doc in txSnap) {
+                val tx = doc.toObject(BillTransaction::class.java)
+                val itemsSummary = tx.items.joinToString(", ") { "${it.itemName} (${it.netKgs}kg)" }
+                allRecords.add(
+                    HistoryRecord(
+                        id = tx.billId,
+                        category = tx.type,
+                        date = tx.date,
+                        title = "[${tx.type}] ${tx.partyName} - Rs. %.2f".format(tx.grandTotal),
+                        subtitle = "Date: ${tx.date} | Bill: ${tx.billNo} | ${tx.paymentMode}\nItems: $itemsSummary",
+                        amount = tx.grandTotal,
+                        partyId = tx.partyId,
+                        payMode = tx.paymentMode,
+                        billTx = tx
+                    )
+                )
+            }
+
+            // 2. Load Receipts & Payments
+            db.collection("payments").get().addOnSuccessListener { paySnap ->
+                for (doc in paySnap) {
+                    val p = doc.toObject(PaymentEntry::class.java)
+                    allRecords.add(
+                        HistoryRecord(
+                            id = p.entryId,
+                            category = p.type,
+                            date = p.date,
+                            title = "[${p.type}] ${p.partyName} - Rs. %.2f".format(p.amount),
+                            subtitle = "Date: ${p.date} | Mode: ${p.mode} | Note: ${p.notes}",
+                            amount = p.amount,
+                            partyId = p.partyId,
+                            payMode = p.mode,
+                            payTx = p
+                        )
+                    )
+                }
+
+                // 3. Load Expenses & Income
+                db.collection("expenses_income").get().addOnSuccessListener { expSnap ->
+                    for (doc in expSnap) {
+                        val e = doc.toObject(ExpenseIncomeEntry::class.java)
+                        allRecords.add(
+                            HistoryRecord(
+                                id = e.id,
+                                category = e.entryType,
+                                date = e.date,
+                                title = "[${e.entryType}] ${e.category} - Rs. %.2f".format(e.amount),
+                                subtitle = "Date: ${e.date} | Note: ${e.notes}",
+                                amount = e.amount,
+                                expTx = e
+                            )
+                        )
+                    }
+                    applyFilter()
+                }
+            }
+        }
+    }
+
+    private fun applyFilter() {
+        val selectedType = binding.spHistoryFilter.selectedItem.toString()
+        val query = binding.etSearchHistory.text.toString().trim().lowercase()
+
+        filteredRecords.clear()
+        for (rec in allRecords) {
+            val matchType = (selectedType == "ALL ENTRIES" || rec.category == selectedType)
+            val matchText = query.isEmpty() || rec.title.lowercase().contains(query) || rec.subtitle.lowercase().contains(query)
+            if (matchType && matchText) {
+                filteredRecords.add(rec)
+            }
+        }
+
+        val displayList = filteredRecords.map { "${it.title}\n${it.subtitle}" }
+        binding.lvHistory.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
+    }
+
+    private fun showActionDialog(rec: HistoryRecord) {
+        val options = arrayOf("Edit Entry", "Delete Entry (Reverse Balance & Stock)", "Cancel")
+        AlertDialog.Builder(this)
+            .setTitle(rec.title)
+            .setItems(options) { dialog, which ->
+                when (which) {
+                    0 -> showEditDialog(rec)
+                    1 -> confirmDelete(rec)
+                    else -> dialog.dismiss()
+                }
+            }
+            .show()
+    }
+
+    private fun showEditDialog(rec: HistoryRecord) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 20, 40, 10)
+        }
+
+        val etAmount = EditText(this).apply {
+            hint = "Amount (Rs.)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(rec.amount.toString())
+        }
+        val etNotes = EditText(this).apply {
+            hint = "Date / Notes"
+            setText(rec.date)
+        }
+
+        layout.addView(etAmount)
+        layout.addView(etNotes)
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit ${rec.category}")
+            .setView(layout)
+            .setPositiveButton("UPDATE") { _, _ ->
+                val newAmt = etAmount.text.toString().toDoubleOrNull() ?: rec.amount
+                val newDate = etNotes.text.toString().trim().ifEmpty { rec.date }
+                val diff = newAmt - rec.amount
+
+                val batch = db.batch()
+                when (rec.category) {
+                    "SALES" -> {
+                        batch.update(db.collection("transactions").document(rec.id), mapOf("grandTotal" to newAmt, "date" to newDate))
+                        if (rec.payMode == "CREDIT" && rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("customers").document(rec.partyId), "currentBalance", FieldValue.increment(diff))
+                        }
+                    }
+                    "PURCHASE" -> {
+                        batch.update(db.collection("transactions").document(rec.id), mapOf("grandTotal" to newAmt, "date" to newDate))
+                        if (rec.payMode == "CREDIT" && rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("suppliers").document(rec.partyId), "currentBalance", FieldValue.increment(diff))
+                        }
+                    }
+                    "SALES_RECEIPT" -> {
+                        batch.update(db.collection("payments").document(rec.id), mapOf("amount" to newAmt, "date" to newDate))
+                        if (rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("customers").document(rec.partyId), "currentBalance", FieldValue.increment(-diff))
+                        }
+                    }
+                    "PURCHASE_PAYMENT" -> {
+                        batch.update(db.collection("payments").document(rec.id), mapOf("amount" to newAmt, "date" to newDate))
+                        if (rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("suppliers").document(rec.partyId), "currentBalance", FieldValue.increment(-diff))
+                        }
+                    }
+                    "EXPENSE", "INCOME" -> {
+                        batch.update(db.collection("expenses_income").document(rec.id), mapOf("amount" to newAmt, "date" to newDate))
+                    }
+                }
+
+                batch.commit().addOnSuccessListener {
+                    Toast.makeText(this, "Entry Updated!", Toast.LENGTH_SHORT).show()
+                    loadAllHistory()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun confirmDelete(rec: HistoryRecord) {
+        AlertDialog.Builder(this)
+            .setTitle("Confirm Delete?")
+            .setMessage("Are you sure you want to delete this ${rec.category} entry? Balance and Stock will be automatically reversed.")
+            .setPositiveButton("DELETE") { _, _ ->
+                val batch = db.batch()
+                when (rec.category) {
+                    "SALES" -> {
+                        batch.delete(db.collection("transactions").document(rec.id))
+                        if (rec.payMode == "CREDIT" && rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("customers").document(rec.partyId), "currentBalance", FieldValue.increment(-rec.amount))
+                        }
+                        // Restore stock back to Supplier Batch
+                        rec.billTx?.items?.forEach { item ->
+                            if (item.batchCode.isNotEmpty()) {
+                                val stockRef = db.collection("stock_batches").document(item.batchCode)
+                                if (item.bags > 0) batch.update(stockRef, "availableBags", FieldValue.increment(item.bags.toLong()))
+                                batch.update(stockRef, "availableKgs", FieldValue.increment(item.netKgs))
+                            }
+                        }
+                    }
+                    "PURCHASE" -> {
+                        batch.delete(db.collection("transactions").document(rec.id))
+                        if (rec.payMode == "CREDIT" && rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("suppliers").document(rec.partyId), "currentBalance", FieldValue.increment(-rec.amount))
+                        }
+                        // Remove created stock batches
+                        rec.billTx?.items?.forEach { item ->
+                            if (item.batchCode.isNotEmpty()) {
+                                batch.delete(db.collection("stock_batches").document(item.batchCode))
+                            }
+                        }
+                    }
+                    "SALES_RECEIPT" -> {
+                        batch.delete(db.collection("payments").document(rec.id))
+                        if (rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("customers").document(rec.partyId), "currentBalance", FieldValue.increment(rec.amount))
+                        }
+                    }
+                    "PURCHASE_PAYMENT" -> {
+                        batch.delete(db.collection("payments").document(rec.id))
+                        if (rec.partyId.isNotEmpty()) {
+                            batch.update(db.collection("suppliers").document(rec.partyId), "currentBalance", FieldValue.increment(rec.amount))
+                        }
+                    }
+                    "EXPENSE", "INCOME" -> {
+                        batch.delete(db.collection("expenses_income").document(rec.id))
+                    }
+                }
+
+                batch.commit().addOnSuccessListener {
+                    Toast.makeText(this, "Deleted & Balance Reversed!", Toast.LENGTH_SHORT).show()
+                    loadAllHistory()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+}
