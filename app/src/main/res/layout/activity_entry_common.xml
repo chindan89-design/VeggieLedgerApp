@@ -71,4 +71,6 @@
         android:layout_width="match_parent"
         android:layout_height="54dp"
         android:text="SAVE ENTRY"
-        android:backgroundTint="#2E
+        android:backgroundTint="#2E7D32" />
+
+</LinearLayout>
