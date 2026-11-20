@@ -30,6 +30,7 @@
         <activity android:name=".CustomerOutstandingActivity" />
         <activity android:name=".SupplierOutstandingActivity" />
         <activity android:name=".ProfitLossActivity" />
-
+        <activity android:name=".TransactionHistoryActivity" />
+        
     </application>
 </manifest>
