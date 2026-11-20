@@ -1,171 +1,144 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F7FA"
-    android:padding="16dp">
+    android:orientation="vertical"
+    android:background="#F5F7FA">
 
-    <LinearLayout
+    <!-- Secondary Quick Strip Bar -->
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:background="#1B5E20"
+        android:padding="6dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/stripSales"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="+ SALES"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/stripPurchase"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="+ PURCHASE"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/stripReceipt"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="+ RECEIPT"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/stripPayment"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="+ PAY"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/stripExpense"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="+ EXPENSE"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/stripHistory"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="HISTORY"
+                android:textColor="#FFEB3B"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Live Summary Overview -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
 
         <TextView
             android:id="@+id/tvWelcome"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Veggie Mandi Dashboard"
-            android:textSize="22sp"
+            android:text="Veggie Mandi Overview"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="#1B5E20"
             android:layout_marginBottom="16dp" />
 
-        <!-- Daily Transactions Section -->
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="DAILY ENTRIES"
-            android:textStyle="bold"
-            android:textColor="#666666"
-            android:layout_marginBottom="8dp" />
-
-        <GridLayout
+            android:id="@+id/tvDashCustDue"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:columnCount="2"
-            android:layout_marginBottom="16dp">
+            android:text="Total Customer Pending: Loading..."
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:background="#FFFFFF"
+            android:padding="16dp"
+            android:textColor="#2E7D32"
+            android:layout_marginBottom="10dp" />
 
-            <Button
-                android:id="@+id/btnSales"
-                android:layout_width="0dp"
-                android:layout_height="64dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="SALES BILL"
-                android:backgroundTint="#2E7D32" />
-
-            <Button
-                android:id="@+id/btnPurchase"
-                android:layout_width="0dp"
-                android:layout_height="64dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="PURCHASE"
-                android:backgroundTint="#1565C0" />
-
-            <Button
-                android:id="@+id/btnSalesReceipt"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="SALES RECEIPT"
-                android:backgroundTint="#00838F" />
-
-            <Button
-                android:id="@+id/btnPurchasePayment"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="SUPPLIER PAY"
-                android:backgroundTint="#4527A0" />
-
-            <Button
-                android:id="@+id/btnExpenseIncome"
-                android:layout_width="0dp"
-                android:layout_height="60dp"
-                android:layout_columnWeight="2"
-                android:layout_margin="4dp"
-                android:text="EXPENSES &amp; EXTRA INCOME"
-                android:backgroundTint="#EF6C00" />
-        </GridLayout>
-
-        <!-- Reports & Sheets Section -->
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/tvDashSupDue"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="OUTSTANDING &amp; P&amp;L SHEETS"
+            android:text="Total Supplier Payable: Loading..."
+            android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="#666666"
-            android:layout_marginBottom="8dp" />
+            android:background="#FFFFFF"
+            android:padding="16dp"
+            android:textColor="#1565C0"
+            android:layout_marginBottom="10dp" />
 
-        <Button
-            android:id="@+id/btnCustomerOutstanding"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginBottom="8dp"
-            android:text="CUSTOMER OUTSTANDING SHEET"
-            android:backgroundTint="#37474F" />
-
-        <Button
-            android:id="@+id/btnSupplierOutstanding"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginBottom="8dp"
-            android:text="SUPPLIER OUTSTANDING SHEET"
-            android:backgroundTint="#37474F" />
-
-        <Button
-            android:id="@+id/btnProfitLoss"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginBottom="16dp"
-            android:text="PROFIT &amp; LOSS (P&amp;L) REPORT"
-            android:backgroundTint="#AD1457" />
-
-        <!-- Masters Section -->
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/tvDashStockSummary"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="MASTERS SETUP"
-            android:textStyle="bold"
+            android:text="Active Stock Batches: Loading..."
+            android:textSize="15sp"
+            android:background="#FFF9C4"
+            android:padding="16dp"
+            android:textColor="#E65100"
+            android:layout_marginBottom="10dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tip: Use the top menu strip (Masters, Entries, Reports) or the green quick bar above to navigate."
+            android:textSize="13sp"
             android:textColor="#666666"
-            android:layout_marginBottom="8dp" />
-                <Button
-            android:id="@+id/btnHistory"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginBottom="16dp"
-            android:text="HISTORY / EDIT / DELETE ENTRIES"
-            android:backgroundTint="#6A1B9A" />
-        
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btnCustomers"
-                android:layout_width="0dp"
-                android:layout_height="54dp"
-                android:layout_weight="1"
-                android:layout_margin="3dp"
-                android:text="+ Customer"
-                android:textSize="12sp"
-                android:backgroundTint="#546E7A" />
-
-            <Button
-                android:id="@+id/btnSuppliers"
-                android:layout_width="0dp"
-                android:layout_height="54dp"
-                android:layout_weight="1"
-                android:layout_margin="3dp"
-                android:text="+ Supplier"
-                android:textSize="12sp"
-                android:backgroundTint="#546E7A" />
-
-            <Button
-                android:id="@+id/btnItems"
-                android:layout_width="0dp"
-                android:layout_height="54dp"
-                android:layout_weight="1"
-                android:layout_margin="3dp"
-                android:text="+ Items"
-                android:textSize="12sp"
-                android:backgroundTint="#546E7A" />
-        </LinearLayout>
+            android:layout_marginTop="8dp" />
 
     </LinearLayout>
-</ScrollView>
+</LinearLayout>
