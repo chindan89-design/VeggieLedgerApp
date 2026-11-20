@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PURCHASE ENTRY (MULTI-ITEM)"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1565C0"
+            android:layout_marginBottom="8dp" />
+
+        <Spinner
+            android:id="@+id/spSupplier"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@android:drawable/btn_dropdown"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <EditText
+                android:id="@+id/etBillNo"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:hint="Invoice No"
+                android:background="@android:drawable/edit_text"
+                android:layout_marginEnd="6dp" />
+
+            <Spinner
+                android:id="@+id/spPayMode"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <!-- Item Entry Box -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#E3F2FD"
+            android:padding="10dp"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:id="@+id/tvGeneratedBatchId"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Stock ID: AUTO"
+                android:textStyle="bold"
+                android:textColor="#0D47A1"
+                android:layout_marginBottom="6dp" />
+
+            <Spinner
+                android:id="@+id/spItem"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Onion Specific Section -->
+            <LinearLayout
+                android:id="@+id/layoutOnionFields"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <EditText
+                        android:id="@+id/etBags"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:hint="No. of Bags"
+                        android:inputType="number"
+                        android:background="@android:drawable/edit_text"
+                        android:layout_marginEnd="6dp" />
+
+                    <EditText
+                        android:id="@+id/etBagRate"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:hint="Bag Rate (Rs.10)"
+                        android:text="10"
+                        android:inputType="numberDecimal"
+                        android:background="@android:drawable/edit_text" />
+                </LinearLayout>
+
+                <EditText
+                    android:id="@+id/etManualBagWeights"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="Manual Bag Weights (e.g. 45, 49, 60)"
+                    android:inputType="text"
+                    android:background="@android:drawable/edit_text"
+                    android:layout_marginBottom="6dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <EditText
+                    android:id="@+id/etNetKgs"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:hint="Total Net Kgs"
+                    android:inputType="numberDecimal"
+                    android:background="@android:drawable/edit_text"
+                    android:layout_marginEnd="6dp" />
+
+                <EditText
+                    android:id="@+id/etRatePerKg"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:hint="Rate per Kg"
+                    android:inputType="numberDecimal"
+                    android:background="@android:drawable/edit_text" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnAddItem"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:text="+ ADD ITEM TO BILL"
+                android:backgroundTint="#1976D2" />
+        </LinearLayout>
+
+        <!-- Added Items Preview -->
+        <TextView
+            android:id="@+id/tvAddedItemsList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No items added yet."
+            android:background="#FFFFFF"
+            android:padding="10dp"
+            android:textSize="13sp"
+            android:layout_marginBottom="10dp" />
+
+        <TextView
+            android:id="@+id/tvGrandTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Grand Total: Rs. 0.00"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnSavePurchase"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:text="SAVE PURCHASE &amp; CREATE STOCK ID"
+            android:backgroundTint="#2E7D32" />
+
+    </LinearLayout>
+</ScrollView>
