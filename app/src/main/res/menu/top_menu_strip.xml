@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- 1. MASTERS MENU -->
+    <item
+        android:id="@+id/menu_masters"
+        android:title="Masters ▾"
+        app:showAsAction="always">
+        <menu>
+            <item android:id="@+id/nav_customers" android:title="Customer Details (+)" />
+            <item android:id="@+id/nav_suppliers" android:title="Supplier Details (+)" />
+            <item android:id="@+id/nav_items" android:title="Items Setup (+)" />
+        </menu>
+    </item>
+
+    <!-- 2. ENTRIES MENU -->
+    <item
+        android:id="@+id/menu_entries"
+        android:title="Entries ▾"
+        app:showAsAction="always">
+        <menu>
+            <item android:id="@+id/nav_sales" android:title="Sales Bill" />
+            <item android:id="@+id/nav_purchase" android:title="Purchase Entry" />
+            <item android:id="@+id/nav_sales_receipt" android:title="Sales Receipt (Collection)" />
+            <item android:id="@+id/nav_purchase_payment" android:title="Purchase Payment" />
+            <item android:id="@+id/nav_expense_income" android:title="Expenses &amp; Extra Income" />
+        </menu>
+    </item>
+
+    <!-- 3. REPORTS MENU -->
+    <item
+        android:id="@+id/menu_reports"
+        android:title="Reports ▾"
+        app:showAsAction="always">
+        <menu>
+            <item android:id="@+id/nav_cust_out" android:title="Customer Outstanding Sheet" />
+            <item android:id="@+id/nav_sup_out" android:title="Supplier Outstanding Sheet" />
+            <item android:id="@+id/nav_pnl" android:title="Profit &amp; Loss (P&amp;L)" />
+            <item android:id="@+id/nav_history" android:title="History / Edit / Delete" />
+        </menu>
+    </item>
+
+</menu>
