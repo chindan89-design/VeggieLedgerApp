@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#F5F7FA">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ITEMS SETUP"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#1B5E20"
+        android:layout_marginBottom="12dp" />
+
+    <Button
+        android:id="@+id/btnLoadDefaults"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="AUTO-ADD ONION, COCONUT &amp; GARLIC"
+        android:backgroundTint="#EF6C00"
+        android:layout_marginBottom="20dp" />
+
+    <EditText
+        android:id="@+id/etItemName"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Custom Item Name"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="10dp" />
+
+    <Spinner
+        android:id="@+id/spUnitType"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="10dp" />
+
+    <EditText
+        android:id="@+id/etBagCharge"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Bag Charge Rate (Default Rs.10)"
+        android:text="10"
+        android:inputType="numberDecimal"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnSaveItem"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:text="SAVE ITEM"
+        android:backgroundTint="#2E7D32" />
+
+</LinearLayout>
