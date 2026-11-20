@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#F5F7FA">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ADD NEW SUPPLIER"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#1565C0"
+        android:layout_marginBottom="16dp" />
+
+    <EditText
+        android:id="@+id/etSupName"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Supplier Name *"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="10dp" />
+
+    <EditText
+        android:id="@+id/etSupCode"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Short Code (3 Letters e.g. RAM) *"
+        android:maxLength="4"
+        android:inputType="textCapCharacters"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="10dp" />
+
+    <EditText
+        android:id="@+id/etSupPlace"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Place / Mandi"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="10dp" />
+
+    <EditText
+        android:id="@+id/etSupPhone"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Mobile Number"
+        android:inputType="phone"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="10dp" />
+
+    <EditText
+        android:id="@+id/etSupOpBal"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Opening Balance (Old Payable Rs.)"
+        android:inputType="numberDecimal"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnSaveSupplier"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:text="SAVE SUPPLIER"
+        android:backgroundTint="#1565C0" />
+
+</LinearLayout>
