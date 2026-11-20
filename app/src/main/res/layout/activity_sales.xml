@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SALES BILL ENTRY (MULTI-ITEM)"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:layout_marginBottom="8dp" />
+
+        <Spinner
+            android:id="@+id/spCustomer"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@android:drawable/btn_dropdown"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <EditText
+                android:id="@+id/etSalesBillNo"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:hint="Bill No (Auto)"
+                android:background="@android:drawable/edit_text"
+                android:layout_marginEnd="6dp" />
+
+            <Spinner
+                android:id="@+id/spSalesPayMode"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <!-- Item & Supplier Stock Selection Box -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#E8F5E9"
+            android:padding="10dp"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Select Item:"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#2E7D32" />
+
+            <Spinner
+                android:id="@+id/spSalesItem"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2. Select Supplier Stock ID:"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#2E7D32" />
+
+            <Spinner
+                android:id="@+id/spSupplierBatch"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginBottom="6dp" />
+
+            <!-- LIVE STOCK BANNER (Shows Available Bags & Kgs automatically) -->
+            <TextView
+                android:id="@+id/tvLiveStockBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Available Stock: Select Supplier ID above"
+                android:background="#FFF9C4"
+                android:textColor="#E65100"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:padding="10dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Onion Specific Section -->
+            <LinearLayout
+                android:id="@+id/layoutSalesOnion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <EditText
+                        android:id="@+id/etSalesBags"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:hint="No. of Bags"
+                        android:inputType="number"
+                        android:background="@android:drawable/edit_text"
+                        android:layout_marginEnd="6dp" />
+
+                    <EditText
+                        android:id="@+id/etSalesBagRate"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:hint="Bag Rate (Rs.10)"
+                        android:text="10"
+                        android:inputType="numberDecimal"
+                        android:background="@android:drawable/edit_text" />
+                </LinearLayout>
+
+                <EditText
+                    android:id="@+id/etSalesManualWeights"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="Manual Bag Weights (e.g. 45, 49, 60)"
+                    android:inputType="text"
+                    android:background="@android:drawable/edit_text"
+                    android:layout_marginBottom="6dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <EditText
+                    android:id="@+id/etSalesNetKgs"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:hint="Total Net Kgs"
+                    android:inputType="numberDecimal"
+                    android:background="@android:drawable/edit_text"
+                    android:layout_marginEnd="6dp" />
+
+                <EditText
+                    android:id="@+id/etSalesRatePerKg"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:hint="Sales Rate / Kg"
+                    android:inputType="numberDecimal"
+                    android:background="@android:drawable/edit_text" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnAddSalesItem"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:text="+ ADD ITEM TO SALES BILL"
+                android:backgroundTint="#2E7D32" />
+        </LinearLayout>
+
+        <!-- Added Items Cart Preview -->
+        <TextView
+            android:id="@+id/tvSalesCartList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No items added to bill yet."
+            android:background="#FFFFFF"
+            android:padding="10dp"
+            android:textSize="13sp"
+            android:layout_marginBottom="10dp" />
+
+        <TextView
+            android:id="@+id/tvSalesGrandTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Grand Total: Rs. 0.00"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnSaveSalesBill"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:text="SAVE SALES BILL &amp; UPDATE STOCK"
+            android:backgroundTint="#1B5E20" />
