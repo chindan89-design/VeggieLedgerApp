@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#F5F7FA">
+
+    <TextView
+        android:id="@+id/tvEntryTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ENTRY SCREEN"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#1B5E20"
+        android:layout_marginBottom="16dp" />
+
+    <Spinner
+        android:id="@+id/spEntryPartyOrType"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="@android:drawable/btn_dropdown"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/tvCurrentBalInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Current Pending: Rs. 0.00"
+        android:textStyle="bold"
+        android:textColor="#D84315"
+        android:padding="8dp"
+        android:background="#FFF3E0"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/etEntryCategoryOrRef"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Category / Reference"
+        android:background="@android:drawable/edit_text"
+        android:visibility="gone"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/etEntryAmount"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Enter Amount (Rs.) *"
+        android:inputType="numberDecimal"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="12dp" />
+
+    <Spinner
+        android:id="@+id/spEntryMode"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="12dp" />
+
+    <EditText
+        android:id="@+id/etEntryNotes"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Notes / Remarks"
+        android:background="@android:drawable/edit_text"
+        android:layout_marginBottom="20dp" />
+
+    <Button
+        android:id="@+id/btnSaveEntry"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:text="SAVE ENTRY"
+        android:backgroundTint="#2E
