@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "729007240809",
+    "project_id": "veggieledger",
+    "storage_bucket": "veggieledger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:729007240809:android:8ace4c987d00d4b33e14f8",
+        "android_client_info": {
+          "package_name": "com.shop.veggieledger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAI-rQRhY7KY4T3ZDWCIRDFVADAWicRLZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
