@@ -3,53 +3,44 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:padding="12dp"
     android:background="#F5F7FA">
 
     <TextView
         android:id="@+id/tvReportTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="REPORT SHEET"
-        android:textSize="20sp"
+        android:text="OUTSTANDING REPORT SHEET"
+        android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="#1B5E20"
         android:layout_marginBottom="8dp" />
 
+    <Spinner
+        android:id="@+id/spReportGroupFilter"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:background="@android:drawable/btn_dropdown"
+        android:layout_marginBottom="8dp" />
+
     <TextView
-        android:id="@+id/tvReportSummary"
+        android:id="@+id/tvReportTotal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Loading..."
+        android:text="Total Pending: Rs. 0.00"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:background="#E8F5E9"
-        android:textColor="#1B5E20"
-        android:padding="12dp"
-        android:layout_marginBottom="12dp" />
+        android:textColor="#D84315"
+        android:background="#FFF3E0"
+        android:padding="10dp"
+        android:layout_marginBottom="8dp" />
 
-    <ScrollView
+    <ListView
+        android:id="@+id/lvReportSheet"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:background="#FFFFFF"
-        android:padding="12dp"
-        android:layout_marginBottom="12dp">
-
-        <TextView
-            android:id="@+id/tvReportBody"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:fontFamily="monospace"
-            android:textColor="#212121" />
-    </ScrollView>
-
-    <Button
-        android:id="@+id/btnShareReport"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:text="SHARE REPORT ON WHATSAPP"
-        android:backgroundTint="#00838F" />
+        android:dividerHeight="1dp" />
 
 </LinearLayout>
