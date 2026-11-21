@@ -21,16 +21,20 @@ class CustomerMasterActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Customer Registration"
 
+        // Setup Group Dropdown (Group A, B, C, D)
+        val groupOptions = listOf("A", "B", "C", "D")
+        val groupAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, groupOptions)
+        binding.spCustGroup.adapter = groupAdapter
+
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, customerList)
         binding.lvCustomers.adapter = adapter
 
-        // Customers பட்டியலை Firestore-லிருந்து லோட் செய்தல்
         loadCustomers()
 
-        // SUBMIT DETAILS பொத்தான் கிளிக் செய்யும் போது
         binding.btnSaveCustomer.setOnClickListener {
             val name = binding.etCustName.text.toString().trim()
             val phone = binding.etCustPhone.text.toString().trim()
+            val groupName = binding.spCustGroup.selectedItem.toString()
             val area = binding.etCustArea.text.toString().trim()
             val address = binding.etCustAddress.text.toString().trim()
             val opBalStr = binding.etCustOpBal.text.toString().trim()
@@ -41,12 +45,12 @@ class CustomerMasterActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // வாடிக்கையாளர் புதிய ID
             val custId = db.collection("customers").document().id
             val customerData = hashMapOf(
                 "id" to custId,
                 "name" to name,
                 "phone" to phone,
+                "groupName" to groupName,
                 "area" to area,
                 "address" to address,
                 "openingBalance" to opBal,
@@ -55,7 +59,7 @@ class CustomerMasterActivity : AppCompatActivity() {
 
             db.collection("customers").document(custId).set(customerData)
                 .addOnSuccessListener {
-                    Toast.makeText(this, "Customer Registered Successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Customer Registered ($groupName)!", Toast.LENGTH_SHORT).show()
                     clearFields()
                     loadCustomers()
                 }
@@ -64,7 +68,6 @@ class CustomerMasterActivity : AppCompatActivity() {
                 }
         }
 
-        // RESET / CLEAR பொத்தான் கிளிக் செய்யும் போது
         binding.btnCancel.setOnClickListener {
             clearFields()
         }
@@ -75,14 +78,11 @@ class CustomerMasterActivity : AppCompatActivity() {
             customerList.clear()
             for (doc in snap) {
                 val name = doc.getString("name") ?: ""
+                val group = doc.getString("groupName") ?: "Group A"
                 val area = doc.getString("area") ?: ""
                 val balance = doc.getDouble("currentBalance") ?: 0.0
-                val displayStr = if (area.isNotEmpty()) {
-                    "$name ($area) - Bal: Rs.$balance"
-                } else {
-                    "$name - Bal: Rs.$balance"
-                }
-                customerList.add(displayStr)
+                val areaText = if (area.isNotEmpty()) " | $area" else ""
+                customerList.add("$name [$group]$areaText - Bal: Rs.%.2f".format(balance))
             }
             adapter.notifyDataSetChanged()
         }
@@ -91,6 +91,7 @@ class CustomerMasterActivity : AppCompatActivity() {
     private fun clearFields() {
         binding.etCustName.setText("")
         binding.etCustPhone.setText("")
+        binding.spCustGroup.setSelection(0)
         binding.etCustArea.setText("")
         binding.etCustAddress.setText("")
         binding.etCustOpBal.setText("")
