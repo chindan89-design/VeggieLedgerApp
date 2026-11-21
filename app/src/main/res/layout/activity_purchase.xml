@@ -20,7 +20,6 @@
             android:gravity="center"
             android:layout_marginBottom="12dp" />
 
-        <!-- Row 1: Supplier & Payment Mode -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -49,7 +48,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 2: Bill No & Batch Code -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -78,7 +76,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Item Box -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -88,5 +85,60 @@
             android:layout_marginBottom="12dp">
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select Item *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
-            <Spinner android:id="@+id/spPurchaseItem" android:layout_width="match_parent" android:layout_height="48dp"
-                
+            <Spinner android:id="@+id/spPurchaseItem" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:id="@+id/layoutPurchaseOnion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:weightSum="2"
+                    android:layout_marginBottom="8dp">
+
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No. of Bags" android:textSize="12sp" android:textStyle="bold" />
+                        <EditText android:id="@+id/etBags" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Bags" android:inputType="number" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                    </LinearLayout>
+
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bag Charge / Bag" android:textSize="12sp" android:textStyle="bold" />
+                        <EditText android:id="@+id/etBagRate" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Rs.10" android:text="10" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Manual Bag Weights" android:textSize="12sp" android:textStyle="bold" />
+                <EditText android:id="@+id/etManualBagWeights" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. 48, 50, 52" android:background="@android:drawable/edit_text" android:padding="8dp" android:layout_marginBottom="8dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="10dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Total Net Kgs *" android:textSize="12sp" android:textStyle="bold" />
+                    <EditText android:id="@+id/etNetKgs" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.0 Kgs" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Purchase Rate / Kg *" android:textSize="12sp" android:textStyle="bold" />
+                    <EditText android:id="@+id/etRatePerKg" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Rs. / Kg" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <Button android:id="@+id/btnAddPurchaseItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO PURCHASE BILL" android:backgroundTint="#1976D2" />
+        </LinearLayout>
+
+        <TextView android:id="@+id/tvAddedItemsList" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="No items added yet." android:background="#FFFFFF" android:padding="10dp" android:textSize="13sp" android:layout_marginBottom="10dp" />
+        <TextView android:id="@+id/tvGrandTotal" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grand Total: Rs. 0.00" android:textSize="18sp" android:textStyle="bold" android:textColor="#1565C0" android:layout_marginBottom="12dp" />
+        <Button android:id="@+id/btnSavePurchase" android:layout_width="match_parent" android:layout_height="52dp" android:text="SUBMIT PURCHASE &amp; CREATE STOCK" android:backgroundTint="#1565C0" />
+
+    </LinearLayout>
+</ScrollView>
