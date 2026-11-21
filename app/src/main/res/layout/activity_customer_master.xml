@@ -1,67 +1,224 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#F5F7FA">
+    android:background="#F5F7FA"
+    android:padding="12dp">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="ADD NEW CUSTOMER"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="#1B5E20"
-        android:layout_marginBottom="16dp" />
+        android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/etCustName"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Customer Name *"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+        <!-- Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CUSTOMER REGISTRATION FORM"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
 
-    <EditText
-        android:id="@+id/etCustShop"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Shop / Market Name"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+        <!-- Side-by-Side Section 1 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="12dp">
 
-    <EditText
-        android:id="@+id/etCustPhone"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Mobile Number"
-        android:inputType="phone"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+            <!-- Left: Customer Name -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="6dp">
 
-    <EditText
-        android:id="@+id/etCustArea"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Area / Place"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Customer Name *"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
 
-    <EditText
-        android:id="@+id/etCustOpBal"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Opening Balance (Old Pending Rs.)"
-        android:inputType="numberDecimal"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="16dp" />
+                <EditText
+                    android:id="@+id/etCustName"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="e.g. Anbarasan"
+                    android:inputType="textPersonName"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
-    <Button
-        android:id="@+id/btnSaveCustomer"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:text="SAVE CUSTOMER"
-        android:backgroundTint="#2E7D32" />
+            <!-- Right: Phone Number -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="6dp">
 
-</LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Phone Number"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/etCustPhone"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="10-digit number"
+                    android:inputType="phone"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Side-by-Side Section 2 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="12dp">
+
+            <!-- Left: Op. Balance -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Opening Balance (Rs)"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/etCustOpBal"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="0.00"
+                    android:inputType="numberDecimal"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- Right: Area/City -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Area / Location"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/etCustArea"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="e.g. Koyambedu"
+                    android:inputType="text"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Address - Full Width (Optional but looks like typical application form) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Permanent Address"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etCustAddress"
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:hint="Door No, Street Name, City..."
+            android:gravity="top|start"
+            android:inputType="textMultiLine"
+            android:background="@android:drawable/edit_text"
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Buttons side by side -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/btnCancel"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:text="RESET / CLEAR"
+                android:backgroundTint="#D32F2F"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btnSaveCustomer"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:text="SUBMIT DETAILS"
+                android:backgroundTint="#1B5E20"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+
+        <!-- Added Customers List -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Registered Customers List"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:layout_marginBottom="8dp" />
+
+        <ListView
+            android:id="@+id/lvCustomers"
+            android:layout_width="match_parent"
+            android:layout_height="250dp"
+            android:background="#FFFFFF"
+            android:divider="#E0E0E0"
+            android:dividerHeight="1dp" />
+
+    </LinearLayout>
+</ScrollView>
