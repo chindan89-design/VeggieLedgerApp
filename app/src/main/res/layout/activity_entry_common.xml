@@ -1,76 +1,174 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#F5F7FA">
+    android:background="#F5F7FA"
+    android:padding="14dp">
 
-    <TextView
-        android:id="@+id/tvEntryTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="ENTRY SCREEN"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="#1B5E20"
-        android:layout_marginBottom="16dp" />
-
-    <Spinner
-        android:id="@+id/spEntryPartyOrType"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:background="@android:drawable/btn_dropdown"
-        android:layout_marginBottom="12dp" />
-
-    <TextView
-        android:id="@+id/tvCurrentBalInfo"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Current Pending: Rs. 0.00"
-        android:textStyle="bold"
-        android:textColor="#D84315"
-        android:padding="8dp"
-        android:background="#FFF3E0"
-        android:layout_marginBottom="12dp" />
+        android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/etEntryCategoryOrRef"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Category / Reference"
-        android:background="@android:drawable/edit_text"
-        android:visibility="gone"
-        android:layout_marginBottom="12dp" />
+        <TextView
+            android:id="@+id/tvEntryTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="PAYMENT / RECEIPT ENTRY FORM"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1B5E20"
+            android:gravity="center"
+            android:layout_marginBottom="14dp" />
 
-    <EditText
-        android:id="@+id/etEntryAmount"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Enter Amount (Rs.) *"
-        android:inputType="numberDecimal"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="12dp" />
+        <!-- Pending Balance Banner -->
+        <TextView
+            android:id="@+id/tvCurrentBalInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Current Pending: Rs. 0.00"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:textColor="#D84315"
+            android:padding="10dp"
+            android:background="#FFF3E0"
+            android:layout_marginBottom="14dp" />
 
-    <Spinner
-        android:id="@+id/spEntryMode"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginBottom="12dp" />
+        <!-- Row 1: Party/Type & Payment Mode (Side-by-Side) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="12dp">
 
-    <EditText
-        android:id="@+id/etEntryNotes"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Notes / Remarks"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="20dp" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="6dp">
 
-    <Button
-        android:id="@+id/btnSaveEntry"
-        android:layout_width="match_parent"
-        android:layout_height="54dp"
-        android:text="SAVE ENTRY"
-        android:backgroundTint="#2E7D32" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Select Party / Type *"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
 
-</LinearLayout>
+                <Spinner
+                    android:id="@+id/spEntryPartyOrType"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="@android:drawable/btn_dropdown" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Payment Mode *"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
+
+                <Spinner
+                    android:id="@+id/spEntryMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="@android:drawable/btn_dropdown" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 2: Amount & Reference/Category (Side-by-Side) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Enter Amount (Rs.) *"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/etEntryAmount"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="0.00"
+                    android:inputType="numberDecimal"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Notes / Remarks"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/etEntryNotes"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="Optional notes"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Category / Reference (Visible for Expense/Income) -->
+        <EditText
+            android:id="@+id/etEntryCategoryOrRef"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:hint="Category / Reference (e.g. Coolie, Rent)"
+            android:background="@android:drawable/edit_text"
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnSaveEntry"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="SUBMIT ENTRY"
+            android:backgroundTint="#2E7D32" />
+
+    </LinearLayout>
+</ScrollView>
