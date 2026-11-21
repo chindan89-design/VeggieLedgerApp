@@ -20,7 +20,6 @@
             android:gravity="center"
             android:layout_marginBottom="12dp" />
 
-        <!-- Row 1: Supplier & Payment Mode (Side-by-Side) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -75,7 +74,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 2: Bill No & Generated Batch ID (Side-by-Side) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -136,7 +134,6 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Item Entry Box -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -161,7 +158,6 @@
                 android:background="@android:drawable/btn_dropdown"
                 android:layout_marginBottom="8dp" />
 
-            <!-- Onion Bags & Bag Charge Side-by-Side -->
             <LinearLayout
                 android:id="@+id/layoutPurchaseOnion"
                 android:layout_width="match_parent"
@@ -242,93 +238,4 @@
 
                 <EditText
                     android:id="@+id/etPurchaseManualWeights"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="e.g. 48, 50, 52"
-                    android:inputType="text"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="8dp" />
-            </LinearLayout>
-
-            <!-- Net Kgs & Purchase Rate Side-by-Side -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:weightSum="2"
-                android:layout_marginBottom="10dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:layout_marginEnd="6dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Total Net Kgs *"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:textColor="#333333"
-                        android:layout_marginBottom="4dp" />
-
-                    <EditText
-                        android:id="@+id/etPurchaseNetKgs"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:hint="0.0 Kgs"
-                        android:inputType="numberDecimal"
-                        android:background="@android:drawable/edit_text"
-                        android:padding="8dp"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:layout_marginStart="6dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Purchase Rate / Kg *"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:textColor="#333333"
-                        android:layout_marginBottom="4dp" />
-
-                    <EditText
-                        android:id="@+id/etPurchaseRatePerKg"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:hint="Rs. / Kg"
-                        android:inputType="numberDecimal"
-                        android:background="@android:drawable/edit_text"
-                        android:padding="8dp"
-                        android:textSize="14sp" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btnAddPurchaseItem"
-                android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:text="+ ADD ITEM TO PURCHASE BILL"
-                android:backgroundTint="#1976D2" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvPurchaseCartList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="No items added yet."
-            android:background="#FFFFFF"
-            android:padding="10dp"
-            android:textSize="13sp
-            
+                    android
