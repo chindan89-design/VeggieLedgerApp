@@ -33,21 +33,8 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:layout_marginEnd="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Select Supplier *"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <Spinner
-                    android:id="@+id/spSupplier"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:background="@android:drawable/btn_dropdown" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select Supplier *" android:textSize="12sp" android:textStyle="bold" />
+                <Spinner android:id="@+id/spSupplier" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" />
             </LinearLayout>
 
             <LinearLayout
@@ -56,21 +43,8 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:layout_marginStart="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Payment Mode *"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <Spinner
-                    android:id="@+id/spPurchasePayMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:background="@android:drawable/btn_dropdown" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="12sp" android:textStyle="bold" />
+                <Spinner android:id="@+id/spPurchasePayMode" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" />
             </LinearLayout>
         </LinearLayout>
 
@@ -87,24 +61,8 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:layout_marginEnd="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Supplier Bill No"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/etPurchaseBillNo"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="Bill No"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Bill No" android:textSize="12sp" android:textStyle="bold" />
+                <EditText android:id="@+id/etPurchaseBillNo" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Bill No" android:background="@android:drawable/edit_text" android:padding="8dp" />
             </LinearLayout>
 
             <LinearLayout
@@ -113,24 +71,8 @@
                 android:layout_weight="1"
                 android:orientation="vertical"
                 android:layout_marginStart="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Stock Batch / Lot ID"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/etBatchCode"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="Auto Lot ID"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stock Lot ID" android:textSize="12sp" android:textStyle="bold" />
+                <EditText android:id="@+id/etBatchCode" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Auto Lot ID" android:background="@android:drawable/edit_text" android:padding="8dp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -142,21 +84,8 @@
             android:padding="10dp"
             android:layout_marginBottom="12dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Select Item *"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:textColor="#1565C0"
-                android:layout_marginBottom="4dp" />
-
-            <Spinner
-                android:id="@+id/spPurchaseItem"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:background="@android:drawable/btn_dropdown"
-                android:layout_marginBottom="8dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select Item *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
+            <Spinner android:id="@+id/spPurchaseItem" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" android:layout_marginBottom="8dp" />
 
             <LinearLayout
                 android:id="@+id/layoutPurchaseOnion"
@@ -171,71 +100,45 @@
                     android:weightSum="2"
                     android:layout_marginBottom="8dp">
 
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginEnd="6dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="No. of Bags"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:textColor="#333333"
-                            android:layout_marginBottom="4dp" />
-
-                        <EditText
-                            android:id="@+id/etPurchaseBags"
-                            android:layout_width="match_parent"
-                            android:layout_height="48dp"
-                            android:hint="Bags"
-                            android:inputType="number"
-                            android:background="@android:drawable/edit_text"
-                            android:padding="8dp"
-                            android:textSize="14sp" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No. of Bags" android:textSize="12sp" android:textStyle="bold" />
+                        <EditText android:id="@+id/etPurchaseBags" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Bags" android:inputType="number" android:background="@android:drawable/edit_text" android:padding="8dp" />
                     </LinearLayout>
 
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="6dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Bag Charge / Bag"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:textColor="#333333"
-                            android:layout_marginBottom="4dp" />
-
-                        <EditText
-                            android:id="@+id/etPurchaseBagRate"
-                            android:layout_width="match_parent"
-                            android:layout_height="48dp"
-                            android:hint="Rs.10"
-                            android:text="10"
-                            android:inputType="numberDecimal"
-                            android:background="@android:drawable/edit_text"
-                            android:padding="8dp"
-                            android:textSize="14sp" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bag Charge / Bag" android:textSize="12sp" android:textStyle="bold" />
+                        <EditText android:id="@+id/etPurchaseBagRate" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Rs.10" android:text="10" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
                     </LinearLayout>
                 </LinearLayout>
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Manual Bag Weights (Comma Separated)"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Manual Bag Weights" android:textSize="12sp" android:textStyle="bold" />
+                <EditText android:id="@+id/etPurchaseManualWeights" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. 48, 50, 52" android:background="@android:drawable/edit_text" android:padding="8dp" android:layout_marginBottom="8dp" />
+            </LinearLayout>
 
-                <EditText
-                    android:id="@+id/etPurchaseManualWeights"
-                    android
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="10dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Total Net Kgs *" android:textSize="12sp" android:textStyle="bold" />
+                    <EditText android:id="@+id/etPurchaseNetKgs" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.0 Kgs" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Purchase Rate / Kg *" android:textSize="12sp" android:textStyle="bold" />
+                    <EditText android:id="@+id/etPurchaseRatePerKg" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Rs. / Kg" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <Button android:id="@+id/btnAddPurchaseItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO PURCHASE BILL" android:backgroundTint="#1976D2" />
+        </LinearLayout>
+
+        <TextView android:id="@+id/tvPurchaseCartList" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="No items added yet." android:background="#FFFFFF" android:padding="10dp" android:textSize="13sp" android:layout_marginBottom="10dp" />
+        <TextView android:id="@+id/tvPurchaseGrandTotal" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grand Total: Rs. 0.00" android:textSize="18sp" android:textStyle="bold" android:textColor="#1565C0" android:layout_marginBottom="12dp" />
+        <Button android:id="@+id/btnSavePurchaseBill" android:layout_width="match_parent" android:layout_height="52dp" android:text="SUBMIT PURCHASE &amp; CREATE STOCK" android:backgroundTint="#1565C0" />
+
+    </LinearLayout>
+</ScrollView>
