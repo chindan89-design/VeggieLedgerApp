@@ -11,15 +11,19 @@ data class AppUser(
 )
 
 // 2. Customer Master
-data class Customer(
+
+    data class Customer(
     val id: String = "",
     val name: String = "",
-    val shopName: String = "",
     val phone: String = "",
+    val groupName: String = "A",
     val area: String = "",
+    val address: String = "",
     val openingBalance: Double = 0.0,
     val currentBalance: Double = 0.0
 )
+    
+
 
 // 3. Supplier Master
 data class Supplier(
