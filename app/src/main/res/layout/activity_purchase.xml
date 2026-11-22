@@ -20,7 +20,7 @@
             android:gravity="center"
             android:layout_marginBottom="12dp" />
 
-        <!-- Row 1: Date Picker (First) & Item Dropdown (Second) -->
+        <!-- Row 1: Date Picker & Item Dropdown -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -196,7 +196,44 @@
             <Button android:id="@+id/btnAddItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO PURCHASE BILL" android:backgroundTint="#1976D2" android:textColor="#FFFFFF" />
         </LinearLayout>
 
-        <TextView android:id="@+id/tvAddedItemsList" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="No items added yet." android:background="#FFFFFF" android:textColor="#000000" android:padding="10dp" android:textSize="13sp" android:layout_marginBottom="10dp" />
+        <!-- Added Items Grid / Table View -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ADDED ITEMS GRID"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#1565C0"
+            android:layout_marginBottom="4dp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:layout_marginBottom="10dp">
+
+            <TableLayout
+                android:id="@+id/tlPurchaseGrid"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:stretchColumns="*"
+                android:background="#CFD8DC"
+                android:padding="1dp">
+
+                <!-- Grid Header Row -->
+                <TableRow android:background="#1565C0">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Item" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bags" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pur.Kgs" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Kud/Tha" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Net Kgs" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rate" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Amount" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Del" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="center" />
+                </TableRow>
+            </TableLayout>
+        </HorizontalScrollView>
+
         <TextView android:id="@+id/tvGrandTotal" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grand Total: Rs. 0.00" android:textSize="18sp" android:textStyle="bold" android:textColor="#1565C0" android:layout_marginBottom="12dp" />
         <Button android:id="@+id/btnSavePurchase" android:layout_width="match_parent" android:layout_height="52dp" android:text="SUBMIT PURCHASE &amp; CREATE STOCK" android:backgroundTint="#1565C0" android:textColor="#FFFFFF" />
 
