@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivityPurchaseBinding
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -22,7 +23,7 @@ class PurchaseActivity : AppCompatActivity() {
     private var selectedSupplierName: String = ""
 
     private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
-    private val cartItems = ArrayList>()
+    private val cartItems = ArrayList<JSONObject>()
     private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,13 +65,13 @@ class PurchaseActivity : AppCompatActivity() {
 
             val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
-            val row = HashMap<String, Any>()
-            row["itemName"] = itemName
-            row["bags"] = bags
-            row["bagRate"] = bagRate
-            row["netKgs"] = netKgs
-            row["ratePerKg"] = ratePerKg
-            row["lineTotal"] = lineTotal
+            val row = JSONObject()
+            row.put("itemName", itemName)
+            row.put("bags", bags)
+            row.put("bagRate", bagRate)
+            row.put("netKgs", netKgs)
+            row.put("ratePerKg", ratePerKg)
+            row.put("lineTotal", lineTotal)
 
             cartItems.add(row)
             refreshCartDisplay()
@@ -98,6 +99,18 @@ class PurchaseActivity : AppCompatActivity() {
             val payMode = binding.spPayMode.selectedItem.toString()
             val today = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
 
+            val itemsForDb = ArrayList<HashMap<String, Any>>()
+            for (row in cartItems) {
+                val map = HashMap<String, Any>()
+                map["itemName"] = row.getString("itemName")
+                map["bags"] = row.getInt("bags")
+                map["bagRate"] = row.getDouble("bagRate")
+                map["netKgs"] = row.getDouble("netKgs")
+                map["ratePerKg"] = row.getDouble("ratePerKg")
+                map["lineTotal"] = row.getDouble("lineTotal")
+                itemsForDb.add(map)
+            }
+
             val purchaseId = db.collection("purchases").document().id
             val purchaseData = hashMapOf(
                 "id" to purchaseId,
@@ -108,7 +121,7 @@ class PurchaseActivity : AppCompatActivity() {
                 "payMode" to payMode,
                 "date" to today,
                 "timestamp" to System.currentTimeMillis(),
-                "items" to cartItems,
+                "items" to itemsForDb,
                 "grandTotal" to grandTotal
             )
 
@@ -164,11 +177,11 @@ class PurchaseActivity : AppCompatActivity() {
         val sb = StringBuilder()
         for (idx in cartItems.indices) {
             val row = cartItems[idx]
-            val name = row["itemName"] as String
-            val bags = row["bags"] as Int
-            val kgs = row["netKgs"] as Double
-            val rate = row["ratePerKg"] as Double
-            val total = row["lineTotal"] as Double
+            val name = row.getString("itemName")
+            val bags = row.getInt("bags")
+            val kgs = row.getDouble("netKgs")
+            val rate = row.getDouble("ratePerKg")
+            val total = row.getDouble("lineTotal")
             grandTotal += total
 
             val bagInfo = if (bags > 0) " ($bags Bags)" else ""
@@ -180,10 +193,10 @@ class PurchaseActivity : AppCompatActivity() {
 
     private fun updateStockAndSupplierBalance(batchId: String, payMode: String) {
         for (row in cartItems) {
-            val itemName = row["itemName"] as String
-            val bags = row["bags"] as Int
-            val kgs = row["netKgs"] as Double
-            val rate = row["ratePerKg"] as Double
+            val itemName = row.getString("itemName")
+            val bags = row.getInt("bags")
+            val kgs = row.getDouble("netKgs")
+            val rate = row.getDouble("ratePerKg")
 
             val batchDoc = db.collection("stock_batches").document()
             val batchData = hashMapOf(
