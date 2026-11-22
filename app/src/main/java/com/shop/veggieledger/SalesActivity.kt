@@ -44,7 +44,11 @@ class SalesActivity : AppCompatActivity() {
     private val cartItems = JSONArray()
     private var grandTotal = 0.0
 
-    // Edit Mode State
+    // Row-level Grid Edit index (-1 means adding new row)
+    private var editingGridRowIndex: Int = -1
+    private var pendingBatchDocIdToSelect: String = ""
+
+    // Bill-level Edit Mode State
     private var isEditMode: Boolean = false
     private var editingSalesDocId: String = ""
     private var oldCustomerId: String = ""
@@ -181,12 +185,17 @@ class SalesActivity : AppCompatActivity() {
             row.put("ratePerKg", ratePerKg)
             row.put("lineTotal", lineTotal)
 
-            cartItems.put(row)
-            refreshCartGrid()
+            if (editingGridRowIndex >= 0 && editingGridRowIndex < cartItems.length()) {
+                // Update the existing row in the grid
+                cartItems.put(editingGridRowIndex, row)
+                Toast.makeText(this, "Item Row Updated in Grid!", Toast.LENGTH_SHORT).show()
+            } else {
+                // Append new row
+                cartItems.put(row)
+            }
 
-            binding.etSalesBags.setText("")
-            binding.etSalesNetKgs.setText("")
-            binding.etSalesRatePerKg.setText("")
+            resetItemEntryInputs()
+            refreshCartGrid()
         }
 
         binding.btnSaveSalesBill.setOnClickListener {
@@ -268,6 +277,51 @@ class SalesActivity : AppCompatActivity() {
                     }
             }
         }
+    }
+
+    private fun resetItemEntryInputs() {
+        editingGridRowIndex = -1
+        pendingBatchDocIdToSelect = ""
+        binding.etSalesBags.setText("")
+        binding.etSalesBagRate.setText("10")
+        binding.etSalesNetKgs.setText("")
+        binding.etSalesRatePerKg.setText("")
+        binding.btnAddSalesItem.text = "+ ADD ITEM TO SALES BILL"
+        binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32"))
+    }
+
+    private fun loadGridRowIntoFieldsForEdit(index: Int) {
+        if (index < 0 || index >= cartItems.length()) return
+        val row = cartItems.getJSONObject(index)
+        editingGridRowIndex = index
+
+        val itemName = row.getString("itemName")
+        val bDocId = row.optString("batchDocId", "")
+        val bags = row.optInt("bags", 0)
+        val bagRate = row.optDouble("bagRate", 10.0)
+        val netKgs = row.optDouble("netKgs", 0.0)
+        val rate = row.optDouble("ratePerKg", 0.0)
+
+        pendingBatchDocIdToSelect = bDocId
+        val itemIdx = itemNames.indexOfFirst { it.equals(itemName, ignoreCase = true) }
+        if (itemIdx >= 0) {
+            if (binding.spSalesItem.selectedItemPosition == itemIdx) {
+                loadBatchesForItem(itemName)
+            } else {
+                binding.spSalesItem.setSelection(itemIdx)
+            }
+        }
+
+        binding.etSalesBags.setText(if (bags > 0) bags.toString() else "")
+        binding.etSalesBagRate.setText(bagRate.toString())
+        binding.etSalesNetKgs.setText(netKgs.toString())
+        binding.etSalesRatePerKg.setText(rate.toString())
+
+        binding.btnAddSalesItem.text = "UPDATE ITEM IN GRID (ROW ${index + 1})"
+        binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
+        refreshCartGrid()
+        binding.etSalesNetKgs.requestFocus()
+        Toast.makeText(this, "Editing Row ${index + 1} - Modify & tap UPDATE ITEM IN GRID", Toast.LENGTH_SHORT).show()
     }
 
     private fun switchToNewMode() {
@@ -412,7 +466,6 @@ class SalesActivity : AppCompatActivity() {
 
         db.collection("sales").document(docId).delete()
             .addOnSuccessListener {
-                // 1. Restore Stock
                 if (rawItems != null) {
                     for (entry in rawItems) {
                         val map = entry as? Map<*, *> ?: continue
@@ -437,7 +490,6 @@ class SalesActivity : AppCompatActivity() {
                     }
                 }
 
-                // 2. Reverse Customer Credit Balance
                 if (pMode.equals("Credit", ignoreCase = true) && custId.isNotEmpty()) {
                     val custRef = db.collection("customers").document(custId)
                     db.runTransaction { tr ->
@@ -480,6 +532,7 @@ class SalesActivity : AppCompatActivity() {
         val payIdx = payModes.indexOfFirst { it.equals(oldPayMode, ignoreCase = true) }
         if (payIdx >= 0) binding.spSalesPayMode.setSelection(payIdx)
 
+        resetItemEntryInputs()
         clearJsonArray(cartItems)
         clearJsonArray(oldCartItems)
 
@@ -557,10 +610,12 @@ class SalesActivity : AppCompatActivity() {
             .addOnSuccessListener { snap ->
                 clearJsonArray(matchingBatches)
                 batchDisplayList.clear()
+                var matchSpinnerIndex = 0
+
                 for (doc in snap) {
                     val docItem = doc.getString("itemName") ?: ""
                     val availKgs = doc.getDouble("availableKgs") ?: 0.0
-                    if (docItem.equals(itemName, ignoreCase = true) && (availKgs > 0 || isEditMode)) {
+                    if (docItem.equals(itemName, ignoreCase = true) && (availKgs > 0 || isEditMode || pendingBatchDocIdToSelect == doc.id)) {
                         val bId = doc.getString("batchId") ?: doc.id
                         val supName = doc.getString("supplierName") ?: ""
                         val availBags = doc.getLong("availableBags") ?: 0L
@@ -569,6 +624,9 @@ class SalesActivity : AppCompatActivity() {
                         obj.put("batchId", bId)
                         obj.put("availableBags", availBags)
                         obj.put("availableKgs", availKgs)
+                        if (pendingBatchDocIdToSelect == doc.id) {
+                            matchSpinnerIndex = matchingBatches.length()
+                        }
                         matchingBatches.put(obj)
                         batchDisplayList.add("$bId ($supName) - %.1f Kgs".format(availKgs))
                     }
@@ -577,12 +635,16 @@ class SalesActivity : AppCompatActivity() {
                     batchDisplayList.add("No Stock Available")
                     binding.tvLiveStockBanner.text = "Available Stock: 0 Bags | 0.0 Kgs"
                 } else {
-                    val first = matchingBatches.getJSONObject(0)
-                    binding.tvLiveStockBanner.text = "Available Stock: ${first.getLong("availableBags")} Bags | %.2f Kgs".format(first.getDouble("availableKgs"))
+                    val target = matchingBatches.getJSONObject(matchSpinnerIndex)
+                    binding.tvLiveStockBanner.text = "Available Stock: ${target.getLong("availableBags")} Bags | %.2f Kgs".format(target.getDouble("availableKgs"))
                 }
                 val batchAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
                 batchAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 binding.spSupplierBatch.adapter = batchAdapter
+                if (matchSpinnerIndex < batchDisplayList.size) {
+                    binding.spSupplierBatch.setSelection(matchSpinnerIndex)
+                }
+                pendingBatchDocIdToSelect = ""
             }
     }
 
@@ -613,7 +675,7 @@ class SalesActivity : AppCompatActivity() {
             emptyTv.setTextColor(Color.GRAY)
             emptyTv.setPadding(20, 20, 20, 20)
             val params = TableRow.LayoutParams()
-            params.span = 7
+            params.span = 8
             emptyTv.layoutParams = params
             emptyRow.addView(emptyTv)
             binding.tlSalesGrid.addView(emptyRow)
@@ -632,7 +694,12 @@ class SalesActivity : AppCompatActivity() {
             grandTotal += total
 
             val tableRow = TableRow(this)
-            tableRow.setBackgroundColor(if (idx % 2 == 0) Color.WHITE else Color.parseColor("#F1F8E9"))
+            val rowBg = when {
+                idx == editingGridRowIndex -> Color.parseColor("#FFF9C4")
+                idx % 2 == 0 -> Color.WHITE
+                else -> Color.parseColor("#F1F8E9")
+            }
+            tableRow.setBackgroundColor(rowBg)
 
             tableRow.addView(makeCell(name, alignRight = false, bold = true))
             tableRow.addView(makeCell(lotCode, alignRight = false))
@@ -641,6 +708,18 @@ class SalesActivity : AppCompatActivity() {
             tableRow.addView(makeCell("%.2f".format(rate), alignRight = true))
             tableRow.addView(makeCell("%.2f".format(total), alignRight = true, bold = true, colorHex = "#1B5E20"))
 
+            val editCell = TextView(this)
+            editCell.text = "EDIT"
+            editCell.setTextColor(Color.parseColor("#1565C0"))
+            editCell.setTypeface(null, Typeface.BOLD)
+            editCell.textSize = 12f
+            editCell.gravity = Gravity.CENTER
+            editCell.setPadding(18, 14, 18, 14)
+            editCell.setOnClickListener {
+                loadGridRowIntoFieldsForEdit(idx)
+            }
+            tableRow.addView(editCell)
+
             val delBtn = TextView(this)
             delBtn.text = "X"
             delBtn.setTextColor(Color.RED)
@@ -648,6 +727,8 @@ class SalesActivity : AppCompatActivity() {
             delBtn.gravity = Gravity.CENTER
             delBtn.setPadding(18, 14, 18, 14)
             delBtn.setOnClickListener {
+                if (editingGridRowIndex == idx) resetItemEntryInputs()
+                else if (editingGridRowIndex > idx) editingGridRowIndex--
                 cartItems.remove(idx)
                 refreshCartGrid()
             }
@@ -670,10 +751,7 @@ class SalesActivity : AppCompatActivity() {
         selectedCustomerName = ""
 
         binding.actvCustomer.setText("")
-        binding.etSalesBags.setText("")
-        binding.etSalesBagRate.setText("10")
-        binding.etSalesNetKgs.setText("")
-        binding.etSalesRatePerKg.setText("")
+        resetItemEntryInputs()
         binding.spSalesPayMode.setSelection(0)
         binding.spSalesItem.setSelection(0)
 
