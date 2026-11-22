@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivitySalesReceiptBinding
 import java.text.SimpleDateFormat
 import java.util.*
@@ -31,11 +32,12 @@ class SalesReceiptActivity : AppCompatActivity() {
 
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
-    private var currentCustomerBalance: Double = 0.0
+    private var selectedCustomerOpBal: Double = 0.0
+    private var calculatedTotalOutstanding: Double = 0.0
     private var selectedDateStr: String = ""
     private var targetSpecificBillDocId: String = ""
 
-    data class CustomerItem(val id: String, val name: String, val balance: Double)
+    data class CustomerItem(val id: String, val name: String, val balance: Double, val opBal: Double)
 
     data class PendingBill(
         val docId: String,
@@ -150,15 +152,13 @@ class SalesReceiptActivity : AppCompatActivity() {
                         }
                     }
 
-                    val custRef = db.collection("customers").document(selectedCustomerId)
-                    db.runTransaction { tr ->
-                        val snap = tr.get(custRef)
-                        val curr = snap.getDouble("currentBalance") ?: 0.0
-                        tr.update(custRef, "currentBalance", (curr - amount).coerceAtLeast(0.0))
-                    }.addOnCompleteListener {
-                        Toast.makeText(this, "Receipt Saved & Bill-wise Adjusted!", Toast.LENGTH_SHORT).show()
-                        resetForm()
-                    }
+                    val updatedBalance = (calculatedTotalOutstanding - amount).coerceAtLeast(0.0)
+                    db.collection("customers").document(selectedCustomerId)
+                        .set(mapOf("currentBalance" to updatedBalance), SetOptions.merge())
+                        .addOnCompleteListener {
+                            Toast.makeText(this, "Receipt Saved & Bill-wise Adjusted!", Toast.LENGTH_SHORT).show()
+                            resetForm()
+                        }
                 }
                 .addOnFailureListener {
                     binding.btnSaveReceipt.isEnabled = true
@@ -187,7 +187,7 @@ class SalesReceiptActivity : AppCompatActivity() {
         val filtered = ArrayList<CustomerItem>(customerList)
         val displayNames = ArrayList<String>()
         for (c in filtered) {
-            displayNames.add("${c.name}  (Bal: Rs. %.2f)".format(c.balance))
+            displayNames.add(c.name)
         }
 
         val listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayNames)
@@ -209,7 +209,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                 for (item in customerList) {
                     if (item.name.lowercase(Locale.getDefault()).contains(query)) {
                         filtered.add(item)
-                        displayNames.add("${item.name}  (Bal: Rs. %.2f)".format(item.balance))
+                        displayNames.add(item.name)
                     }
                 }
                 listAdapter.notifyDataSetChanged()
@@ -221,27 +221,32 @@ class SalesReceiptActivity : AppCompatActivity() {
             val chosen = filtered[position]
             selectedCustomerId = chosen.id
             selectedCustomerName = chosen.name
-            currentCustomerBalance = chosen.balance
+            selectedCustomerOpBal = chosen.opBal
             targetSpecificBillDocId = ""
             binding.etSearchCustomer.setText(chosen.name)
-            binding.tvCustOutstanding.text = "Total Outstanding Balance: Rs. %.2f".format(chosen.balance)
-            loadPendingBillsForCustomer(chosen.id)
+            binding.tvCustOutstanding.text = "Calculating Outstanding..."
+            loadPendingBillsForCustomer(chosen.id, chosen.name, chosen.opBal)
             dialog.dismiss()
         }
 
         dialog.show()
     }
 
-    private fun loadPendingBillsForCustomer(custId: String) {
+    private fun loadPendingBillsForCustomer(custId: String, custName: String, opBal: Double) {
         pendingBills.clear()
         refreshBillWiseGrid()
 
         db.collection("sales")
-            .whereEqualTo("customerId", custId)
             .get()
             .addOnSuccessListener { snap ->
                 pendingBills.clear()
+                var totalBillsPending = 0.0
+
                 for (doc in snap) {
+                    val docCustId = doc.getString("customerId") ?: ""
+                    val docCustName = doc.getString("customerName") ?: ""
+                    if (docCustId != custId && !docCustName.equals(custName, ignoreCase = true)) continue
+
                     val pMode = doc.getString("payMode") ?: "Credit"
                     if (!pMode.equals("Credit", ignoreCase = true)) continue
 
@@ -250,6 +255,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                     val bal = doc.getDouble("balanceAmount") ?: (total - paid)
 
                     if (bal > 0.01) {
+                        totalBillsPending += bal
                         pendingBills.add(
                             PendingBill(
                                 docId = doc.id,
@@ -263,6 +269,14 @@ class SalesReceiptActivity : AppCompatActivity() {
                         )
                     }
                 }
+
+                calculatedTotalOutstanding = totalBillsPending + opBal
+                binding.tvCustOutstanding.text = "Total Outstanding Balance: Rs. %.2f".format(calculatedTotalOutstanding)
+
+                // Keep customer's currentBalance in sync with exact pending bills + opening balance
+                db.collection("customers").document(custId)
+                    .set(mapOf("currentBalance" to calculatedTotalOutstanding), SetOptions.merge())
+
                 pendingBills.sortBy { it.timestamp }
                 allocateAmountToBills()
                 refreshBillWiseGrid()
@@ -312,7 +326,7 @@ class SalesReceiptActivity : AppCompatActivity() {
             val emptyRow = TableRow(this)
             emptyRow.setBackgroundColor(Color.WHITE)
             val tv = TextView(this)
-            tv.text = if (selectedCustomerId.isEmpty()) "Select a customer to view bill-wise pending details." else "No pending credit bills found (Opening Balance only)."
+            tv.text = if (selectedCustomerId.isEmpty()) "Select a customer to view bill-wise pending details." else "No pending credit bills found."
             tv.setTextColor(Color.GRAY)
             tv.setPadding(18, 18, 18, 18)
             val lp = TableRow.LayoutParams()
@@ -366,7 +380,8 @@ class SalesReceiptActivity : AppCompatActivity() {
             for (doc in snap) {
                 val name = doc.getString("name") ?: continue
                 val bal = doc.getDouble("currentBalance") ?: 0.0
-                customerList.add(CustomerItem(doc.id, name, bal))
+                val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                customerList.add(CustomerItem(doc.id, name, bal, opBal))
             }
             customerList.sortBy { it.name.lowercase(Locale.getDefault()) }
         }
@@ -375,7 +390,8 @@ class SalesReceiptActivity : AppCompatActivity() {
     private fun resetForm() {
         selectedCustomerId = ""
         selectedCustomerName = ""
-        currentCustomerBalance = 0.0
+        selectedCustomerOpBal = 0.0
+        calculatedTotalOutstanding = 0.0
         targetSpecificBillDocId = ""
         pendingBills.clear()
         refreshBillWiseGrid()
