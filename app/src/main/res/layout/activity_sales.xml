@@ -21,7 +21,7 @@
             android:gravity="center"
             android:layout_marginBottom="8dp" />
 
-        <!-- Mode Switch: NEW BILL vs EDIT BILL -->
+        <!-- Mode Switch: NEW BILL vs EDIT / DEL BILL -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -45,14 +45,14 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="EDIT BILL"
+                android:text="EDIT / DEL BILL"
                 android:backgroundTint="#78909C"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp"
                 android:layout_marginStart="4dp" />
         </LinearLayout>
 
-        <!-- EDIT FILTER PANEL (Visible only when EDIT BILL is selected) -->
+        <!-- EDIT / DELETE FILTER PANEL -->
         <LinearLayout
             android:id="@+id/layoutEditSalesPanel"
             android:layout_width="match_parent"
@@ -66,7 +66,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="SELECT DATE &amp; CUSTOMER TO EDIT BILL"
+                android:text="SELECT DATE &amp; CUSTOMER TO EDIT / DELETE BILL"
                 android:textSize="12sp"
                 android:textStyle="bold"
                 android:textColor="#E65100"
@@ -76,7 +76,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:weightSum="2"
+                :weightSum="2"
                 android:layout_marginBottom="8dp">
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
@@ -104,15 +104,6 @@
                         android:background="@android:drawable/btn_dropdown" />
                 </LinearLayout>
             </LinearLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Tap a bill below to load &amp; edit:"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:textColor="#E65100"
-                android:layout_marginBottom="4dp" />
 
             <LinearLayout
                 android:id="@+id/llMatchingBillsList"
@@ -264,7 +255,7 @@
             <Button android:id="@+id/btnAddSalesItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO SALES BILL" android:backgroundTint="#2E7D32" android:textColor="#FFFFFF" />
         </LinearLayout>
 
-        <!-- Added Items Grid / Table View (with Delete option for easy editing) -->
+        <!-- Added Items Grid / Table View -->
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
