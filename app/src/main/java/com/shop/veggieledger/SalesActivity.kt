@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivitySalesBinding
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -23,10 +24,10 @@ class SalesActivity : AppCompatActivity() {
     private var selectedCustomerName: String = ""
 
     private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
-    private val matchingBatches = ArrayList<JSONObject>()
+    private val matchingBatches = JSONArray()
     private val batchDisplayList = ArrayList<String>()
 
-    private val cartItems = ArrayList<JSONObject>()
+    private val cartItems = JSONArray()
     private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,13 +42,13 @@ class SalesActivity : AppCompatActivity() {
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spSalesPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        loadCustomers()
-        loadItems()
+        // Set default items immediately BEFORE listener
+        binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
 
         binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 val item = binding.spSalesItem.selectedItem?.toString() ?: ""
-                binding.layoutSalesOnion.visibility = if (item.equals("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
+                binding.layoutSalesOnion.visibility = if (item.contains("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
                 loadBatchesForItem(item)
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
@@ -55,8 +56,8 @@ class SalesActivity : AppCompatActivity() {
 
         binding.spSupplierBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (pos in matchingBatches.indices) {
-                    val b = matchingBatches[pos]
+                if (pos >= 0 && pos < matchingBatches.length()) {
+                    val b = matchingBatches.getJSONObject(pos)
                     val bags = b.getLong("availableBags")
                     val kgs = b.getDouble("availableKgs")
                     binding.tvLiveStockBanner.text = "Available Stock: $bags Bags | %.2f Kgs".format(kgs)
@@ -65,22 +66,27 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
+        loadCustomers()
+        loadItemsFromDb()
+        // Trigger initial load for first item ("Onion")
+        loadBatchesForItem(itemNames[0])
+
         binding.btnAddSalesItem.setOnClickListener {
             val itemName = binding.spSalesItem.selectedItem?.toString() ?: return@setOnClickListener
             val batchIdx = binding.spSupplierBatch.selectedItemPosition
-            if (batchIdx !in matchingBatches.indices) {
+            if (batchIdx < 0 || batchIdx >= matchingBatches.length()) {
                 Toast.makeText(this, "No stock lot selected", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            val selectedBatch = matchingBatches[batchIdx]
+            val selectedBatch = matchingBatches.getJSONObject(batchIdx)
             val batchDocId = selectedBatch.getString("docId")
             val batchCode = selectedBatch.getString("batchId")
             val availKgs = selectedBatch.getDouble("availableKgs")
 
             val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
-            val isOnion = itemName.equals("Onion", ignoreCase = true)
+            val isOnion = itemName.contains("Onion", ignoreCase = true)
             val bags = if (isOnion) (binding.etSalesBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etSalesBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
@@ -105,7 +111,7 @@ class SalesActivity : AppCompatActivity() {
             row.put("ratePerKg", ratePerKg)
             row.put("lineTotal", lineTotal)
 
-            cartItems.add(row)
+            cartItems.put(row)
             refreshCartDisplay()
 
             binding.etSalesBags.setText("")
@@ -119,7 +125,7 @@ class SalesActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please search and select a valid Customer", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (cartItems.isEmpty()) {
+            if (cartItems.length() == 0) {
                 Toast.makeText(this, "Add at least one item to sales bill", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -130,8 +136,9 @@ class SalesActivity : AppCompatActivity() {
             val payMode = binding.spSalesPayMode.selectedItem.toString()
             val today = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
 
-            val itemsForDb = ArrayList<HashMap<String, Any>>()
-            for (row in cartItems) {
+            val itemsForDb = ArrayList<Any>()
+            for (i in 0 until cartItems.length()) {
+                val row = cartItems.getJSONObject(i)
                 val map = HashMap<String, Any>()
                 map["itemName"] = row.getString("itemName")
                 map["batchDocId"] = row.getString("batchDocId")
@@ -190,37 +197,30 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-        private fun loadItems() {
-        // உடனே default items (Onion, Garlic, Coconut) தெரியும்படி set செய்தல்
-        binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-
+    private fun loadItemsFromDb() {
         db.collection("items").get().addOnSuccessListener { snap ->
-            val fetched = ArrayList<String>()
             for (doc in snap) {
-                val n = doc.getString("name") ?: doc.getString("itemName")
-                if (!n.isNullOrBlank()) {
-                    fetched.add(n)
+                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
+                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
+                    itemNames.add(n)
                 }
             }
-            if (fetched.isNotEmpty()) {
-                itemNames.clear()
-                itemNames.addAll(fetched)
-                binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-            }
+            binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
         }
-        }
-        
+    }
 
     private fun loadBatchesForItem(itemName: String) {
         db.collection("stock_batches")
-            .whereEqualTo("itemName", itemName)
             .get()
             .addOnSuccessListener { snap ->
-                matchingBatches.clear()
+                while (matchingBatches.length() > 0) {
+                    matchingBatches.remove(0)
+                }
                 batchDisplayList.clear()
                 for (doc in snap) {
+                    val docItem = doc.getString("itemName") ?: ""
                     val availKgs = doc.getDouble("availableKgs") ?: 0.0
-                    if (availKgs > 0) {
+                    if (docItem.equals(itemName, ignoreCase = true) && availKgs > 0) {
                         val bId = doc.getString("batchId") ?: doc.id
                         val supName = doc.getString("supplierName") ?: ""
                         val availBags = doc.getLong("availableBags") ?: 0L
@@ -229,13 +229,16 @@ class SalesActivity : AppCompatActivity() {
                         obj.put("batchId", bId)
                         obj.put("availableBags", availBags)
                         obj.put("availableKgs", availKgs)
-                        matchingBatches.add(obj)
+                        matchingBatches.put(obj)
                         batchDisplayList.add("$bId ($supName) - %.1f Kgs".format(availKgs))
                     }
                 }
                 if (batchDisplayList.isEmpty()) {
                     batchDisplayList.add("No Stock Available")
                     binding.tvLiveStockBanner.text = "Available Stock: 0 Bags | 0.0 Kgs"
+                } else {
+                    val first = matchingBatches.getJSONObject(0)
+                    binding.tvLiveStockBanner.text = "Available Stock: ${first.getLong("availableBags")} Bags | %.2f Kgs".format(first.getDouble("availableKgs"))
                 }
                 binding.spSupplierBatch.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, batchDisplayList)
             }
@@ -244,8 +247,8 @@ class SalesActivity : AppCompatActivity() {
     private fun refreshCartDisplay() {
         grandTotal = 0.0
         val sb = StringBuilder()
-        for (idx in cartItems.indices) {
-            val row = cartItems[idx]
+        for (idx in 0 until cartItems.length()) {
+            val row = cartItems.getJSONObject(idx)
             val name = row.getString("itemName")
             val bags = row.getInt("bags")
             val kgs = row.getDouble("netKgs")
@@ -261,7 +264,8 @@ class SalesActivity : AppCompatActivity() {
     }
 
     private fun deductStockAndUpdateCustomer(payMode: String) {
-        for (row in cartItems) {
+        for (i in 0 until cartItems.length()) {
+            val row = cartItems.getJSONObject(i)
             val docId = row.getString("batchDocId")
             val soldBags = row.getInt("bags")
             val soldKgs = row.getDouble("netKgs")
