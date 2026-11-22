@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivityPurchasePaymentBinding
 import java.text.SimpleDateFormat
 import java.util.*
@@ -31,10 +32,12 @@ class PurchasePaymentActivity : AppCompatActivity() {
 
     private var selectedSupplierId: String = ""
     private var selectedSupplierName: String = ""
+    private var selectedSupplierOpBal: Double = 0.0
+    private var calculatedTotalPayable: Double = 0.0
     private var selectedDateStr: String = ""
     private var targetSpecificBillDocId: String = ""
 
-    data class SupplierItem(val id: String, val name: String, val balance: Double)
+    data class SupplierItem(val id: String, val name: String, val balance: Double, val opBal: Double)
 
     data class PendingPurBill(
         val docId: String,
@@ -151,15 +154,13 @@ class PurchasePaymentActivity : AppCompatActivity() {
                         }
                     }
 
-                    val supRef = db.collection("suppliers").document(selectedSupplierId)
-                    db.runTransaction { tr ->
-                        val snap = tr.get(supRef)
-                        val curr = snap.getDouble("currentBalance") ?: 0.0
-                        tr.update(supRef, "currentBalance", (curr - amount).coerceAtLeast(0.0))
-                    }.addOnCompleteListener {
-                        Toast.makeText(this, "Payment Saved & Bill-wise Adjusted!", Toast.LENGTH_SHORT).show()
-                        resetForm()
-                    }
+                    val updatedBalance = (calculatedTotalPayable - amount).coerceAtLeast(0.0)
+                    db.collection("suppliers").document(selectedSupplierId)
+                        .set(mapOf("currentBalance" to updatedBalance), SetOptions.merge())
+                        .addOnCompleteListener {
+                            Toast.makeText(this, "Payment Saved & Bill-wise Adjusted!", Toast.LENGTH_SHORT).show()
+                            resetForm()
+                        }
                 }
                 .addOnFailureListener {
                     binding.btnSavePayment.isEnabled = true
@@ -188,7 +189,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
         val filtered = ArrayList<SupplierItem>(supplierList)
         val displayNames = ArrayList<String>()
         for (s in filtered) {
-            displayNames.add("${s.name}  (Due: Rs. %.2f)".format(s.balance))
+            displayNames.add(s.name)
         }
 
         val listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayNames)
@@ -210,7 +211,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
                 for (item in supplierList) {
                     if (item.name.lowercase(Locale.getDefault()).contains(query)) {
                         filtered.add(item)
-                        displayNames.add("${item.name}  (Due: Rs. %.2f)".format(item.balance))
+                        displayNames.add(item.name)
                     }
                 }
                 listAdapter.notifyDataSetChanged()
@@ -222,26 +223,32 @@ class PurchasePaymentActivity : AppCompatActivity() {
             val chosen = filtered[position]
             selectedSupplierId = chosen.id
             selectedSupplierName = chosen.name
+            selectedSupplierOpBal = chosen.opBal
             targetSpecificBillDocId = ""
             binding.etSearchSupplier.setText(chosen.name)
-            binding.tvSupPayable.text = "Total Payable Balance: Rs. %.2f".format(chosen.balance)
-            loadPendingBillsForSupplier(chosen.id)
+            binding.tvSupPayable.text = "Calculating Payable..."
+            loadPendingBillsForSupplier(chosen.id, chosen.name, chosen.opBal)
             dialog.dismiss()
         }
 
         dialog.show()
     }
 
-    private fun loadPendingBillsForSupplier(supId: String) {
+    private fun loadPendingBillsForSupplier(supId: String, supName: String, opBal: Double) {
         pendingBills.clear()
         refreshBillWiseGrid()
 
         db.collection("purchases")
-            .whereEqualTo("supplierId", supId)
             .get()
             .addOnSuccessListener { snap ->
                 pendingBills.clear()
+                var totalBillsPending = 0.0
+
                 for (doc in snap) {
+                    val docSupId = doc.getString("supplierId") ?: ""
+                    val docSupName = doc.getString("supplierName") ?: ""
+                    if (docSupId != supId && !docSupName.equals(supName, ignoreCase = true)) continue
+
                     val pMode = doc.getString("payMode") ?: "Credit"
                     if (!pMode.equals("Credit", ignoreCase = true)) continue
 
@@ -250,6 +257,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
                     val bal = doc.getDouble("balanceAmount") ?: (total - paid)
 
                     if (bal > 0.01) {
+                        totalBillsPending += bal
                         pendingBills.add(
                             PendingPurBill(
                                 docId = doc.id,
@@ -264,6 +272,13 @@ class PurchasePaymentActivity : AppCompatActivity() {
                         )
                     }
                 }
+
+                calculatedTotalPayable = totalBillsPending + opBal
+                binding.tvSupPayable.text = "Total Payable Balance: Rs. %.2f".format(calculatedTotalPayable)
+
+                db.collection("suppliers").document(supId)
+                    .set(mapOf("currentBalance" to calculatedTotalPayable), SetOptions.merge())
+
                 pendingBills.sortBy { it.timestamp }
                 allocateAmountToBills()
                 refreshBillWiseGrid()
@@ -313,7 +328,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
             val emptyRow = TableRow(this)
             emptyRow.setBackgroundColor(Color.WHITE)
             val tv = TextView(this)
-            tv.text = if (selectedSupplierId.isEmpty()) "Select a supplier to view bill-wise pending details." else "No pending credit purchase bills found (Opening Balance only)."
+            tv.text = if (selectedSupplierId.isEmpty()) "Select a supplier to view bill-wise pending details." else "No pending credit purchase bills found."
             tv.setTextColor(Color.GRAY)
             tv.setPadding(18, 18, 18, 18)
             val lp = TableRow.LayoutParams()
@@ -368,7 +383,8 @@ class PurchasePaymentActivity : AppCompatActivity() {
             for (doc in snap) {
                 val name = doc.getString("name") ?: continue
                 val bal = doc.getDouble("currentBalance") ?: 0.0
-                supplierList.add(SupplierItem(doc.id, name, bal))
+                val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                supplierList.add(SupplierItem(doc.id, name, bal, opBal))
             }
             supplierList.sortBy { it.name.lowercase(Locale.getDefault()) }
         }
@@ -377,6 +393,8 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private fun resetForm() {
         selectedSupplierId = ""
         selectedSupplierName = ""
+        selectedSupplierOpBal = 0.0
+        calculatedTotalPayable = 0.0
         targetSpecificBillDocId = ""
         pendingBills.clear()
         refreshBillWiseGrid()
