@@ -2,7 +2,6 @@ package com.shop.veggieledger
 
 import android.os.Bundle
 import android.view.View
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -23,7 +22,7 @@ class PurchaseActivity : AppCompatActivity() {
     private var selectedSupplierId: String = ""
     private var selectedSupplierName: String = ""
 
-    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
+    private var selectedItemName: String = "Onion"
     private val cartItems = JSONArray()
     private var grandTotal = 0.0
 
@@ -39,26 +38,23 @@ class PurchaseActivity : AppCompatActivity() {
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        // Set default items immediately BEFORE listener
-        binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-
-        binding.spItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                val item = binding.spItem.selectedItem?.toString() ?: ""
-                binding.layoutOnionFields.visibility = if (item.contains("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
+        // RadioGroup listener for Item Selection
+        binding.rgPurchaseItem.setOnCheckedChangeListener { _, checkedId ->
+            selectedItemName = when (checkedId) {
+                R.id.rbPurGarlic -> "Garlic"
+                R.id.rbPurCoconut -> "Coconut"
+                else -> "Onion"
             }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
+            binding.layoutOnionFields.visibility = if (selectedItemName == "Onion") View.VISIBLE else View.GONE
         }
 
         loadSuppliers()
-        loadItemsFromDb()
 
         binding.btnAddItem.setOnClickListener {
-            val itemName = binding.spItem.selectedItem?.toString() ?: return@setOnClickListener
             val netKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
-            val isOnion = itemName.contains("Onion", ignoreCase = true)
+            val isOnion = selectedItemName == "Onion"
             val bags = if (isOnion) (binding.etBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
@@ -70,7 +66,7 @@ class PurchaseActivity : AppCompatActivity() {
             val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
             val row = JSONObject()
-            row.put("itemName", itemName)
+            row.put("itemName", selectedItemName)
             row.put("bags", bags)
             row.put("bagRate", bagRate)
             row.put("netKgs", netKgs)
@@ -162,18 +158,6 @@ class PurchaseActivity : AppCompatActivity() {
             val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, supplierNames)
             binding.actvSupplier.setAdapter(adapter)
             binding.actvSupplier.setText("")
-        }
-    }
-
-    private fun loadItemsFromDb() {
-        db.collection("items").get().addOnSuccessListener { snap ->
-            for (doc in snap) {
-                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
-                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
-                    itemNames.add(n)
-                }
-            }
-            binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
         }
     }
 
