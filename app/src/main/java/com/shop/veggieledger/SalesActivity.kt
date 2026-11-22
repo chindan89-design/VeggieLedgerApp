@@ -40,7 +40,7 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        // 1. Setup Date Picker (First Field)
+        // 1. Setup Date Picker
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         binding.etSalesDate.setText(selectedDateStr)
@@ -52,7 +52,7 @@ class SalesActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // 2. Setup Item Dropdown (Second Field)
+        // 2. Setup Item Dropdown
         val defaultItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
         defaultItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spSalesItem.adapter = defaultItemAdapter
@@ -167,6 +167,8 @@ class SalesActivity : AppCompatActivity() {
                 itemsForDb.add(map)
             }
 
+            binding.btnSaveSalesBill.isEnabled = false
+
             val salesId = db.collection("sales").document().id
             val salesData = hashMapOf(
                 "id" to salesId,
@@ -185,6 +187,7 @@ class SalesActivity : AppCompatActivity() {
                     deductStockAndUpdateCustomer(payMode)
                 }
                 .addOnFailureListener {
+                    binding.btnSaveSalesBill.isEnabled = true
                     Toast.makeText(this, "Failed to save sales bill", Toast.LENGTH_SHORT).show()
                 }
         }
@@ -283,6 +286,30 @@ class SalesActivity : AppCompatActivity() {
         binding.tvSalesGrandTotal.text = "Grand Total: Rs. %.2f".format(grandTotal)
     }
 
+    private fun resetFormForFreshEntry() {
+        while (cartItems.length() > 0) {
+            cartItems.remove(0)
+        }
+        grandTotal = 0.0
+        selectedCustomerId = ""
+        selectedCustomerName = ""
+
+        binding.actvCustomer.setText("")
+        binding.etSalesBags.setText("")
+        binding.etSalesBagRate.setText("10")
+        binding.etSalesNetKgs.setText("")
+        binding.etSalesRatePerKg.setText("")
+        binding.spSalesPayMode.setSelection(0)
+        binding.spSalesItem.setSelection(0)
+
+        refreshCartDisplay()
+        generateAutoSalesBillNo()
+        loadBatchesForItem(selectedItemName)
+
+        binding.btnSaveSalesBill.isEnabled = true
+        binding.actvCustomer.requestFocus()
+    }
+
     private fun deductStockAndUpdateCustomer(payMode: String) {
         for (i in 0 until cartItems.length()) {
             val row = cartItems.getJSONObject(i)
@@ -311,7 +338,7 @@ class SalesActivity : AppCompatActivity() {
             }
         }
 
-        Toast.makeText(this, "Sales Bill Saved & Stock Updated!", Toast.LENGTH_SHORT).show()
-        finish()
+        Toast.makeText(this, "Sales Bill Saved! Ready for next entry.", Toast.LENGTH_SHORT).show()
+        resetFormForFreshEntry()
     }
 }
