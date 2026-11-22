@@ -1,12 +1,17 @@
 package com.shop.veggieledger
 
 import android.app.DatePickerDialog
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Gravity
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.TableRow
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
@@ -43,7 +48,7 @@ class PurchaseActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Purchase Entry"
 
-        // 1. Setup Date Picker (First Field)
+        // 1. Date Picker (First)
         val cal = Calendar.getInstance()
         updateSelectedDate(cal)
         binding.etPurchaseDate.setOnClickListener {
@@ -54,7 +59,7 @@ class PurchaseActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // 2. Setup Item Dropdown (Second Field)
+        // 2. Item Dropdown (Second)
         val defaultItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
         defaultItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spItem.adapter = defaultItemAdapter
@@ -88,7 +93,6 @@ class PurchaseActivity : AppCompatActivity() {
         binding.actvSupplier.addTextChangedListener(liveIdWatcher)
         binding.etBags.addTextChangedListener(liveIdWatcher)
 
-        // Coconut Kudumi (3% Auto) & Net Weight calculation
         binding.etNetKgs.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -114,6 +118,7 @@ class PurchaseActivity : AppCompatActivity() {
 
         loadItemsFromDb()
         loadAllSuppliers()
+        refreshCartGrid()
 
         binding.btnAddItem.setOnClickListener {
             val purchaseKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
@@ -148,7 +153,7 @@ class PurchaseActivity : AppCompatActivity() {
             row.put("lineTotal", lineTotal)
 
             cartItems.put(row)
-            refreshCartDisplay()
+            refreshCartGrid()
 
             binding.etBags.setText("")
             binding.etNetKgs.setText("")
@@ -255,7 +260,6 @@ class PurchaseActivity : AppCompatActivity() {
             val name = obj.getString("name")
             val mappedItem = obj.optString("mappedItem", "")
 
-            // Show suppliers mapped to this item (or unmapped legacy suppliers)
             if (mappedItem.equals(itemName, ignoreCase = true) || mappedItem.isEmpty()) {
                 filteredSupplierMap[name] = id
                 filteredSupplierNames.add(name)
@@ -347,9 +351,44 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshCartDisplay() {
+    private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false, colorHex: String = "#000000"): TextView {
+        val tv = TextView(this)
+        tv.text = text
+        tv.setTextColor(Color.parseColor(colorHex))
+        tv.textSize = 12spToPx()
+        tv.setPadding(16, 14, 16, 14)
+        tv.gravity = if (alignRight) Gravity.END else Gravity.START
+        if (bold) tv.setTypeface(null, Typeface.BOLD)
+        return tv
+    }
+
+    private fun 12spToPx(): Float = 12f
+
+    private fun refreshCartGrid() {
+        // Keep header row (index 0), remove all previous data rows
+        val childCount = binding.tlPurchaseGrid.childCount
+        if (childCount > 1) {
+            binding.tlPurchaseGrid.removeViews(1, childCount - 1)
+        }
+
         grandTotal = 0.0
-        val sb = StringBuilder()
+
+        if (cartItems.length() == 0) {
+            val emptyRow = TableRow(this)
+            emptyRow.setBackgroundColor(Color.WHITE)
+            val emptyTv = TextView(this)
+            emptyTv.text = "No items added yet."
+            emptyTv.setTextColor(Color.GRAY)
+            emptyTv.setPadding(20, 20, 20, 20)
+            val params = TableRow.LayoutParams()
+            params.span = 8
+            emptyTv.layoutParams = params
+            emptyRow.addView(emptyTv)
+            binding.tlPurchaseGrid.addView(emptyRow)
+            binding.tvGrandTotal.text = "Grand Total: Rs. 0.00"
+            return
+        }
+
         for (idx in 0 until cartItems.length()) {
             val row = cartItems.getJSONObject(idx)
             val name = row.getString("itemName")
@@ -362,14 +401,37 @@ class PurchaseActivity : AppCompatActivity() {
             val total = row.getDouble("lineTotal")
             grandTotal += total
 
-            if (name.equals("Coconut", ignoreCase = true)) {
-                sb.append("${idx + 1}. $name | Pur: $purKgs - (K:$kudumi + T:$thadukki) = Net $netKgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
-            } else {
-                val bagInfo = if (bags > 0) " ($bags Bags)" else ""
-                sb.append("${idx + 1}. $name$bagInfo: $netKgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
+            val tableRow = TableRow(this)
+            tableRow.setBackgroundColor(if (idx % 2 == 0) Color.WHITE else Color.parseColor("#F1F8FF"))
+
+            val dedText = if (name.equals("Coconut", ignoreCase = true)) {
+                "%.0f+%.0f".format(kudumi, thadukki)
+            } else "-"
+
+            tableRow.addView(makeCell(name, alignRight = false, bold = true))
+            tableRow.addView(makeCell(if (bags > 0) bags.toString() else "-", alignRight = true))
+            tableRow.addView(makeCell("%.1f".format(purKgs), alignRight = true))
+            tableRow.addView(makeCell(dedText, alignRight = true))
+            tableRow.addView(makeCell("%.2f".format(netKgs), alignRight = true, bold = true, colorHex = "#1B5E20"))
+            tableRow.addView(makeCell("%.2f".format(rate), alignRight = true))
+            tableRow.addView(makeCell("%.2f".format(total), alignRight = true, bold = true, colorHex = "#1565C0"))
+
+            val delBtn = TextView(this)
+            delBtn.text = "X"
+            delBtn.setTextColor(Color.RED)
+            delBtn.setTypeface(null, Typeface.BOLD)
+            delBtn.gravity = Gravity.CENTER
+            delBtn.setPadding(18, 14, 18, 14)
+            delBtn.setOnClickListener {
+                cartItems.remove(idx)
+                refreshCartGrid()
+                updateLotIdPreview()
             }
+            tableRow.addView(delBtn)
+
+            binding.tlPurchaseGrid.addView(tableRow)
         }
-        binding.tvAddedItemsList.text = if (sb.isEmpty()) "No items added yet." else sb.toString().trim()
+
         binding.tvGrandTotal.text = "Grand Total: Rs. %.2f".format(grandTotal)
     }
 
