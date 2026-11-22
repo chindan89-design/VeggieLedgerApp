@@ -11,6 +11,7 @@
         android:orientation="vertical">
 
         <TextView
+            android:id="@+id/tvPayHeader"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="PURCHASE PAYMENT (BILL-WISE)"
@@ -18,7 +19,98 @@
             android:textStyle="bold"
             android:textColor="#1565C0"
             android:gravity="center"
-            android:layout_marginBottom="14dp" />
+            android:layout_marginBottom="8dp" />
+
+        <!-- Mode Switch: NEW PAYMENT vs EDIT / DEL PAYMENT -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
+
+            <Button
+                android:id="@+id/btnModeNewPay"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="+ NEW PAYMENT"
+                android:backgroundTint="#1565C0"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnModeEditPay"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="EDIT / DEL PAYMENT"
+                android:backgroundTint="#78909C"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <!-- EDIT / DELETE PAYMENT FILTER PANEL -->
+        <LinearLayout
+            android:id="@+id/layoutEditPayPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#FFF3E0"
+            android:padding="10dp"
+            android:visibility="gone"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="SELECT DATE &amp; SUPPLIER TO EDIT / DELETE PAYMENT"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#E65100"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Payment Date *" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText
+                        android:id="@+id/etEditPayFilterDate"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:focusable="false"
+                        android:clickable="true"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        android:background="@android:drawable/edit_text"
+                        android:padding="8dp"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Supplier Name *" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
+                    <Spinner
+                        android:id="@+id/spEditPayFilterSupplier"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:spinnerMode="dialog"
+                        android:background="@android:drawable/btn_dropdown" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/llMatchingPayList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
 
         <!-- Row 1: Date & Payment No -->
         <LinearLayout
@@ -29,7 +121,7 @@
             android:layout_marginBottom="10dp">
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Date *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Payment Date *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
                 <EditText
                     android:id="@+id/etPayDate"
                     android:layout_width="match_parent"
@@ -57,8 +149,8 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Searchable Supplier Name (Non-freezing Search Dialog) -->
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Name (Tap to Search) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
+        <!-- Searchable Supplier Name -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Supplier Name (Tap to Search) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
         <EditText
             android:id="@+id/etSearchSupplier"
             android:layout_width="match_parent"
