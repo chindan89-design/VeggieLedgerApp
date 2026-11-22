@@ -1,204 +1,410 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#F5F7FA"
-    android:padding="12dp">
+package com.shop.veggieledger
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
+import android.app.DatePickerDialog
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.firestore.FirebaseFirestore
+import com.shop.veggieledger.databinding.ActivityPurchaseBinding
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.math.floor
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="PURCHASE BILL ENTRY FORM"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="#1565C0"
-            android:gravity="center"
-            android:layout_marginBottom="12dp" />
+class PurchaseActivity : AppCompatActivity() {
 
-        <!-- Row 1: Date Picker (First) & Item Dropdown (Second) -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginBottom="10dp">
+    private lateinit var binding: ActivityPurchaseBinding
+    private val db = FirebaseFirestore.getInstance()
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Purchase Date *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1565C0" />
-                <EditText
-                    android:id="@+id/etPurchaseDate"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:focusable="false"
-                    android:clickable="true"
-                    android:textColor="#000000"
-                    android:textStyle="bold"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp" />
-            </LinearLayout>
+    private val allSuppliers = JSONArray()
+    private val filteredSupplierMap = HashMap<String, String>()
+    private val filteredSupplierNames = ArrayList<String>()
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Select Item *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1565C0" />
-                <Spinner
-                    android:id="@+id/spItem"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:spinnerMode="dialog"
-                    android:background="@android:drawable/btn_dropdown" />
-            </LinearLayout>
-        </LinearLayout>
+    private var selectedSupplierId: String = ""
+    private var selectedSupplierName: String = ""
+    private var selectedDateStr: String = ""
+    private var selectedDayStr: String = ""
 
-        <!-- Row 2: Filtered Searchable Supplier & Payment Mode -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginBottom="10dp">
+    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
+    private var selectedItemName: String = "Onion"
+    private val cartItems = JSONArray()
+    private var grandTotal = 0.0
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3. Supplier (Item Filtered) *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1565C0" />
-                <AutoCompleteTextView
-                    android:id="@+id/actvSupplier"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="Type supplier..."
-                    android:completionThreshold="1"
-                    android:textColor="#000000"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp" />
-            </LinearLayout>
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityPurchaseBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
-                <Spinner
-                    android:id="@+id/spPayMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:spinnerMode="dialog"
-                    android:background="@android:drawable/btn_dropdown" />
-            </LinearLayout>
-        </LinearLayout>
+        supportActionBar?.title = "Purchase Entry"
 
-        <!-- Row 3: Auto Bill No & Stock Lot ID -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginBottom="12dp">
+        // 1. Setup Date Picker (First Field)
+        val cal = Calendar.getInstance()
+        updateSelectedDate(cal)
+        binding.etPurchaseDate.setOnClickListener {
+            DatePickerDialog(this, { _, y, m, d ->
+                cal.set(y, m, d)
+                updateSelectedDate(cal)
+                updateLotIdPreview()
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+        }
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Bill No" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
-                <EditText android:id="@+id/etBillNo" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Auto Bill No" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
-            </LinearLayout>
+        // 2. Setup Item Dropdown (Second Field)
+        val defaultItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
+        defaultItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spItem.adapter = defaultItemAdapter
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stock Lot ID" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
-                <TextView android:id="@+id/tvGeneratedBatchId" android:layout_width="match_parent" android:layout_height="48dp" android:text="Auto Lot ID" android:gravity="center_vertical" android:background="#E3F2FD" android:textColor="#1565C0" android:textStyle="bold" android:padding="8dp" />
-            </LinearLayout>
-        </LinearLayout>
+        binding.spItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                selectedItemName = binding.spItem.selectedItem?.toString() ?: "Onion"
+                onItemChanged(selectedItemName)
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
 
-        <!-- Item Entry Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#E3F2FD"
-            android:padding="10dp"
-            android:layout_marginBottom="12dp">
+        fetchNextBillNumber()
 
-            <!-- Bags & Bag Charge Side-by-Side (Onion-க்கு மட்டும்) -->
-            <LinearLayout
-                android:id="@+id/layoutOnionFields"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:weightSum="2"
-                android:layout_marginBottom="8dp">
+        val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
+        val payAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
+        payAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spPayMode.adapter = payAdapter
 
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No. of Bags" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-                    <EditText android:id="@+id/etBags" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:textColor="#000000" android:inputType="number" android:background="@android:drawable/edit_text" android:padding="8dp" />
-                </LinearLayout>
+        binding.actvSupplier.setOnItemClickListener { _, _, _, _ ->
+            updateLotIdPreview()
+        }
 
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bag Charge / Bag (Rs)" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-                    <EditText android:id="@+id/etBagRate" android:layout_width="match_parent" android:layout_height="48dp" android:text="10" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
-                </LinearLayout>
-            </LinearLayout>
+        val liveIdWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                updateLotIdPreview()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        }
+        binding.actvSupplier.addTextChangedListener(liveIdWatcher)
+        binding.etBags.addTextChangedListener(liveIdWatcher)
 
-            <!-- Purchase Kgs & Rate / Kg Side-by-Side -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:weightSum="2"
-                android:layout_marginBottom="8dp">
+        // Coconut Kudumi (3% Auto) & Net Weight calculation
+        binding.etNetKgs.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (selectedItemName.equals("Coconut", ignoreCase = true)) {
+                    calculateCoconutKudumi()
+                    updateCoconutNetWeightPreview()
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Purchase Kgs *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-                    <EditText android:id="@+id/etNetKgs" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.0 Kgs" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
-                </LinearLayout>
+        val netWeightWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (selectedItemName.equals("Coconut", ignoreCase = true)) {
+                    updateCoconutNetWeightPreview()
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        }
+        binding.etKudumi.addTextChangedListener(netWeightWatcher)
+        binding.etThadukki.addTextChangedListener(netWeightWatcher)
 
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rate / Kg (Rs) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-                    <EditText android:id="@+id/etRatePerKg" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
-                </LinearLayout>
-            </LinearLayout>
+        loadItemsFromDb()
+        loadAllSuppliers()
 
-            <!-- Coconut Section: Kudumi (3% Auto), Thadukki & Net Weight Display -->
-            <LinearLayout
-                android:id="@+id/layoutCoconutFields"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone"
-                android:layout_marginBottom="10dp">
+        binding.btnAddItem.setOnClickListener {
+            val purchaseKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+            val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:weightSum="2"
-                    android:layout_marginBottom="8dp">
+            val isOnion = selectedItemName.equals("Onion", ignoreCase = true)
+            val isCoconut = selectedItemName.equals("Coconut", ignoreCase = true)
 
-                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Kudumi (3% Auto)" android:textSize="12sp" android:textStyle="bold" android:textColor="#D84315" />
-                        <EditText android:id="@+id/etKudumi" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
-                    </LinearLayout>
+            val bags = if (isOnion) (binding.etBags.text.toString().toIntOrNull() ?: 0) else 0
+            val bagRate = if (isOnion) (binding.etBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
-                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Thadukki" android:textSize="12sp" android:textStyle="bold" android:textColor="#D84315" />
-                        <EditText android:id="@+id/etThadukki" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
-                    </LinearLayout>
-                </LinearLayout>
+            val kudumi = if (isCoconut) (binding.etKudumi.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+            val thadukki = if (isCoconut) (binding.etThadukki.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
 
-                <TextView
-                    android:id="@+id/tvCoconutNetWeight"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Net Weight: 0.00 Kgs"
-                    android:background="#FFF9C4"
-                    android:textColor="#1B5E20"
-                    android:textStyle="bold"
-                    android:textSize="14sp"
-                    android:padding="10dp" />
-            </LinearLayout>
+            if (purchaseKgs <= 0.0 || ratePerKg <= 0.0) {
+                Toast.makeText(this, "Enter valid Purchase Kgs and Rate/Kg", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
 
-            <Button android:id="@+id/btnAddItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO PURCHASE BILL" android:backgroundTint="#1976D2" android:textColor="#FFFFFF" />
-        </LinearLayout>
+            val netKgs = (purchaseKgs - kudumi - thadukki).coerceAtLeast(0.0)
+            val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
-        <TextView android:id="@+id/tvAddedItemsList" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="No items added yet." android:background="#FFFFFF" android:textColor="#000000" android:padding="10dp" android:textSize="13sp" android:layout_marginBottom="10dp" />
-        <TextView android:id="@+id/tvGrandTotal" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grand Total: Rs. 0.00" android:textSize="18sp" android:textStyle="bold" android:textColor="#1565C0" android:layout_marginBottom="12dp" />
-        <Button android:id="@+id/btnSavePurchase" android:layout_width="match_parent" android:layout_height="52dp" android:text="SUBMIT PURCHASE &amp; CREATE STOCK" android:backgroundTint="#1565C0" android:textColor="#FFFFFF" />
+            val row = JSONObject()
+            row.put("itemName", selectedItemName)
+            row.put("bags", bags)
+            row.put("bagRate", bagRate)
+            row.put("purchaseKgs", purchaseKgs)
+            row.put("kudumi", kudumi)
+            row.put("thadukki", thadukki)
+            row.put("netKgs", netKgs)
+            row.put("ratePerKg", ratePerKg)
+            row.put("lineTotal", lineTotal)
 
-    </LinearLayout>
-</ScrollView>
+            cartItems.put(row)
+            refreshCartDisplay()
+
+            binding.etBags.setText("")
+            binding.etNetKgs.setText("")
+            binding.etRatePerKg.setText("")
+            binding.etKudumi.setText("")
+            binding.etThadukki.setText("")
+            binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
+            updateLotIdPreview()
+        }
+
+        binding.btnSavePurchase.setOnClickListener {
+            val typedSupplier = binding.actvSupplier.text.toString().trim()
+            if (typedSupplier.isEmpty() || !filteredSupplierMap.containsKey(typedSupplier)) {
+                Toast.makeText(this, "Please select a valid Supplier for $selectedItemName", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (cartItems.length() == 0) {
+                Toast.makeText(this, "Add at least one item to bill", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            selectedSupplierName = typedSupplier
+            selectedSupplierId = filteredSupplierMap[typedSupplier] ?: ""
+            updateLotIdPreview()
+
+            val billNo = binding.etBillNo.text.toString().trim()
+            val batchId = binding.tvGeneratedBatchId.text.toString().trim()
+            val payMode = binding.spPayMode.selectedItem.toString()
+
+            val itemsForDb = ArrayList<Any>()
+            for (i in 0 until cartItems.length()) {
+                val row = cartItems.getJSONObject(i)
+                val map = HashMap<String, Any>()
+                map["itemName"] = row.getString("itemName")
+                map["bags"] = row.getInt("bags")
+                map["bagRate"] = row.getDouble("bagRate")
+                map["purchaseKgs"] = row.getDouble("purchaseKgs")
+                map["kudumi"] = row.getDouble("kudumi")
+                map["thadukki"] = row.getDouble("thadukki")
+                map["netKgs"] = row.getDouble("netKgs")
+                map["ratePerKg"] = row.getDouble("ratePerKg")
+                map["lineTotal"] = row.getDouble("lineTotal")
+                itemsForDb.add(map)
+            }
+
+            val purchaseId = db.collection("purchases").document().id
+            val purchaseData = hashMapOf(
+                "id" to purchaseId,
+                "billNo" to billNo,
+                "batchId" to batchId,
+                "supplierId" to selectedSupplierId,
+                "supplierName" to selectedSupplierName,
+                "payMode" to payMode,
+                "date" to selectedDateStr,
+                "timestamp" to System.currentTimeMillis(),
+                "items" to itemsForDb,
+                "grandTotal" to grandTotal
+            )
+
+            db.collection("purchases").document(purchaseId).set(purchaseData)
+                .addOnSuccessListener {
+                    updateStockAndSupplierBalance(batchId, payMode)
+                }
+                .addOnFailureListener {
+                    Toast.makeText(this, "Failed to save purchase", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private fun updateSelectedDate(cal: Calendar) {
+        selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+        selectedDayStr = SimpleDateFormat("dd", Locale.getDefault()).format(cal.time)
+        binding.etPurchaseDate.setText(selectedDateStr)
+    }
+
+    private fun onItemChanged(itemName: String) {
+        val isOnion = itemName.equals("Onion", ignoreCase = true)
+        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+
+        binding.layoutOnionFields.visibility = if (isOnion) View.VISIBLE else View.GONE
+
+        if (isCoconut) {
+            binding.layoutCoconutFields.visibility = View.VISIBLE
+            calculateCoconutKudumi()
+            updateCoconutNetWeightPreview()
+        } else {
+            binding.layoutCoconutFields.visibility = View.GONE
+            binding.etKudumi.setText("")
+            binding.etThadukki.setText("")
+            binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
+        }
+
+        filterSuppliersForItem(itemName)
+        updateLotIdPreview()
+    }
+
+    private fun filterSuppliersForItem(itemName: String) {
+        filteredSupplierMap.clear()
+        filteredSupplierNames.clear()
+
+        for (i in 0 until allSuppliers.length()) {
+            val obj = allSuppliers.getJSONObject(i)
+            val id = obj.getString("id")
+            val name = obj.getString("name")
+            val mappedItem = obj.optString("mappedItem", "")
+
+            // Show suppliers mapped to this item (or unmapped legacy suppliers)
+            if (mappedItem.equals(itemName, ignoreCase = true) || mappedItem.isEmpty()) {
+                filteredSupplierMap[name] = id
+                filteredSupplierNames.add(name)
+            }
+        }
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, filteredSupplierNames)
+        binding.actvSupplier.setAdapter(adapter)
+        binding.actvSupplier.setText("")
+    }
+
+    private fun calculateCoconutKudumi() {
+        val purKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+        if (purKgs > 0.0) {
+            val rawThreePercent = purKgs * 0.03
+            val wholePart = floor(rawThreePercent).toInt()
+            val decimalPart = rawThreePercent - wholePart
+            val finalKudumi = if (decimalPart >= 0.5) (wholePart + 1) else wholePart
+            binding.etKudumi.setText(finalKudumi.toString())
+        } else {
+            binding.etKudumi.setText("")
+        }
+    }
+
+    private fun updateCoconutNetWeightPreview() {
+        val purKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+        val kudumi = binding.etKudumi.text.toString().toDoubleOrNull() ?: 0.0
+        val thadukki = binding.etThadukki.text.toString().toDoubleOrNull() ?: 0.0
+        val netKgs = (purKgs - kudumi - thadukki).coerceAtLeast(0.0)
+        binding.tvCoconutNetWeight.text = "Net Weight: %.2f Kgs".format(netKgs)
+    }
+
+    private fun fetchNextBillNumber() {
+        db.collection("purchases").get().addOnSuccessListener { snap ->
+            val nextNum = snap.size() + 1
+            binding.etBillNo.setText(String.format("PUR-%03d", nextNum))
+        }
+    }
+
+    private fun updateLotIdPreview() {
+        val supplierName = binding.actvSupplier.text.toString()
+        val cleanName = supplierName.replace("[^A-Za-z]".toRegex(), "").uppercase(Locale.getDefault())
+        val prefix = when {
+            cleanName.length >= 3 -> cleanName.substring(0, 3)
+            cleanName.isNotEmpty() -> cleanName.padEnd(3, 'X')
+            else -> "SUP"
+        }
+
+        var totalBags = 0
+        for (i in 0 until cartItems.length()) {
+            totalBags += cartItems.getJSONObject(i).getInt("bags")
+        }
+        val currentTypingBags = if (selectedItemName.equals("Onion", ignoreCase = true)) {
+            (binding.etBags.text.toString().toIntOrNull() ?: 0)
+        } else 0
+        totalBags += currentTypingBags
+
+        binding.tvGeneratedBatchId.text = "$prefix-$selectedDayStr-$totalBags"
+    }
+
+    private fun loadItemsFromDb() {
+        db.collection("items").get().addOnSuccessListener { snap ->
+            for (doc in snap) {
+                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
+                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
+                    itemNames.add(n)
+                }
+            }
+            val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding.spItem.adapter = adapter
+        }
+    }
+
+    private fun loadAllSuppliers() {
+        db.collection("suppliers").get().addOnSuccessListener { snap ->
+            while (allSuppliers.length() > 0) {
+                allSuppliers.remove(0)
+            }
+            for (doc in snap) {
+                val name = doc.getString("name") ?: continue
+                val obj = JSONObject()
+                obj.put("id", doc.id)
+                obj.put("name", name)
+                obj.put("mappedItem", doc.getString("mappedItem") ?: "")
+                allSuppliers.put(obj)
+            }
+            filterSuppliersForItem(selectedItemName)
+        }
+    }
+
+    private fun refreshCartDisplay() {
+        grandTotal = 0.0
+        val sb = StringBuilder()
+        for (idx in 0 until cartItems.length()) {
+            val row = cartItems.getJSONObject(idx)
+            val name = row.getString("itemName")
+            val bags = row.getInt("bags")
+            val purKgs = row.getDouble("purchaseKgs")
+            val kudumi = row.getDouble("kudumi")
+            val thadukki = row.getDouble("thadukki")
+            val netKgs = row.getDouble("netKgs")
+            val rate = row.getDouble("ratePerKg")
+            val total = row.getDouble("lineTotal")
+            grandTotal += total
+
+            if (name.equals("Coconut", ignoreCase = true)) {
+                sb.append("${idx + 1}. $name | Pur: $purKgs - (K:$kudumi + T:$thadukki) = Net $netKgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
+            } else {
+                val bagInfo = if (bags > 0) " ($bags Bags)" else ""
+                sb.append("${idx + 1}. $name$bagInfo: $netKgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
+            }
+        }
+        binding.tvAddedItemsList.text = if (sb.isEmpty()) "No items added yet." else sb.toString().trim()
+        binding.tvGrandTotal.text = "Grand Total: Rs. %.2f".format(grandTotal)
+    }
+
+    private fun updateStockAndSupplierBalance(batchId: String, payMode: String) {
+        for (i in 0 until cartItems.length()) {
+            val row = cartItems.getJSONObject(i)
+            val itemName = row.getString("itemName")
+            val bags = row.getInt("bags")
+            val netKgs = row.getDouble("netKgs")
+            val rate = row.getDouble("ratePerKg")
+
+            val batchDoc = db.collection("stock_batches").document()
+            val batchData = hashMapOf(
+                "batchId" to batchId,
+                "supplierId" to selectedSupplierId,
+                "supplierName" to selectedSupplierName,
+                "itemName" to itemName,
+                "availableBags" to bags,
+                "availableKgs" to netKgs,
+                "purchaseRate" to rate,
+                "timestamp" to System.currentTimeMillis()
+            )
+            batchDoc.set(batchData)
+        }
+
+        if (payMode.equals("Credit", ignoreCase = true) && selectedSupplierId.isNotEmpty()) {
+            val supRef = db.collection("suppliers").document(selectedSupplierId)
+            db.runTransaction { tr ->
+                val snap = tr.get(supRef)
+                val curr = snap.getDouble("currentBalance") ?: 0.0
+                tr.update(supRef, "currentBalance", curr + grandTotal)
+            }
+        }
+
+        Toast.makeText(this, "Purchase Saved ($batchId) & Stock Added!", Toast.LENGTH_SHORT).show()
+        finish()
+    }
+}
