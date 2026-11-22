@@ -34,15 +34,13 @@ class ExpenseIncomeActivity : AppCompatActivity() {
 
     private val payModes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer")
 
-    // Dropdown 1: Only 3 Main Categories
     private val mainCategories = arrayListOf(
         "Shop Expenses",
         "Vehicle Expenses",
         "Other Expenses"
     )
 
-    // Dropdown 2: Full Set of All Expense Heads
-    private val allExpenseHeads = arrayListOf(
+    private val defaultExpenseHeads = arrayListOf(
         "Water",
         "Tea / Coffee",
         "Tiffin",
@@ -52,9 +50,11 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         "Weighbridge Charges",
         "Gate Entry Charges",
         "Unloading Coolie",
-        "Labour Lunch Expenses",
-        "Other / Custom Expense"
+        "Labour Lunch Expenses"
     )
+
+    private val dbExpenseHeadsList = arrayListOf("+ Add New Item")
+    private val ADD_NEW_OPTION = "+ Add New Item"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,15 +87,14 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         mainCatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spMainCategory.adapter = mainCatAdapter
 
-        val allHeadsAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, allExpenseHeads)
-        allHeadsAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spAllExpenseHeads.adapter = allHeadsAdapter
+        bindExpenseHeadsSpinner()
+        loadExpenseHeadsFromDatabase()
 
         val selectionListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
                 checkCustomExpenseVisibility()
             }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
         binding.spMainCategory.onItemSelectedListener = selectionListener
         binding.spAllExpenseHeads.onItemSelectedListener = selectionListener
@@ -103,26 +102,30 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         // Add Expense Row to Data Grid
         binding.btnAddExpenseRow.setOnClickListener {
             val chosenMainCat = binding.spMainCategory.selectedItem?.toString() ?: "Shop Expenses"
-            val chosenHead = binding.spAllExpenseHeads.selectedItem?.toString() ?: "Water"
+            val chosenHead = binding.spAllExpenseHeads.selectedItem?.toString() ?: ""
             val amt = binding.etExpAmount.text.toString().toDoubleOrNull() ?: 0.0
             val note = binding.etExpRemarks.text.toString().trim()
 
-            val isOther = chosenMainCat.equals("Other Expenses", ignoreCase = true) ||
-                    chosenHead.equals("Other / Custom Expense", ignoreCase = true)
+            val isNewOrOther = chosenMainCat.equals("Other Expenses", ignoreCase = true) ||
+                    chosenHead == ADD_NEW_OPTION
 
-            val finalExpName = if (isOther) {
+            val finalExpName = if (isNewOrOther) {
                 binding.etCustomExpenseName.text.toString().trim()
             } else {
                 chosenHead
             }
 
             if (finalExpName.isEmpty()) {
-                Toast.makeText(this, "Please enter Expense Name", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Please enter New Expense Name", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (amt <= 0.0) {
                 Toast.makeText(this, "Please enter valid Amount", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
+            }
+
+            if (isNewOrOther) {
+                saveNewExpenseHeadToDatabase(finalExpName)
             }
 
             val rowObj = JSONObject()
@@ -135,7 +138,6 @@ class ExpenseIncomeActivity : AppCompatActivity() {
             pendingGridList.put(rowObj)
             refreshDataGrid()
 
-            // Clear boxes for next entry
             binding.etCustomExpenseName.setText("")
             binding.etExpAmount.setText("")
             binding.etExpRemarks.setText("")
@@ -186,7 +188,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
             for (i in 0 until totalCount) {
                 val item = pendingGridList.getJSONObject(i)
                 val docId = db.collection("expenses_income").document().id
-                val dataMap = hashMapOf<String, Any>(
+                val dataMap = hashMapOf(
                     "id" to docId,
                     "type" to item.getString("type"),
                     "date" to selectedDateStr,
@@ -220,12 +222,75 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         loadSavedEntriesForDate()
     }
 
+    private fun loadExpenseHeadsFromDatabase(selectNameAfterLoad: String = "") {
+        db.collection("expense_heads").get()
+            .addOnSuccessListener { snap ->
+                if (snap.isEmpty) {
+                    for (headName in defaultExpenseHeads) {
+                        val docId = db.collection("expense_heads").document().id
+                        db.collection("expense_heads").document(docId).set(
+                            hashMapOf("id" to docId, "name" to headName)
+                        )
+                    }
+                    dbExpenseHeadsList.clear()
+                    dbExpenseHeadsList.addAll(defaultExpenseHeads)
+                    dbExpenseHeadsList.sortBy { it.lowercase(Locale.getDefault()) }
+                    dbExpenseHeadsList.add(ADD_NEW_OPTION)
+                    bindExpenseHeadsSpinner(selectNameAfterLoad)
+                } else {
+                    val tempNames = arrayListOf<String>()
+                    for (doc in snap) {
+                        val name = doc.getString("name")?.trim() ?: ""
+                        if (name.isNotEmpty() && !tempNames.any { it.equals(name, ignoreCase = true) }) {
+                            tempNames.add(name)
+                        }
+                    }
+                    tempNames.sortBy { it.lowercase(Locale.getDefault()) }
+                    dbExpenseHeadsList.clear()
+                    dbExpenseHeadsList.addAll(tempNames)
+                    dbExpenseHeadsList.add(ADD_NEW_OPTION)
+                    bindExpenseHeadsSpinner(selectNameAfterLoad)
+                }
+            }
+            .addOnFailureListener {
+                dbExpenseHeadsList.clear()
+                dbExpenseHeadsList.addAll(defaultExpenseHeads)
+                dbExpenseHeadsList.add(ADD_NEW_OPTION)
+                bindExpenseHeadsSpinner(selectNameAfterLoad)
+            }
+    }
+
+    private fun bindExpenseHeadsSpinner(selectName: String = "") {
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, dbExpenseHeadsList)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spAllExpenseHeads.adapter = adapter
+
+        if (selectName.isNotEmpty()) {
+            val idx = dbExpenseHeadsList.indexOfFirst { it.equals(selectName, ignoreCase = true) }
+            if (idx >= 0) binding.spAllExpenseHeads.setSelection(idx)
+        }
+        checkCustomExpenseVisibility()
+    }
+
+    private fun saveNewExpenseHeadToDatabase(newHeadName: String) {
+        val exists = dbExpenseHeadsList.any { it.equals(newHeadName, ignoreCase = true) }
+        if (exists) return
+
+        val docId = db.collection("expense_heads").document().id
+        db.collection("expense_heads").document(docId)
+            .set(hashMapOf("id" to docId, "name" to newHeadName))
+            .addOnSuccessListener {
+                Toast.makeText(this, "'$newHeadName' saved to Expense Database!", Toast.LENGTH_SHORT).show()
+                loadExpenseHeadsFromDatabase(newHeadName)
+            }
+    }
+
     private fun checkCustomExpenseVisibility() {
         val chosenMain = binding.spMainCategory.selectedItem?.toString() ?: ""
         val chosenHead = binding.spAllExpenseHeads.selectedItem?.toString() ?: ""
 
         val showCustomBox = chosenMain.equals("Other Expenses", ignoreCase = true) ||
-                chosenHead.equals("Other / Custom Expense", ignoreCase = true)
+                chosenHead == ADD_NEW_OPTION
 
         binding.layoutCustomExpenseName.visibility = if (showCustomBox) View.VISIBLE else View.GONE
     }
@@ -360,13 +425,13 @@ class ExpenseIncomeActivity : AppCompatActivity() {
             val mainIdx = mainCategories.indexOfFirst { it.equals(cat, ignoreCase = true) }
             if (mainIdx >= 0) binding.spMainCategory.setSelection(mainIdx)
 
-            val headIdx = allExpenseHeads.indexOfFirst { it.equals(expName, ignoreCase = true) }
+            val headIdx = dbExpenseHeadsList.indexOfFirst { it.equals(expName, ignoreCase = true) }
             if (headIdx >= 0 && !cat.equals("Other Expenses", ignoreCase = true)) {
                 binding.spAllExpenseHeads.setSelection(headIdx)
                 binding.layoutCustomExpenseName.visibility = View.GONE
             } else {
-                val otherIdx = allExpenseHeads.indexOf("Other / Custom Expense")
-                if (otherIdx >= 0) binding.spAllExpenseHeads.setSelection(otherIdx)
+                val addNewIdx = dbExpenseHeadsList.indexOf(ADD_NEW_OPTION)
+                if (addNewIdx >= 0) binding.spAllExpenseHeads.setSelection(addNewIdx)
                 binding.layoutCustomExpenseName.visibility = View.VISIBLE
                 binding.etCustomExpenseName.setText(expName)
             }
