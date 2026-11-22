@@ -323,7 +323,9 @@ class PurchasePaymentActivity : AppCompatActivity() {
 
                     val discInfo = if (disc > 0.0) " | Disc: %.2f".format(disc) else ""
                     val infoTv = TextView(this)
-                    infoTv.text = "$pNo | $sName\n$pMode | Paid: Rs. %.2f$discInfo".format(amt)
+                    val amtStr = String.format(Locale.getDefault(), "%.2f", amt)
+                    infoTv.text = "$pNo | $sName\n$pMode | Paid: Rs. $amtStr$discInfo"
+
                     infoTv.setTextColor(Color.parseColor("#1565C0"))
                     infoTv.setTypeface(null, Typeface.BOLD)
                     infoTv.textSize = 13f
