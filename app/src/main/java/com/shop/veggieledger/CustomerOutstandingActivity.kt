@@ -23,6 +23,11 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         val groups = listOf("ALL GROUPS", "A", "B", "C", "D")
         binding.spReportGroupFilter.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, groups)
+        binding.spReportGroupFilter.visibility = View.VISIBLE
+        binding.tvReportTotal.visibility = View.VISIBLE
+        binding.lvReportSheet.visibility = View.VISIBLE
+        binding.tvReportSummary.visibility = View.GONE
+        binding.btnShareReport.visibility = View.GONE
 
         binding.spReportGroupFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
@@ -30,6 +35,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
+        
 
         loadCustomers()
     }
