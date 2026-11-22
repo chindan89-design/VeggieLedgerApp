@@ -190,17 +190,26 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadItems() {
+        private fun loadItems() {
+        // உடனே default items (Onion, Garlic, Coconut) தெரியும்படி set செய்தல்
+        binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
+
         db.collection("items").get().addOnSuccessListener { snap ->
-            if (!snap.isEmpty) {
-                itemNames.clear()
-                for (doc in snap) {
-                    doc.getString("name")?.let { itemNames.add(it) }
+            val fetched = ArrayList<String>()
+            for (doc in snap) {
+                val n = doc.getString("name") ?: doc.getString("itemName")
+                if (!n.isNullOrBlank()) {
+                    fetched.add(n)
                 }
             }
-            binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
+            if (fetched.isNotEmpty()) {
+                itemNames.clear()
+                itemNames.addAll(fetched)
+                binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
+            }
         }
-    }
+        }
+        
 
     private fun loadBatchesForItem(itemName: String) {
         db.collection("stock_batches")
