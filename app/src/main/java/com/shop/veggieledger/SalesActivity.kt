@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivitySalesBinding
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -22,10 +23,10 @@ class SalesActivity : AppCompatActivity() {
     private var selectedCustomerName: String = ""
 
     private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
-    private val matchingBatches = ArrayList>()
+    private val matchingBatches = ArrayList<JSONObject>()
     private val batchDisplayList = ArrayList<String>()
 
-    private val cartItems = ArrayList>()
+    private val cartItems = ArrayList<JSONObject>()
     private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,8 +57,8 @@ class SalesActivity : AppCompatActivity() {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 if (pos in matchingBatches.indices) {
                     val b = matchingBatches[pos]
-                    val bags = b["availableBags"] as? Long ?: 0L
-                    val kgs = b["availableKgs"] as? Double ?: 0.0
+                    val bags = b.getLong("availableBags")
+                    val kgs = b.getDouble("availableKgs")
                     binding.tvLiveStockBanner.text = "Available Stock: $bags Bags | %.2f Kgs".format(kgs)
                 }
             }
@@ -73,9 +74,9 @@ class SalesActivity : AppCompatActivity() {
             }
 
             val selectedBatch = matchingBatches[batchIdx]
-            val batchDocId = selectedBatch["docId"] as String
-            val batchCode = selectedBatch["batchId"] as String
-            val availKgs = selectedBatch["availableKgs"] as? Double ?: 0.0
+            val batchDocId = selectedBatch.getString("docId")
+            val batchCode = selectedBatch.getString("batchId")
+            val availKgs = selectedBatch.getDouble("availableKgs")
 
             val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
@@ -94,15 +95,15 @@ class SalesActivity : AppCompatActivity() {
 
             val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
-            val row = HashMap<String, Any>()
-            row["itemName"] = itemName
-            row["batchDocId"] = batchDocId
-            row["batchCode"] = batchCode
-            row["bags"] = bags
-            row["bagRate"] = bagRate
-            row["netKgs"] = netKgs
-            row["ratePerKg"] = ratePerKg
-            row["lineTotal"] = lineTotal
+            val row = JSONObject()
+            row.put("itemName", itemName)
+            row.put("batchDocId", batchDocId)
+            row.put("batchCode", batchCode)
+            row.put("bags", bags)
+            row.put("bagRate", bagRate)
+            row.put("netKgs", netKgs)
+            row.put("ratePerKg", ratePerKg)
+            row.put("lineTotal", lineTotal)
 
             cartItems.add(row)
             refreshCartDisplay()
@@ -129,6 +130,20 @@ class SalesActivity : AppCompatActivity() {
             val payMode = binding.spSalesPayMode.selectedItem.toString()
             val today = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
 
+            val itemsForDb = ArrayList<HashMap<String, Any>>()
+            for (row in cartItems) {
+                val map = HashMap<String, Any>()
+                map["itemName"] = row.getString("itemName")
+                map["batchDocId"] = row.getString("batchDocId")
+                map["batchCode"] = row.getString("batchCode")
+                map["bags"] = row.getInt("bags")
+                map["bagRate"] = row.getDouble("bagRate")
+                map["netKgs"] = row.getDouble("netKgs")
+                map["ratePerKg"] = row.getDouble("ratePerKg")
+                map["lineTotal"] = row.getDouble("lineTotal")
+                itemsForDb.add(map)
+            }
+
             val salesId = db.collection("sales").document().id
             val salesData = hashMapOf(
                 "id" to salesId,
@@ -138,7 +153,7 @@ class SalesActivity : AppCompatActivity() {
                 "payMode" to payMode,
                 "date" to today,
                 "timestamp" to System.currentTimeMillis(),
-                "items" to cartItems,
+                "items" to itemsForDb,
                 "grandTotal" to grandTotal
             )
 
@@ -200,12 +215,12 @@ class SalesActivity : AppCompatActivity() {
                         val bId = doc.getString("batchId") ?: doc.id
                         val supName = doc.getString("supplierName") ?: ""
                         val availBags = doc.getLong("availableBags") ?: 0L
-                        val map = HashMap<String, Any>()
-                        map["docId"] = doc.id
-                        map["batchId"] = bId
-                        map["availableBags"] = availBags
-                        map["availableKgs"] = availKgs
-                        matchingBatches.add(map)
+                        val obj = JSONObject()
+                        obj.put("docId", doc.id)
+                        obj.put("batchId", bId)
+                        obj.put("availableBags", availBags)
+                        obj.put("availableKgs", availKgs)
+                        matchingBatches.add(obj)
                         batchDisplayList.add("$bId ($supName) - %.1f Kgs".format(availKgs))
                     }
                 }
@@ -222,11 +237,11 @@ class SalesActivity : AppCompatActivity() {
         val sb = StringBuilder()
         for (idx in cartItems.indices) {
             val row = cartItems[idx]
-            val name = row["itemName"] as String
-            val bags = row["bags"] as Int
-            val kgs = row["netKgs"] as Double
-            val rate = row["ratePerKg"] as Double
-            val total = row["lineTotal"] as Double
+            val name = row.getString("itemName")
+            val bags = row.getInt("bags")
+            val kgs = row.getDouble("netKgs")
+            val rate = row.getDouble("ratePerKg")
+            val total = row.getDouble("lineTotal")
             grandTotal += total
 
             val bagInfo = if (bags > 0) " ($bags Bags)" else ""
@@ -238,9 +253,9 @@ class SalesActivity : AppCompatActivity() {
 
     private fun deductStockAndUpdateCustomer(payMode: String) {
         for (row in cartItems) {
-            val docId = row["batchDocId"] as String
-            val soldBags = row["bags"] as Int
-            val soldKgs = row["netKgs"] as Double
+            val docId = row.getString("batchDocId")
+            val soldBags = row.getInt("bags")
+            val soldKgs = row.getDouble("netKgs")
 
             val batchRef = db.collection("stock_batches").document(docId)
             db.runTransaction { tr ->
