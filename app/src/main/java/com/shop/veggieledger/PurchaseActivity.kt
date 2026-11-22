@@ -52,6 +52,9 @@ class PurchaseActivity : AppCompatActivity() {
     private var oldPayMode: String = ""
     private var oldGrandTotal: Double = 0.0
 
+    // Prevent auto-3% overwrite while loading a row into fields for editing
+    private var suppressKudumiAutoCalc: Boolean = false
+
     private val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,7 +128,7 @@ class PurchaseActivity : AppCompatActivity() {
         binding.etNetKgs.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                if (selectedItemName.equals("Coconut", ignoreCase = true)) {
+                if (selectedItemName.equals("Coconut", ignoreCase = true) && !suppressKudumiAutoCalc) {
                     calculateCoconutKudumi()
                     updateCoconutNetWeightPreview()
                 }
@@ -190,6 +193,7 @@ class PurchaseActivity : AppCompatActivity() {
             binding.etKudumi.setText("")
             binding.etThadukki.setText("")
             binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
+            binding.btnAddItem.text = "+ ADD ITEM TO PURCHASE BILL"
             updateLotIdPreview()
         }
 
@@ -510,6 +514,56 @@ class PurchaseActivity : AppCompatActivity() {
         Toast.makeText(this, "Loaded $bNo for editing", Toast.LENGTH_SHORT).show()
     }
 
+    private fun loadGridRowIntoFormForEdit(index: Int) {
+        if (index < 0 || index >= cartItems.length()) return
+        val row = cartItems.getJSONObject(index)
+        val iName = row.getString("itemName")
+        val bags = row.getInt("bags")
+        val bagRate = row.getDouble("bagRate")
+        val purKgs = row.getDouble("purchaseKgs")
+        val kudumi = row.getDouble("kudumi")
+        val thadukki = row.getDouble("thadukki")
+        val rate = row.getDouble("ratePerKg")
+
+        suppressKudumiAutoCalc = true
+
+        val itemIdx = itemNames.indexOfFirst { it.equals(iName, ignoreCase = true) }
+        if (itemIdx >= 0) {
+            binding.spItem.setSelection(itemIdx)
+            selectedItemName = itemNames[itemIdx]
+        }
+
+        val isOnion = iName.equals("Onion", ignoreCase = true)
+        val isCoconut = iName.equals("Coconut", ignoreCase = true)
+
+        binding.layoutOnionFields.visibility = if (isOnion) View.VISIBLE else View.GONE
+        binding.layoutCoconutFields.visibility = if (isCoconut) View.VISIBLE else View.GONE
+
+        if (isOnion) {
+            binding.etBags.setText(if (bags > 0) bags.toString() else "")
+            binding.etBagRate.setText(bagRate.toString())
+        }
+
+        binding.etNetKgs.setText(purKgs.toString())
+        binding.etRatePerKg.setText(rate.toString())
+
+        if (isCoconut) {
+            binding.etKudumi.setText(kudumi.toString())
+            binding.etThadukki.setText(thadukki.toString())
+            updateCoconutNetWeightPreview()
+        }
+
+        suppressKudumiAutoCalc = false
+
+        // Remove the row from grid so user can modify and re-add cleanly
+        cartItems.remove(index)
+        refreshCartGrid()
+        updateLotIdPreview()
+
+        binding.btnAddItem.text = "UPDATE ITEM IN BILL"
+        Toast.makeText(this, "Editing $iName — update values & tap UPDATE ITEM IN BILL", Toast.LENGTH_SHORT).show()
+    }
+
     private fun updateSelectedDate(cal: Calendar) {
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         selectedDayStr = SimpleDateFormat("dd", Locale.getDefault()).format(cal.time)
@@ -524,17 +578,21 @@ class PurchaseActivity : AppCompatActivity() {
 
         if (isCoconut) {
             binding.layoutCoconutFields.visibility = View.VISIBLE
-            calculateCoconutKudumi()
+            if (!suppressKudumiAutoCalc) {
+                calculateCoconutKudumi()
+            }
             updateCoconutNetWeightPreview()
         } else {
             binding.layoutCoconutFields.visibility = View.GONE
-            binding.etKudumi.setText("")
-            binding.etThadukki.setText("")
-            binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
+            if (!suppressKudumiAutoCalc) {
+                binding.etKudumi.setText("")
+                binding.etThadukki.setText("")
+                binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
+            }
         }
 
         val currentSup = binding.actvSupplier.text.toString().trim()
-        filterSuppliersForItem(itemName, preserveName = if (editingPurchaseDocId.isNotEmpty()) currentSup else "")
+        filterSuppliersForItem(itemName, preserveName = if (editingPurchaseDocId.isNotEmpty() || suppressKudumiAutoCalc) currentSup else "")
         updateLotIdPreview()
     }
 
@@ -708,18 +766,36 @@ class PurchaseActivity : AppCompatActivity() {
             tableRow.addView(makeCell("%.2f".format(rate), alignRight = true))
             tableRow.addView(makeCell("%.2f".format(total), alignRight = true, bold = true, colorHex = "#1565C0"))
 
+            // Action Cell: EDIT & DELETE (X) side-by-side
+            val actionLayout = LinearLayout(this)
+            actionLayout.orientation = LinearLayout.HORIZONTAL
+            actionLayout.gravity = Gravity.CENTER
+
+            val editCellBtn = TextView(this)
+            editCellBtn.text = "EDIT"
+            editCellBtn.setTextColor(Color.parseColor("#1565C0"))
+            editCellBtn.setTypeface(null, Typeface.BOLD)
+            editCellBtn.textSize = 11f
+            editCellBtn.setPadding(12, 14, 12, 14)
+            editCellBtn.setOnClickListener {
+                loadGridRowIntoFormForEdit(idx)
+            }
+
             val delBtn = TextView(this)
             delBtn.text = "X"
             delBtn.setTextColor(Color.RED)
             delBtn.setTypeface(null, Typeface.BOLD)
-            delBtn.gravity = Gravity.CENTER
-            delBtn.setPadding(18, 14, 18, 14)
+            delBtn.textSize = 12f
+            delBtn.setPadding(14, 14, 14, 14)
             delBtn.setOnClickListener {
                 cartItems.remove(idx)
                 refreshCartGrid()
                 updateLotIdPreview()
             }
-            tableRow.addView(delBtn)
+
+            actionLayout.addView(editCellBtn)
+            actionLayout.addView(delBtn)
+            tableRow.addView(actionLayout)
 
             binding.tlPurchaseGrid.addView(tableRow)
         }
@@ -746,6 +822,7 @@ class PurchaseActivity : AppCompatActivity() {
         binding.etThadukki.setText("")
         binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
         binding.spPayMode.setSelection(0)
+        binding.btnAddItem.text = "+ ADD ITEM TO PURCHASE BILL"
 
         refreshCartGrid()
         if (!isEditMode) fetchNextBillNumber() else binding.etBillNo.setText("")
