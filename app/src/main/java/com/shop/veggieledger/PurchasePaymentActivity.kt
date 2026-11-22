@@ -49,6 +49,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private var editingPaymentDocId: String = ""
     private var oldPaymentSupplierId: String = ""
     private var oldPaymentAmount: Double = 0.0
+    private var oldPaymentDiscount: Double = 0.0
     private val oldAllocationsJson = JSONArray()
 
     private val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
@@ -120,17 +121,21 @@ class PurchasePaymentActivity : AppCompatActivity() {
             showSupplierSearchDialog()
         }
 
-        binding.etPayAmount.addTextChangedListener(object : TextWatcher {
+        val amountWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 allocateAmountToBills()
                 refreshBillWiseGrid()
             }
             override fun afterTextChanged(s: Editable?) {}
-        })
+        }
+        binding.etPayAmount.addTextChangedListener(amountWatcher)
+        binding.etPayDiscount.addTextChangedListener(amountWatcher)
 
         binding.btnSavePayment.setOnClickListener {
             val amount = binding.etPayAmount.text.toString().toDoubleOrNull() ?: 0.0
+            val discount = binding.etPayDiscount.text.toString().toDoubleOrNull() ?: 0.0
+            val totalSettled = amount + discount
             val payNo = binding.etPayNo.text.toString().trim()
             val mode = binding.spPayMode.selectedItem?.toString() ?: "Cash"
             val remarks = binding.etPayRemarks.text.toString().trim()
@@ -139,8 +144,8 @@ class PurchasePaymentActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please select a Supplier", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (amount <= 0.0) {
-                Toast.makeText(this, "Enter valid Payment Amount", Toast.LENGTH_SHORT).show()
+            if (totalSettled <= 0.0) {
+                Toast.makeText(this, "Enter valid Paid Amount or Discount", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (isEditMode && editingPaymentDocId.isEmpty()) {
@@ -172,13 +177,15 @@ class PurchasePaymentActivity : AppCompatActivity() {
                     "supplierId" to selectedSupplierId,
                     "supplierName" to selectedSupplierName,
                     "amount" to amount,
+                    "discount" to discount,
+                    "totalSettled" to totalSettled,
                     "payMode" to mode,
                     "remarks" to remarks,
                     "billAllocations" to allocationsForDb
                 )
                 db.collection("payments").document(editingPaymentDocId).update(updateData)
                     .addOnSuccessListener {
-                        applyPaymentBillUpdates(amount)
+                        applyPaymentBillUpdates(totalSettled)
                     }
                     .addOnFailureListener {
                         binding.btnSavePayment.isEnabled = true
@@ -193,6 +200,8 @@ class PurchasePaymentActivity : AppCompatActivity() {
                     "supplierId" to selectedSupplierId,
                     "supplierName" to selectedSupplierName,
                     "amount" to amount,
+                    "discount" to discount,
+                    "totalSettled" to totalSettled,
                     "payMode" to mode,
                     "remarks" to remarks,
                     "billAllocations" to allocationsForDb,
@@ -201,7 +210,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
 
                 db.collection("payments").document(payId).set(payData)
                     .addOnSuccessListener {
-                        applyPaymentBillUpdates(amount)
+                        applyPaymentBillUpdates(totalSettled)
                     }
                     .addOnFailureListener {
                         binding.btnSavePayment.isEnabled = true
@@ -215,7 +224,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
         while (arr.length() > 0) arr.remove(0)
     }
 
-    private fun applyPaymentBillUpdates(amount: Double) {
+    private fun applyPaymentBillUpdates(totalSettled: Double) {
         for (b in pendingBills) {
             if (b.allocatedNow > 0.0) {
                 val newPaid = b.alreadyPaid + b.allocatedNow
@@ -231,7 +240,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
             }
         }
 
-        val updatedBalance = (calculatedTotalPayable - amount).coerceAtLeast(0.0)
+        val updatedBalance = (calculatedTotalPayable - totalSettled).coerceAtLeast(0.0)
         db.collection("suppliers").document(selectedSupplierId)
             .set(mapOf("currentBalance" to updatedBalance), SetOptions.merge())
             .addOnCompleteListener {
@@ -297,6 +306,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
                     matchCount++
                     val pNo = doc.getString("paymentNo") ?: doc.id
                     val amt = doc.getDouble("amount") ?: 0.0
+                    val disc = doc.getDouble("discount") ?: 0.0
                     val pMode = doc.getString("payMode") ?: "Cash"
 
                     val rowCard = LinearLayout(this)
@@ -311,8 +321,9 @@ class PurchasePaymentActivity : AppCompatActivity() {
                     cardLp.setMargins(0, 0, 0, 10)
                     rowCard.layoutParams = cardLp
 
+                    val discInfo = if (disc > 0.0) " | Disc: %.2f".format(disc) else ""
                     val infoTv = TextView(this)
-                    infoTv.text = "$pNo | $sName\n$pMode | Rs. %.2f".format(amt)
+                    infoTv.text = "$pNo | $sName\n$pMode | Paid: Rs. %.2f$discInfo".format(amt)
                     infoTv.setTextColor(Color.parseColor("#1565C0"))
                     infoTv.setTypeface(null, Typeface.BOLD)
                     infoTv.textSize = 13f
@@ -380,6 +391,8 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private fun deletePaymentAndRestore(docId: String, data: Map<String, Any>) {
         val supId = data["supplierId"]?.toString() ?: ""
         val amt = (data["amount"] as? Number)?.toDouble() ?: 0.0
+        val disc = (data["discount"] as? Number)?.toDouble() ?: 0.0
+        val totalRev = amt + disc
         val rawAllocs = data["billAllocations"] as? List<*>
 
         db.collection("payments").document(docId).delete()
@@ -416,7 +429,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
                         val snap = tr.get(supRef)
                         if (snap.exists()) {
                             val curr = snap.getDouble("currentBalance") ?: 0.0
-                            tr.update(supRef, "currentBalance", curr + amt)
+                            tr.update(supRef, "currentBalance", curr + totalRev)
                         }
                     }
                 }
@@ -437,6 +450,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
         editingPaymentDocId = docId
         oldPaymentSupplierId = data["supplierId"]?.toString() ?: ""
         oldPaymentAmount = (data["amount"] as? Number)?.toDouble() ?: 0.0
+        oldPaymentDiscount = (data["discount"] as? Number)?.toDouble() ?: 0.0
 
         val pNo = data["paymentNo"]?.toString() ?: ""
         val sName = data["supplierName"]?.toString() ?: ""
@@ -492,6 +506,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
         }
 
         binding.etPayAmount.setText("%.2f".format(oldPaymentAmount))
+        binding.etPayDiscount.setText(if (oldPaymentDiscount > 0.0) "%.2f".format(oldPaymentDiscount) else "")
         loadPendingBillsForSupplier(selectedSupplierId, selectedSupplierName, selectedSupplierOpBal)
         Toast.makeText(this, "Loaded $pNo for editing", Toast.LENGTH_SHORT).show()
     }
@@ -613,7 +628,12 @@ class PurchasePaymentActivity : AppCompatActivity() {
     }
 
     private fun allocateAmountToBills() {
-        var remaining = binding.etPayAmount.text.toString().toDoubleOrNull() ?: 0.0
+        val amt = binding.etPayAmount.text.toString().toDoubleOrNull() ?: 0.0
+        val disc = binding.etPayDiscount.text.toString().toDoubleOrNull() ?: 0.0
+        var remaining = amt + disc
+
+        binding.tvPayTotalSettled.text = "Total Settled:\nRs. %.2f".format(remaining)
+
         for (b in pendingBills) b.allocatedNow = 0.0
 
         if (targetSpecificBillDocId.isNotEmpty()) {
@@ -690,7 +710,9 @@ class PurchasePaymentActivity : AppCompatActivity() {
 
             tr.setOnClickListener {
                 targetSpecificBillDocId = b.docId
-                binding.etPayAmount.setText("%.2f".format(b.pendingAmount))
+                val currDisc = binding.etPayDiscount.text.toString().toDoubleOrNull() ?: 0.0
+                val netToPay = (b.pendingAmount - currDisc).coerceAtLeast(0.0)
+                binding.etPayAmount.setText("%.2f".format(netToPay))
                 Toast.makeText(this, "Selected ${b.billNo} (Rs. %.2f)".format(b.pendingAmount), Toast.LENGTH_SHORT).show()
             }
 
@@ -736,7 +758,9 @@ class PurchasePaymentActivity : AppCompatActivity() {
 
         binding.etSearchSupplier.setText("")
         binding.tvSupPayable.text = "Total Payable Balance: Rs. 0.00"
+        binding.tvPayTotalSettled.text = "Total Settled:\nRs. 0.00"
         binding.etPayAmount.setText("")
+        binding.etPayDiscount.setText("")
         binding.etPayRemarks.setText("")
         binding.spPayMode.setSelection(0)
         binding.btnSavePayment.isEnabled = true
