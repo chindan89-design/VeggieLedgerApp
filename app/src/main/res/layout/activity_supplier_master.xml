@@ -1,69 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#F5F7FA">
+    android:background="#F5F7FA"
+    android:padding="14dp">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="ADD NEW SUPPLIER"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="#1565C0"
-        android:layout_marginBottom="16dp" />
+        android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/etSupName"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Supplier Name *"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SUPPLIER MASTER CREATION"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1565C0"
+            android:gravity="center"
+            android:layout_marginBottom="14dp" />
 
-    <EditText
-        android:id="@+id/etSupCode"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Short Code (3 Letters e.g. RAM) *"
-        android:maxLength="4"
-        android:inputType="textCapCharacters"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+        <!-- Row 1: Supplier Name & Mapped Item Dropdown -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
 
-    <EditText
-        android:id="@+id/etSupPlace"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Place / Mandi"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Name *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupName" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Enter Name" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+            </LinearLayout>
 
-    <EditText
-        android:id="@+id/etSupPhone"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Mobile Number"
-        android:inputType="phone"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="10dp" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Item *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
+                <Spinner
+                    android:id="@+id/spSupItem"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:spinnerMode="dialog"
+                    android:background="@android:drawable/btn_dropdown" />
+            </LinearLayout>
+        </LinearLayout>
 
-    <EditText
-        android:id="@+id/etSupOpBal"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Opening Balance (Old Payable Rs.)"
-        android:inputType="numberDecimal"
-        android:background="@android:drawable/edit_text"
-        android:layout_marginBottom="16dp" />
+        <!-- Row 2: Contact & Place -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
 
-    <Button
-        android:id="@+id/btnSaveSupplier"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:text="SAVE SUPPLIER"
-        android:backgroundTint="#1565C0" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mobile / Contact" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupContact" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Phone Number" android:inputType="phone" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+            </LinearLayout>
 
-</LinearLayout>
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Place / City" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupPlace" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. Nashik, Pollachi" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 3: Opening Balance -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Opening Balance (Rs.)" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+        <EditText android:id="@+id/etSupOpBal" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:inputType="numberDecimal" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" android:layout_marginBottom="14dp" />
+
+        <Button
+            android:id="@+id/btnSaveSupplier"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="SAVE SUPPLIER"
+            android:backgroundTint="#1565C0"
+            android:textColor="#FFFFFF" />
+
+    </LinearLayout>
+</ScrollView>
