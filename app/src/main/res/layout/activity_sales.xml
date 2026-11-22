@@ -76,7 +76,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                :weightSum="2"
+                android:weightSum="2"
                 android:layout_marginBottom="8dp">
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
@@ -255,7 +255,7 @@
             <Button android:id="@+id/btnAddSalesItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO SALES BILL" android:backgroundTint="#2E7D32" android:textColor="#FFFFFF" />
         </LinearLayout>
 
-        <!-- Added Items Grid / Table View -->
+        <!-- Added Items Grid / Table View (with EDIT & DEL buttons per row) -->
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -277,6 +277,7 @@
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Net Kgs" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rate" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Amount" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Edit" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="center" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Del" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="center" />
                 </TableRow>
             </TableLayout>
