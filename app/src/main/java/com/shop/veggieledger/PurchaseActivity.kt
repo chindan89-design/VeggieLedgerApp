@@ -351,7 +351,6 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-    
     private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false, colorHex: String = "#000000"): TextView {
         val tv = TextView(this)
         tv.text = text
@@ -363,10 +362,7 @@ class PurchaseActivity : AppCompatActivity() {
         return tv
     }
 
-    private fun 12spToPx(): Float = 12f
-
     private fun refreshCartGrid() {
-        // Keep header row (index 0), remove all previous data rows
         val childCount = binding.tlPurchaseGrid.childCount
         if (childCount > 1) {
             binding.tlPurchaseGrid.removeViews(1, childCount - 1)
