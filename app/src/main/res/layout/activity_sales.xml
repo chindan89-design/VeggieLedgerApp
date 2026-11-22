@@ -20,7 +20,7 @@
             android:gravity="center"
             android:layout_marginBottom="12dp" />
 
-        <!-- Row 1: Searchable Customer & Payment Mode -->
+        <!-- Row 1: Date Picker (First) & Select Item Dropdown (Second) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -29,12 +29,46 @@
             android:layout_marginBottom="10dp">
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Customer Name (Search) *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1B5E20" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Sales Date *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1B5E20" />
+                <EditText
+                    android:id="@+id/etSalesDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:focusable="false"
+                    android:clickable="true"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Select Item *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1B5E20" />
+                <Spinner
+                    android:id="@+id/spSalesItem"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:spinnerMode="dialog"
+                    android:background="@android:drawable/btn_dropdown" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 2: Searchable Customer & Payment Mode -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
+
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3. Customer Name (Search) *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1B5E20" />
                 <AutoCompleteTextView
                     android:id="@+id/actvCustomer"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
-                    android:hint="Type customer name..."
+                    android:hint="Type customer..."
                     android:completionThreshold="1"
                     android:background="@android:drawable/edit_text"
                     android:padding="8dp"
@@ -53,7 +87,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 2: Auto Bill No -->
+        <!-- Row 3: Auto Bill No -->
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Bill No" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
         <EditText android:id="@+id/etSalesBillNo" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Auto Bill No" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:layout_marginBottom="10dp" />
 
@@ -66,47 +100,7 @@
             android:padding="10dp"
             android:layout_marginBottom="12dp">
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Select Item *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" android:layout_marginBottom="4dp" />
-
-            <RadioGroup
-                android:id="@+id/rgSalesItem"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:background="#FFFFFF"
-                android:padding="6dp"
-                android:layout_marginBottom="10dp">
-
-                <RadioButton
-                    android:id="@+id/rbSalesOnion"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Onion"
-                    android:textColor="#000000"
-                    android:textStyle="bold"
-                    android:checked="true" />
-
-                <RadioButton
-                    android:id="@+id/rbSalesGarlic"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Garlic"
-                    android:textColor="#000000"
-                    android:textStyle="bold" />
-
-                <RadioButton
-                    android:id="@+id/rbSalesCoconut"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Coconut"
-                    android:textColor="#000000"
-                    android:textStyle="bold" />
-            </RadioGroup>
-
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Select Supplier Stock Lot ID *" android:textSize="12sp" android:textStyle="bold" android:textColor="#2E7D32" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select Supplier Stock Lot ID *" android:textSize="12sp" android:textStyle="bold" android:textColor="#2E7D32" />
             <Spinner
                 android:id="@+id/spSupplierBatch"
                 android:layout_width="match_parent"
@@ -127,7 +121,7 @@
                 android:padding="10dp"
                 android:layout_marginBottom="10dp" />
 
-            <!-- Bags & Bag Charge Side-by-Side -->
+            <!-- Bags & Bag Charge Side-by-Side (Onion-க்கு மட்டும்) -->
             <LinearLayout
                 android:id="@+id/layoutSalesOnion"
                 android:layout_width="match_parent"
@@ -175,4 +169,3 @@
 
     </LinearLayout>
 </ScrollView>
-
