@@ -1,5 +1,6 @@
 package com.shop.veggieledger
 
+import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -9,6 +10,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.LinearLayout
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
@@ -42,7 +44,7 @@ class SalesActivity : AppCompatActivity() {
     private val cartItems = JSONArray()
     private var grandTotal = 0.0
 
-    // Edit Mode State Variables
+    // Edit Mode State
     private var isEditMode: Boolean = false
     private var editingSalesDocId: String = ""
     private var oldCustomerId: String = ""
@@ -59,15 +61,9 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        // Mode Switch Buttons
-        binding.btnModeNewSales.setOnClickListener {
-            switchToNewMode()
-        }
-        binding.btnModeEditSales.setOnClickListener {
-            switchToEditMode()
-        }
+        binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
+        binding.btnModeEditSales.setOnClickListener { switchToEditMode() }
 
-        // Main Sales Date Picker
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         editFilterDateStr = selectedDateStr
@@ -82,7 +78,6 @@ class SalesActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // Edit Filter Date Picker
         val editCal = Calendar.getInstance()
         binding.etEditFilterDate.setOnClickListener {
             DatePickerDialog(this, { _, y, m, d ->
@@ -93,17 +88,13 @@ class SalesActivity : AppCompatActivity() {
             }, editCal.get(Calendar.YEAR), editCal.get(Calendar.MONTH), editCal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // Edit Filter Customer Spinner
         binding.spEditFilterCustomer.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (isEditMode) {
-                    loadBillsForEditFilter()
-                }
+                if (isEditMode) loadBillsForEditFilter()
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        // Item Dropdown
         val defaultItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
         defaultItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spSalesItem.adapter = defaultItemAdapter
@@ -163,7 +154,6 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // In edit mode, account for stock already reserved by this bill for the same batch
             var previouslyUsedKgs = 0.0
             if (editingSalesDocId.isNotEmpty()) {
                 for (k in 0 until oldCartItems.length()) {
@@ -237,7 +227,6 @@ class SalesActivity : AppCompatActivity() {
             binding.btnSaveSalesBill.isEnabled = false
 
             if (isEditMode && editingSalesDocId.isNotEmpty()) {
-                // UPDATE EXISTING SALES BILL
                 val updateData = hashMapOf<String, Any>(
                     "billNo" to billNo,
                     "customerId" to selectedCustomerId,
@@ -256,7 +245,6 @@ class SalesActivity : AppCompatActivity() {
                         Toast.makeText(this, "Failed to update sales bill", Toast.LENGTH_SHORT).show()
                     }
             } else {
-                // CREATE NEW SALES BILL
                 val salesId = db.collection("sales").document().id
                 val salesData = hashMapOf(
                     "id" to salesId,
@@ -302,7 +290,7 @@ class SalesActivity : AppCompatActivity() {
         binding.layoutEditSalesPanel.visibility = View.VISIBLE
         binding.btnModeEditSales.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
         binding.btnModeNewSales.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
-        binding.tvSalesHeader.text = "EDIT EXISTING SALES BILL"
+        binding.tvSalesHeader.text = "EDIT / DELETE SALES BILL"
         binding.btnSaveSalesBill.text = "UPDATE SALES BILL"
         binding.btnSaveSalesBill.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
         resetFormForFreshEntry()
@@ -337,25 +325,58 @@ class SalesActivity : AppCompatActivity() {
                     val total = doc.getDouble("grandTotal") ?: 0.0
                     val pMode = doc.getString("payMode") ?: "Credit"
 
-                    val billCard = TextView(this)
-                    billCard.text = "$billNo | $custName | $pMode | Rs. %.2f  [TAP TO EDIT]".format(total)
-                    billCard.setTextColor(Color.parseColor("#1B5E20"))
-                    billCard.setTypeface(null, Typeface.BOLD)
-                    billCard.textSize = 13f
-                    billCard.setBackgroundColor(Color.WHITE)
-                    billCard.setPadding(20, 22, 20, 22)
-
-                    val lp = android.widget.LinearLayout.LayoutParams(
-                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    val rowCard = LinearLayout(this)
+                    rowCard.orientation = LinearLayout.HORIZONTAL
+                    rowCard.gravity = Gravity.CENTER_VERTICAL
+                    rowCard.setBackgroundColor(Color.WHITE)
+                    rowCard.setPadding(16, 14, 16, 14)
+                    val cardLp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                     )
-                    lp.setMargins(0, 0, 0, 10)
-                    billCard.layoutParams = lp
+                    cardLp.setMargins(0, 0, 0, 10)
+                    rowCard.layoutParams = cardLp
 
-                    billCard.setOnClickListener {
+                    val infoTv = TextView(this)
+                    infoTv.text = "$billNo | $custName\n$pMode | Rs. %.2f".format(total)
+                    infoTv.setTextColor(Color.parseColor("#1B5E20"))
+                    infoTv.setTypeface(null, Typeface.BOLD)
+                    infoTv.textSize = 13f
+                    val infoLp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    infoTv.layoutParams = infoLp
+
+                    val editBtn = TextView(this)
+                    editBtn.text = "EDIT"
+                    editBtn.setTextColor(Color.WHITE)
+                    editBtn.setBackgroundColor(Color.parseColor("#1565C0"))
+                    editBtn.setTypeface(null, Typeface.BOLD)
+                    editBtn.textSize = 12f
+                    editBtn.setPadding(24, 14, 24, 14)
+                    val editLp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    editLp.setMargins(8, 0, 8, 0)
+                    editBtn.layoutParams = editLp
+                    editBtn.setOnClickListener {
                         populateFormFromBillDocument(doc.id, doc.data)
                     }
-                    binding.llMatchingBillsList.addView(billCard)
+
+                    val delBtn = TextView(this)
+                    delBtn.text = "DEL"
+                    delBtn.setTextColor(Color.WHITE)
+                    delBtn.setBackgroundColor(Color.parseColor("#C62828"))
+                    delBtn.setTypeface(null, Typeface.BOLD)
+                    delBtn.textSize = 12f
+                    delBtn.setPadding(24, 14, 24, 14)
+                    delBtn.setOnClickListener {
+                        confirmAndDeleteSalesBill(doc.id, billNo, doc.data)
+                    }
+
+                    rowCard.addView(infoTv)
+                    rowCard.addView(editBtn)
+                    rowCard.addView(delBtn)
+                    binding.llMatchingBillsList.addView(rowCard)
                 }
 
                 if (matchCount == 0) {
@@ -369,6 +390,75 @@ class SalesActivity : AppCompatActivity() {
             .addOnFailureListener {
                 binding.llMatchingBillsList.removeAllViews()
                 Toast.makeText(this, "Error loading bills", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun confirmAndDeleteSalesBill(docId: String, billNo: String, data: Map<String, Any>) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Sales Bill")
+            .setMessage("Are you sure you want to delete $billNo? Stock and Customer balance will be restored.")
+            .setPositiveButton("DELETE") { _, _ ->
+                deleteSalesBillAndRestore(docId, data)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deleteSalesBillAndRestore(docId: String, data: Map<String, Any>) {
+        val custId = data["customerId"]?.toString() ?: ""
+        val pMode = data["payMode"]?.toString() ?: "Credit"
+        val totalAmt = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
+        val rawItems = data["items"] as? List<*>
+
+        db.collection("sales").document(docId).delete()
+            .addOnSuccessListener {
+                // 1. Restore Stock
+                if (rawItems != null) {
+                    for (entry in rawItems) {
+                        val map = entry as? Map<*, *> ?: continue
+                        val bDocId = map["batchDocId"]?.toString() ?: ""
+                        val bags = (map["bags"] as? Number)?.toLong() ?: 0L
+                        val kgs = (map["netKgs"] as? Number)?.toDouble() ?: 0.0
+
+                        if (bDocId.isNotEmpty()) {
+                            val batchRef = db.collection("stock_batches").document(bDocId)
+                            db.runTransaction { tr ->
+                                val snap = tr.get(batchRef)
+                                if (snap.exists()) {
+                                    val currBags = snap.getLong("availableBags") ?: 0L
+                                    val currKgs = snap.getDouble("availableKgs") ?: 0.0
+                                    tr.update(batchRef, mapOf(
+                                        "availableBags" to (currBags + bags),
+                                        "availableKgs" to (currKgs + kgs)
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Reverse Customer Credit Balance
+                if (pMode.equals("Credit", ignoreCase = true) && custId.isNotEmpty()) {
+                    val custRef = db.collection("customers").document(custId)
+                    db.runTransaction { tr ->
+                        val snap = tr.get(custRef)
+                        if (snap.exists()) {
+                            val curr = snap.getDouble("currentBalance") ?: 0.0
+                            tr.update(custRef, "currentBalance", (curr - totalAmt).coerceAtLeast(0.0))
+                        }
+                    }
+                }
+
+                if (editingSalesDocId == docId) {
+                    editingSalesDocId = ""
+                    clearJsonArray(oldCartItems)
+                    resetFormForFreshEntry()
+                }
+                Toast.makeText(this, "Sales Bill Deleted & Stock Restored!", Toast.LENGTH_SHORT).show()
+                loadBillsForEditFilter()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Failed to delete sales bill", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -407,8 +497,6 @@ class SalesActivity : AppCompatActivity() {
                 obj.put("ratePerKg", (map["ratePerKg"] as? Number)?.toDouble() ?: 0.0)
                 obj.put("lineTotal", (map["lineTotal"] as? Number)?.toDouble() ?: 0.0)
                 cartItems.put(obj)
-
-                // Keep a separate copy of original items for stock reconciliation
                 oldCartItems.put(JSONObject(obj.toString()))
             }
         }
@@ -572,9 +660,7 @@ class SalesActivity : AppCompatActivity() {
     }
 
     private fun clearJsonArray(arr: JSONArray) {
-        while (arr.length() > 0) {
-            arr.remove(0)
-        }
+        while (arr.length() > 0) arr.remove(0)
     }
 
     private fun resetFormForFreshEntry() {
@@ -592,11 +678,7 @@ class SalesActivity : AppCompatActivity() {
         binding.spSalesItem.setSelection(0)
 
         refreshCartGrid()
-        if (!isEditMode) {
-            generateAutoSalesBillNo()
-        } else {
-            binding.etSalesBillNo.setText("")
-        }
+        if (!isEditMode) generateAutoSalesBillNo() else binding.etSalesBillNo.setText("")
         loadBatchesForItem(selectedItemName)
 
         binding.btnSaveSalesBill.isEnabled = true
@@ -638,7 +720,6 @@ class SalesActivity : AppCompatActivity() {
     }
 
     private fun reconcileStockAndCustomerOnEdit(newPayMode: String) {
-        // Calculate net stock delta per batchDocId: (oldSold - newSold)
         val bagDeltaMap = HashMap<String, Long>()
         val kgDeltaMap = HashMap<String, Double>()
 
@@ -676,7 +757,6 @@ class SalesActivity : AppCompatActivity() {
             }
         }
 
-        // Reverse old customer credit if applicable, then apply new customer credit
         if (oldPayMode.equals("Credit", ignoreCase = true) && oldCustomerId.isNotEmpty()) {
             val oldCustRef = db.collection("customers").document(oldCustomerId)
             db.runTransaction { tr ->
