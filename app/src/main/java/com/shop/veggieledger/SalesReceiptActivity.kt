@@ -22,6 +22,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivitySalesReceiptBinding
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,7 +49,7 @@ class SalesReceiptActivity : AppCompatActivity() {
     private var editingReceiptDocId: String = ""
     private var oldReceiptCustomerId: String = ""
     private var oldReceiptAmount: Double = 0.0
-    private val oldAllocations = ArrayList>()
+    private val oldAllocationsJson = JSONArray()
 
     private val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
 
@@ -207,6 +209,10 @@ class SalesReceiptActivity : AppCompatActivity() {
         }
     }
 
+    private fun clearJsonArray(arr: JSONArray) {
+        while (arr.length() > 0) arr.remove(0)
+    }
+
     private fun applyReceiptBillUpdates(amount: Double) {
         for (b in pendingBills) {
             if (b.allocatedNow > 0.0) {
@@ -230,7 +236,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                 val msg = if (isEditMode) "Receipt Updated Successfully!" else "Receipt Saved & Bill-wise Adjusted!"
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 editingReceiptDocId = ""
-                oldAllocations.clear()
+                clearJsonArray(oldAllocationsJson)
                 resetForm()
                 if (isEditMode) loadReceiptsForEditFilter()
             }
@@ -239,7 +245,7 @@ class SalesReceiptActivity : AppCompatActivity() {
     private fun switchToNewMode() {
         isEditMode = false
         editingReceiptDocId = ""
-        oldAllocations.clear()
+        clearJsonArray(oldAllocationsJson)
         binding.layoutEditRecPanel.visibility = View.GONE
         binding.btnModeNewRec.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
         binding.btnModeEditRec.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
@@ -252,7 +258,7 @@ class SalesReceiptActivity : AppCompatActivity() {
     private fun switchToEditMode() {
         isEditMode = true
         editingReceiptDocId = ""
-        oldAllocations.clear()
+        clearJsonArray(oldAllocationsJson)
         binding.layoutEditRecPanel.visibility = View.VISIBLE
         binding.btnModeEditRec.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
         binding.btnModeNewRec.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
@@ -376,7 +382,6 @@ class SalesReceiptActivity : AppCompatActivity() {
 
         db.collection("receipts").document(docId).delete()
             .addOnSuccessListener {
-                // Restore each bill's paidAmount & balanceAmount
                 if (rawAllocs != null) {
                     for (entry in rawAllocs) {
                         val map = entry as? Map<*, *> ?: continue
@@ -403,7 +408,6 @@ class SalesReceiptActivity : AppCompatActivity() {
                     }
                 }
 
-                // Restore customer currentBalance
                 if (custId.isNotEmpty()) {
                     val custRef = db.collection("customers").document(custId)
                     db.runTransaction { tr ->
@@ -454,23 +458,22 @@ class SalesReceiptActivity : AppCompatActivity() {
         val modeIdx = modes.indexOfFirst { it.equals(pMode, ignoreCase = true) }
         if (modeIdx >= 0) binding.spRecMode.setSelection(modeIdx)
 
-        // Store old allocations so we reverse them in memory while editing
-        oldAllocations.clear()
+        clearJsonArray(oldAllocationsJson)
         val rawAllocs = data["billAllocations"] as? List<*>
         if (rawAllocs != null) {
             for (entry in rawAllocs) {
                 val map = entry as? Map<*, *> ?: continue
-                val cleanMap = HashMap<String, Any>()
-                cleanMap["billDocId"] = map["billDocId"]?.toString() ?: ""
-                cleanMap["allocatedAmount"] = (map["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
-                oldAllocations.add(cleanMap)
+                val obj = JSONObject()
+                obj.put("billDocId", map["billDocId"]?.toString() ?: "")
+                obj.put("allocatedAmount", (map["allocatedAmount"] as? Number)?.toDouble() ?: 0.0)
+                oldAllocationsJson.put(obj)
             }
         }
 
-        // First reverse old allocations on sales docs so user edits from clean state
-        for (alloc in oldAllocations) {
-            val bDocId = alloc["billDocId"]?.toString() ?: ""
-            val prevAlloc = (alloc["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
+        for (i in 0 until oldAllocationsJson.length()) {
+            val obj = oldAllocationsJson.getJSONObject(i)
+            val bDocId = obj.optString("billDocId", "")
+            val prevAlloc = obj.optDouble("allocatedAmount", 0.0)
             if (bDocId.isNotEmpty() && prevAlloc > 0.0) {
                 val saleRef = db.collection("sales").document(bDocId)
                 db.runTransaction { tr ->
