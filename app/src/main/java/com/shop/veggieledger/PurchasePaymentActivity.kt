@@ -1,83 +1,181 @@
-package com.shop.veggieledger
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:padding="14dp">
 
-import android.os.Bundle
-import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.shop.veggieledger.databinding.ActivityEntryCommonBinding
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
-class PurchasePaymentActivity : AppCompatActivity() {
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="PURCHASE PAYMENT (BILL-WISE)"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#1565C0"
+            android:gravity="center"
+            android:layout_marginBottom="14dp" />
 
-    private lateinit var binding: ActivityEntryCommonBinding
-    private val db = FirebaseFirestore.getInstance()
-    private val suppliers = mutableListOf<Supplier>()
+        <!-- Row 1: Date & Payment No -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityEntryCommonBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Date *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
+                <EditText
+                    android:id="@+id/etPayDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:focusable="false"
+                    android:clickable="true"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
-        binding.tvEntryTitle.text = "PURCHASE PAYMENT (SUPPLIER)"
-        binding.spEntryMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("CASH", "UPI", "BANK"))
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Voucher No" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText
+                    android:id="@+id/etPayNo"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="PAY-001"
+                    android:textColor="#000000"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
 
-        db.collection("suppliers").get().addOnSuccessListener { snap ->
-            suppliers.clear()
-            val names = mutableListOf<String>()
-            for (doc in snap) {
-                val s = doc.toObject(Supplier::class.java)
-                suppliers.add(s)
-                names.add("${s.name} (${s.shortCode})")
-            }
-            binding.spEntryPartyOrType.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
-        }
+        <!-- Searchable Supplier Name (Non-freezing Search Dialog) -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Name (Tap to Search) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
+        <EditText
+            android:id="@+id/etSearchSupplier"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:hint="Tap here to search supplier..."
+            android:focusable="false"
+            android:clickable="true"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:background="@android:drawable/edit_text"
+            android:padding="10dp"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
 
-        binding.spEntryPartyOrType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (suppliers.isNotEmpty()) {
-                    binding.tvCurrentBalInfo.text = "Supplier Payable Balance: Rs. %.2f".format(suppliers[pos].currentBalance)
-                }
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
+        <!-- Live Supplier Payable Banner -->
+        <TextView
+            android:id="@+id/tvSupPayable"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Total Payable Balance: Rs. 0.00"
+            android:background="#FFF9C4"
+            android:textColor="#D84315"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:padding="10dp"
+            android:layout_marginBottom="10dp" />
 
-        binding.btnSaveEntry.setOnClickListener {
-            if (suppliers.isEmpty()) return@setOnClickListener
-            val amt = binding.etEntryAmount.text.toString().toDoubleOrNull() ?: 0.0
-            if (amt <= 0) {
-                Toast.makeText(this, "Enter valid amount", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+        <!-- Row 2: Paid Amount & Payment Mode -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
 
-            val sup = suppliers[binding.spEntryPartyOrType.selectedItemPosition]
-            val id = db.collection("payments").document().id
-            val dateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Paid Amount (Rs) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText
+                    android:id="@+id/etPayAmount"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="0.00"
+                    android:inputType="numberDecimal"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="15sp" />
+            </LinearLayout>
 
-            val entry = PaymentEntry(
-                entryId = id,
-                date = dateStr,
-                type = "PURCHASE_PAYMENT",
-                partyId = sup.id,
-                partyName = sup.name,
-                amount = amt,
-                mode = binding.spEntryMode.selectedItem.toString(),
-                notes = binding.etEntryNotes.text.toString().trim()
-            )
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <Spinner
+                    android:id="@+id/spPayMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:spinnerMode="dialog"
+                    android:background="@android:drawable/btn_dropdown" />
+            </LinearLayout>
+        </LinearLayout>
 
-            val batch = db.batch()
-            batch.set(db.collection("payments").document(id), entry)
-            batch.update(db.collection("suppliers").document(sup.id), "currentBalance", FieldValue.increment(-amt))
+        <!-- Bill-wise Pending Purchase Bills Section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="BILL-WISE PENDING PURCHASE DETAILS (Tap a bill to pay)"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#1565C0"
+            android:layout_marginBottom="4dp" />
 
-            batch.commit().addOnSuccessListener {
-                Toast.makeText(this, "Supplier Payment Saved!", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        }
-    }
-}
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:layout_marginBottom="10dp">
+
+            <TableLayout
+                android:id="@+id/tlPaymentBills"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:stretchColumns="*"
+                android:background="#CFD8DC"
+                android:padding="1dp">
+
+                <TableRow android:background="#1565C0">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bill No" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Lot ID" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Date" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bill Amt" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pending" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="This Pay" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="New Bal" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                </TableRow>
+            </TableLayout>
+        </HorizontalScrollView>
+
+        <!-- Remarks -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Remarks / Notes" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+        <EditText
+            android:id="@+id/etPayRemarks"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:hint="Optional note..."
+            android:textColor="#000000"
+            android:background="@android:drawable/edit_text"
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnSavePayment"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="SAVE PAYMENT &amp; UPDATE BILLS"
+            android:backgroundTint="#1565C0"
+            android:textColor="#FFFFFF" />
+
+    </LinearLayout>
+</ScrollView>
