@@ -11,6 +11,7 @@
         android:orientation="vertical">
 
         <TextView
+            android:id="@+id/tvRecHeader"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="SALES RECEIPT (BILL-WISE)"
@@ -18,7 +19,98 @@
             android:textStyle="bold"
             android:textColor="#1B5E20"
             android:gravity="center"
-            android:layout_marginBottom="14dp" />
+            android:layout_marginBottom="8dp" />
+
+        <!-- Mode Switch: NEW RECEIPT vs EDIT / DEL RECEIPT -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
+
+            <Button
+                android:id="@+id/btnModeNewRec"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="+ NEW RECEIPT"
+                android:backgroundTint="#1B5E20"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnModeEditRec"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="EDIT / DEL RECEIPT"
+                android:backgroundTint="#78909C"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <!-- EDIT / DELETE RECEIPT FILTER PANEL -->
+        <LinearLayout
+            android:id="@+id/layoutEditRecPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#FFF3E0"
+            android:padding="10dp"
+            android:visibility="gone"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="SELECT DATE &amp; CUSTOMER TO EDIT / DELETE RECEIPT"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#E65100"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Receipt Date *" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText
+                        android:id="@+id/etEditRecFilterDate"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:focusable="false"
+                        android:clickable="true"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        android:background="@android:drawable/edit_text"
+                        android:padding="8dp"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Customer Name *" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
+                    <Spinner
+                        android:id="@+id/spEditRecFilterCustomer"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:spinnerMode="dialog"
+                        android:background="@android:drawable/btn_dropdown" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/llMatchingRecList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
 
         <!-- Row 1: Date & Receipt No -->
         <LinearLayout
@@ -29,7 +121,7 @@
             android:layout_marginBottom="10dp">
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Receipt Date *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Receipt Date *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" />
                 <EditText
                     android:id="@+id/etRecDate"
                     android:layout_width="match_parent"
@@ -57,8 +149,8 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Searchable Customer Name (Non-freezing Search Dialog) -->
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Customer Name (Tap to Search) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" />
+        <!-- Searchable Customer Name -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Customer Name (Tap to Search) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" />
         <EditText
             android:id="@+id/etSearchCustomer"
             android:layout_width="match_parent"
