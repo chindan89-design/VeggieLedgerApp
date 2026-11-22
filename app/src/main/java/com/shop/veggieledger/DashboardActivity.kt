@@ -1,17 +1,25 @@
 package com.shop.veggieledger
 
+import android.app.DatePickerDialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivityDashboardBinding
+import java.text.SimpleDateFormat
+import java.util.*
 
 class DashboardActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDashboardBinding
     private val db = FirebaseFirestore.getInstance()
+    private var selectedDateStr: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,6 +29,24 @@ class DashboardActivity : AppCompatActivity() {
         val role = intent.getStringExtra("USER_ROLE") ?: "STAFF"
         supportActionBar?.title = "Mandi ($role)"
         binding.tvWelcome.text = "Veggie Mandi Live Summary"
+
+        // Date Picker Setup (Defaults to Today)
+        val cal = Calendar.getInstance()
+        selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+        binding.etDashDate.setText(selectedDateStr)
+
+        binding.etDashDate.setOnClickListener {
+            DatePickerDialog(this, { _, y, m, d ->
+                cal.set(y, m, d)
+                selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+                binding.etDashDate.setText(selectedDateStr)
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+        }
+
+        // View Button Click refreshes data for chosen date
+        binding.btnDashViewDate.setOnClickListener {
+            loadLiveSummary()
+        }
 
         // Quick Strip Bar Clicks
         binding.stripSales.setOnClickListener { startActivity(Intent(this, SalesActivity::class.java)) }
@@ -37,28 +63,126 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun loadLiveSummary() {
+        binding.tvDashDateSectionTitle.text = "2. SUMMARY FOR $selectedDateStr"
+
+        // 1. Live Available Stock Item-wise (Hide any item where stock is 0)
+        db.collection("stock_batches").get().addOnSuccessListener { snap ->
+            val itemBagsMap = HashMap<String, Int>()
+            val itemKgsMap = HashMap<String, Double>()
+
+            for (doc in snap) {
+                val itemName = doc.getString("itemName") ?: continue
+                val bags = (doc.getLong("availableBags") ?: 0L).toInt()
+                val kgs = doc.getDouble("availableKgs") ?: 0.0
+
+                if (bags > 0 || kgs > 0.0) {
+                    val key = itemName.trim()
+                    itemBagsMap[key] = (itemBagsMap[key] ?: 0) + bags
+                    itemKgsMap[key] = (itemKgsMap[key] ?: 0.0) + kgs
+                }
+            }
+
+            binding.llDashStockItems.removeAllViews()
+            var hasAnyStock = false
+
+            val sortedItems = itemKgsMap.keys.sorted()
+            for (item in sortedItems) {
+                val totalBags = itemBagsMap[item] ?: 0
+                val totalKgs = itemKgsMap[item] ?: 0.0
+
+                // Display ONLY if stock > 0
+                if (totalBags > 0 || totalKgs > 0.001) {
+                    hasAnyStock = true
+                    val rowTv = TextView(this)
+                    val bagText = if (totalBags > 0) "$totalBags Bags  |  " else ""
+                    rowTv.text = "$item :  $bagText%.2f Kgs".format(totalKgs)
+                    rowTv.setTextColor(Color.parseColor("#1B5E20"))
+                    rowTv.setTypeface(null, Typeface.BOLD)
+                    rowTv.textSize = 14f
+                    rowTv.setBackgroundColor(Color.parseColor("#E8F5E9"))
+                    rowTv.setPadding(24, 20, 24, 20)
+
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.setMargins(0, 0, 0, 8)
+                    rowTv.layoutParams = lp
+                    binding.llDashStockItems.addView(rowTv)
+                }
+            }
+
+            if (!hasAnyStock) {
+                val emptyTv = TextView(this)
+                emptyTv.text = "No stock available currently."
+                emptyTv.setTextColor(Color.GRAY)
+                emptyTv.textSize = 13f
+                emptyTv.setPadding(16, 16, 16, 16)
+                binding.llDashStockItems.addView(emptyTv)
+            }
+        }
+
+        // 2. Selected Date Summary: Purchase, Sales, Receipt, Payment, Income, Expenses
+        db.collection("purchases").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
+            var dayPur = 0.0
+            for (doc in snap) {
+                dayPur += doc.getDouble("grandTotal") ?: 0.0
+            }
+            binding.tvDayPurchase.text = "Purchase\nRs. %.2f".format(dayPur)
+        }
+
+        db.collection("sales").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
+            var daySales = 0.0
+            for (doc in snap) {
+                daySales += doc.getDouble("grandTotal") ?: 0.0
+            }
+            binding.tvDaySales.text = "Sales\nRs. %.2f".format(daySales)
+        }
+
+        db.collection("receipts").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
+            var dayRec = 0.0
+            for (doc in snap) {
+                dayRec += doc.getDouble("amount") ?: 0.0
+            }
+            binding.tvDayReceipt.text = "Receipt\nRs. %.2f".format(dayRec)
+        }
+
+        db.collection("payments").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
+            var dayPay = 0.0
+            for (doc in snap) {
+                dayPay += doc.getDouble("amount") ?: 0.0
+            }
+            binding.tvDayPayment.text = "Payment\nRs. %.2f".format(dayPay)
+        }
+
+        db.collection("expenses_income").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
+            var dayInc = 0.0
+            var dayExp = 0.0
+            for (doc in snap) {
+                val type = doc.getString("type") ?: ""
+                val amt = doc.getDouble("amount") ?: 0.0
+                if (type.equals("Income", ignoreCase = true)) dayInc += amt
+                if (type.equals("Expense", ignoreCase = true)) dayExp += amt
+            }
+            binding.tvDayIncome.text = "Income\nRs. %.2f".format(dayInc)
+            binding.tvDayExpense.text = "Expenses\nRs. %.2f".format(dayExp)
+        }
+
+        // 3. Overall Total Collectable & Total Payable
         db.collection("customers").get().addOnSuccessListener { snap ->
-            val totalDue = snap.sumOf { it.getDouble("currentBalance") ?: 0.0 }
-            binding.tvDashCustDue.text = "Total Customer Pending: Rs. %.2f".format(totalDue)
+            var totalCollectable = 0.0
+            for (doc in snap) {
+                totalCollectable += doc.getDouble("currentBalance") ?: 0.0
+            }
+            binding.tvDashCustDue.text = "Total Collectable\nRs. %.2f".format(totalCollectable)
         }
 
         db.collection("suppliers").get().addOnSuccessListener { snap ->
-            val totalPay = snap.sumOf { it.getDouble("currentBalance") ?: 0.0 }
-            binding.tvDashSupDue.text = "Total Supplier Payable: Rs. %.2f".format(totalPay)
-        }
-
-        db.collection("stock_batches").whereEqualTo("status", "ACTIVE").get().addOnSuccessListener { snap ->
-            var activeBags = 0
-            var activeKgs = 0.0
+            var totalPayable = 0.0
             for (doc in snap) {
-                val bags = (doc.getLong("availableBags") ?: 0L).toInt()
-                val kgs = doc.getDouble("availableKgs") ?: 0.0
-                if (bags > 0 || kgs > 0) {
-                    activeBags += bags
-                    activeKgs += kgs
-                }
+                totalPayable += doc.getDouble("currentBalance") ?: 0.0
             }
-            binding.tvDashStockSummary.text = "Live Shop Stock: $activeBags Bags  |  %.1f Kgs".format(activeKgs)
+            binding.tvDashSupDue.text = "Total Payable\nRs. %.2f".format(totalPayable)
         }
     }
 
