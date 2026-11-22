@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvExpIncHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="EXPENSES &amp; INCOME ENTRY"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#C62828"
+            android:gravity="center"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Type Switch: EXPENSE vs INCOME -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
+
+            <Button
+                android:id="@+id/btnTypeExpense"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="EXPENSE (-)"
+                android:backgroundTint="#C62828"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnTypeIncome"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="INCOME (+)"
+                android:backgroundTint="#78909C"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <!-- Row 1: Date & Payment Mode -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="10dp">
+
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1. Date *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText
+                    android:id="@+id/etExpDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:focusable="false"
+                    android:clickable="true"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <Spinner
+                    android:id="@+id/spExpPayMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:spinnerMode="dialog"
+                    android:background="@android:drawable/btn_dropdown" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- EXPENSE ENTRY CARD -->
+        <LinearLayout
+            android:id="@+id/layoutExpenseCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#FFEBEE"
+            android:padding="10dp"
+            android:layout_marginBottom="10dp">
+
+            <!-- Side-by-Side Dropdowns: 1. Main Category (3 options) & 2. All Expense Heads -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Category (3 Types) *" android:textSize="11sp" android:textStyle="bold" android:textColor="#C62828" />
+                    <Spinner
+                        android:id="@+id/spMainCategory"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:spinnerMode="dialog"
+                        android:background="@android:drawable/btn_dropdown" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3. Expense Head *" android:textSize="11sp" android:textStyle="bold" android:textColor="#C62828" />
+                    <Spinner
+                        android:id="@+id/spAllExpenseHeads"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:spinnerMode="dialog"
+                        android:background="@android:drawable/btn_dropdown" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Custom / Other Expense Name Box (Shown when Other Expenses is selected) -->
+            <LinearLayout
+                android:id="@+id/layoutCustomExpenseName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:layout_marginBottom="8dp">
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Expense Name (Enter Manually) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#D84315" />
+                <EditText
+                    android:id="@+id/etCustomExpenseName"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="Type expense name..."
+                    android:textColor="#000000"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- Amount & Remarks Side-by-Side -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="10dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Amount (Rs) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText
+                        android:id="@+id/etExpAmount"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:hint="0.00"
+                        android:inputType="numberDecimal"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        android:background="@android:drawable/edit_text"
+                        android:padding="8dp"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Note / Vehicle No" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText
+                        android:id="@+id/etExpRemarks"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:hint="Optional note..."
+                        android:textColor="#000000"
+                        android:background="@android:drawable/edit_text"
+                        android:padding="8dp"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnAddExpenseRow"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:text="+ ADD EXPENSE TO GRID"
+                android:backgroundTint="#D32F2F"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- INCOME ENTRY CARD -->
+        <LinearLayout
+            android:id="@+id/layoutIncomeCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#E8F5E9"
+            android:padding="10dp"
+            android:visibility="gone"
+            android:layout_marginBottom="10dp">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2. Income Name / Source *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" />
+            <EditText
+                android:id="@+id/etIncomeName"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="e.g., Commission / Empty Bag Sale..."
+                android:textColor="#000000"
+                android:background="@android:drawable/edit_text"
+                android:padding="8dp"
+                android:textSize="14sp"
+                android:layout_marginBottom="8dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Income Amount (Rs) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+            <EditText
+                android:id="@+id/etIncAmount"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="0.00"
+                android:inputType="numberDecimal"
+                android:textColor="#000000"
+                android:textStyle="bold"
+                android:background="@android:drawable/edit_text"
+                android:padding="8dp"
+                android:textSize="15sp"
+                android:layout_marginBottom="10dp" />
+
+            <Button
+                android:id="@+id/btnAddIncomeRow"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:text="+ ADD INCOME TO GRID"
+                android:backgroundTint="#2E7D32"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ADDED ITEMS DATA GRID -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ADDED ENTRIES DATA GRID"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#37474F"
+            android:layout_marginBottom="4dp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:layout_marginBottom="10dp">
+
+            <TableLayout
+                android:id="@+id/tlExpIncGrid"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:stretchColumns="*"
+                android:background="#CFD8DC"
+                android:padding="1dp">
+
+                <TableRow android:background="#37474F">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Category" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Expense / Income Name" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Amount" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="end" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Action" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:padding="8dp" android:gravity="center" />
+                </TableRow>
+            </TableLayout>
+        </HorizontalScrollView>
+
+        <TextView
+            android:id="@+id/tvExpIncGrandTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Total Grid Amount: Rs. 0.00"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:textColor="#C62828"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnSaveAllExpInc"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="SAVE ALL ENTRIES"
+            android:backgroundTint="#C62828"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:layout_marginBottom="18dp" />
+
+        <!-- SAVED ENTRIES FOR SELECTED DATE -->
+        <TextView
+            android:id="@+id/tvSavedEntriesTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SAVED ENTRIES FOR SELECTED DATE"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#37474F"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:id="@+id/llSavedDateEntries"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+    </LinearLayout>
+</ScrollView>
