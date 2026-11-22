@@ -106,18 +106,16 @@ class SalesReceiptActivity : AppCompatActivity() {
             binding.btnSaveReceipt.isEnabled = false
             allocateAmountToBills()
 
-            val allocationsForDb = ArrayList>()
+            val allocationsForDb = ArrayList<Any>()
             for (b in pendingBills) {
                 if (b.allocatedNow > 0.0) {
-                    allocationsForDb.add(
-                        hashMapOf(
-                            "billDocId" to b.docId,
-                            "billNo" to b.billNo,
-                            "billDate" to b.date,
-                            "allocatedAmount" to b.allocatedNow,
-                            "remainingBalance" to (b.pendingAmount - b.allocatedNow).coerceAtLeast(0.0)
-                        )
-                    )
+                    val allocMap = HashMap<String, Any>()
+                    allocMap["billDocId"] = b.docId
+                    allocMap["billNo"] = b.billNo
+                    allocMap["billDate"] = b.date
+                    allocMap["allocatedAmount"] = b.allocatedNow
+                    allocMap["remainingBalance"] = (b.pendingAmount - b.allocatedNow).coerceAtLeast(0.0)
+                    allocationsForDb.add(allocMap)
                 }
             }
 
@@ -187,7 +185,10 @@ class SalesReceiptActivity : AppCompatActivity() {
 
         val listView = ListView(this)
         val filtered = ArrayList<CustomerItem>(customerList)
-        val displayNames = ArrayList<String>(filtered.map { "${it.name}  (Bal: Rs. %.2f)".format(it.balance) })
+        val displayNames = ArrayList<String>()
+        for (c in filtered) {
+            displayNames.add("${c.name}  (Bal: Rs. %.2f)".format(c.balance))
+        }
 
         val listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayNames)
         listView.adapter = listAdapter
