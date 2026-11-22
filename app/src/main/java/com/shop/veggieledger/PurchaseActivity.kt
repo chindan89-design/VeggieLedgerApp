@@ -16,13 +16,13 @@ class PurchaseActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPurchaseBinding
     private val db = FirebaseFirestore.getInstance()
 
-    private val supplierMap = mutableMapOf<String, String>() // Name -> ID
-    private val supplierNames = mutableListOf<String>()
+    private val supplierMap = HashMap<String, String>()
+    private val supplierNames = ArrayList<String>()
     private var selectedSupplierId: String = ""
     private var selectedSupplierName: String = ""
 
-    private val itemNames = mutableListOf("Onion", "Garlic", "Coconut")
-    private val cartItems = mutableListOf>()
+    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
+    private val cartItems = ArrayList>()
     private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,17 +32,12 @@ class PurchaseActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Purchase Entry"
 
-        // 1. Auto Generate Bill No & Lot ID
         generateAutoBillAndBatch()
 
-        // 2. Payment Modes
-        val payModes = listOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
+        val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        // 3. Load Suppliers into Empty Searchable Box
         loadSuppliers()
-
-        // 4. Load Items
         loadItems()
 
         binding.spItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -53,7 +48,6 @@ class PurchaseActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        // Add Item Button
         binding.btnAddItem.setOnClickListener {
             val itemName = binding.spItem.selectedItem?.toString() ?: return@setOnClickListener
             val netKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
@@ -68,19 +62,16 @@ class PurchaseActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Formula: (Total Net Kgs * Rate/Kg) + (No. of Bags * Bag Charge)
-            val itemWeightAmount = netKgs * ratePerKg
-            val bagChargeAmount = bags * bagRate
-            val lineTotal = itemWeightAmount + bagChargeAmount
+            val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
-            val row = mapOf(
-                "itemName" to itemName,
-                "bags" to bags,
-                "bagRate" to bagRate,
-                "netKgs" to netKgs,
-                "ratePerKg" to ratePerKg,
-                "lineTotal" to lineTotal
-            )
+            val row = HashMap<String, Any>()
+            row["itemName"] = itemName
+            row["bags"] = bags
+            row["bagRate"] = bagRate
+            row["netKgs"] = netKgs
+            row["ratePerKg"] = ratePerKg
+            row["lineTotal"] = lineTotal
+
             cartItems.add(row)
             refreshCartDisplay()
 
@@ -89,7 +80,6 @@ class PurchaseActivity : AppCompatActivity() {
             binding.etRatePerKg.setText("")
         }
 
-        // Save Purchase Bill
         binding.btnSavePurchase.setOnClickListener {
             val typedSupplier = binding.actvSupplier.text.toString().trim()
             if (typedSupplier.isEmpty() || !supplierMap.containsKey(typedSupplier)) {
@@ -153,7 +143,7 @@ class PurchaseActivity : AppCompatActivity() {
             }
             val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, supplierNames)
             binding.actvSupplier.setAdapter(adapter)
-            binding.actvSupplier.setText("") // Keep empty initially
+            binding.actvSupplier.setText("")
         }
     }
 
@@ -172,7 +162,8 @@ class PurchaseActivity : AppCompatActivity() {
     private fun refreshCartDisplay() {
         grandTotal = 0.0
         val sb = StringBuilder()
-        cartItems.forEachIndexed { idx, row ->
+        for (idx in cartItems.indices) {
+            val row = cartItems[idx]
             val name = row["itemName"] as String
             val bags = row["bags"] as Int
             val kgs = row["netKgs"] as Double
