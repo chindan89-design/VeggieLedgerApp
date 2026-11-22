@@ -351,11 +351,12 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
+    
     private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false, colorHex: String = "#000000"): TextView {
         val tv = TextView(this)
         tv.text = text
         tv.setTextColor(Color.parseColor(colorHex))
-        tv.textSize = 12spToPx()
+        tv.textSize = 12f
         tv.setPadding(16, 14, 16, 14)
         tv.gravity = if (alignRight) Gravity.END else Gravity.START
         if (bold) tv.setTypeface(null, Typeface.BOLD)
