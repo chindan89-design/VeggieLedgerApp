@@ -1,285 +1,277 @@
 package com.shop.veggieledger
 
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivitySalesBinding
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 class SalesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
-    private val customerList = mutableListOf<Customer>()
-    private val itemList = mutableListOf<ItemMaster>()
-    private val activeBatches = mutableListOf<StockBatch>()
-    private val salesCart = mutableListOf<BillItem>()
+    private val customerMap = mutableMapOf<String, String>() // Name -> ID
+    private val customerNames = mutableListOf<String>()
+    private var selectedCustomerId: String = ""
+    private var selectedCustomerName: String = ""
 
-    private var selectedBatch: StockBatch? = null
+    private val itemNames = mutableListOf("Onion", "Garlic", "Coconut")
+    private val matchingBatches = mutableListOf>()
+    private val batchDisplayList = mutableListOf<String>()
+
+    private val cartItems = mutableListOf>()
+    private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySalesBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val payModes = listOf("CREDIT", "CASH", "UPI")
+        supportActionBar?.title = "Sales Entry"
+
+        // 1. Auto Sales Bill No
+        generateAutoSalesBillNo()
+
+        // 2. Payment Modes
+        val payModes = listOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spSalesPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
+        // 3. Load Customers into Empty Searchable Box
         loadCustomers()
+
+        // 4. Load Items
         loadItems()
-        setupListeners()
+
+        binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                val item = binding.spSalesItem.selectedItem?.toString() ?: ""
+                binding.layoutSalesOnion.visibility = if (item.equals("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
+                loadBatchesForItem(item)
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
+        binding.spSupplierBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                if (pos in matchingBatches.indices) {
+                    val b = matchingBatches[pos]
+                    val bags = b["availableBags"] as? Long ?: 0L
+                    val kgs = b["availableKgs"] as? Double ?: 0.0
+                    binding.tvLiveStockBanner.text = "Available Stock: $bags Bags | %.2f Kgs".format(kgs)
+                }
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
+        // Add Item to Sales Cart
+        binding.btnAddSalesItem.setOnClickListener {
+            val itemName = binding.spSalesItem.selectedItem?.toString() ?: return@setOnClickListener
+            val batchIdx = binding.spSupplierBatch.selectedItemPosition
+            if (batchIdx !in matchingBatches.indices) {
+                Toast.makeText(this, "No stock lot selected", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val selectedBatch = matchingBatches[batchIdx]
+            val batchDocId = selectedBatch["docId"] as String
+            val batchCode = selectedBatch["batchId"] as String
+            val availKgs = selectedBatch["availableKgs"] as? Double ?: 0.0
+
+            val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+            val ratePerKg = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
+            val isOnion = itemName.equals("Onion", ignoreCase = true)
+            val bags = if (isOnion) (binding.etSalesBags.text.toString().toIntOrNull() ?: 0) else 0
+            val bagRate = if (isOnion) (binding.etSalesBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
+
+            if (netKgs <= 0.0 || ratePerKg <= 0.0) {
+                Toast.makeText(this, "Enter valid Net Kgs and Sales Rate", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (netKgs > availKgs) {
+                Toast.makeText(this, "Insufficient stock! Available: $availKgs Kgs", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // Formula: (Total Net Kgs * Rate/Kg) + (No. of Bags * Bag Charge)
+            val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
+
+            val row = mapOf(
+                "itemName" to itemName,
+                "batchDocId" to batchDocId,
+                "batchCode" to batchCode,
+                "bags" to bags,
+                "bagRate" to bagRate,
+                "netKgs" to netKgs,
+                "ratePerKg" to ratePerKg,
+                "lineTotal" to lineTotal
+            )
+            cartItems.add(row)
+            refreshCartDisplay()
+
+            binding.etSalesBags.setText("")
+            binding.etSalesNetKgs.setText("")
+            binding.etSalesRatePerKg.setText("")
+        }
+
+        // Submit Sales Bill
+        binding.btnSaveSalesBill.setOnClickListener {
+            val typedCustomer = binding.actvCustomer.text.toString().trim()
+            if (typedCustomer.isEmpty() || !customerMap.containsKey(typedCustomer)) {
+                Toast.makeText(this, "Please search and select a valid Customer", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (cartItems.isEmpty()) {
+                Toast.makeText(this, "Add at least one item to sales bill", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            selectedCustomerName = typedCustomer
+            selectedCustomerId = customerMap[typedCustomer] ?: ""
+            val billNo = binding.etSalesBillNo.text.toString().trim()
+            val payMode = binding.spSalesPayMode.selectedItem.toString()
+            val today = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+
+            val salesId = db.collection("sales").document().id
+            val salesData = hashMapOf(
+                "id" to salesId,
+                "billNo" to billNo,
+                "customerId" to selectedCustomerId,
+                "customerName" to selectedCustomerName,
+                "payMode" to payMode,
+                "date" to today,
+                "timestamp" to System.currentTimeMillis(),
+                "items" to cartItems,
+                "grandTotal" to grandTotal
+            )
+
+            db.collection("sales").document(salesId).set(salesData)
+                .addOnSuccessListener {
+                    deductStockAndUpdateCustomer(payMode)
+                }
+                .addOnFailureListener {
+                    Toast.makeText(this, "Failed to save sales bill", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private fun generateAutoSalesBillNo() {
+        db.collection("sales").get().addOnSuccessListener { snap ->
+            val nextNum = snap.size() + 1
+            binding.etSalesBillNo.setText(String.format("SAL-%03d", nextNum))
+        }
     }
 
     private fun loadCustomers() {
         db.collection("customers").get().addOnSuccessListener { snap ->
-            customerList.clear()
-            val names = mutableListOf<String>()
+            customerMap.clear()
+            customerNames.clear()
             for (doc in snap) {
-                val c = doc.toObject(Customer::class.java)
-                customerList.add(c)
-                names.add("${c.name} (Bal: ₹${c.currentBalance.toInt()})")
+                val id = doc.id
+                val name = doc.getString("name") ?: continue
+                customerMap[name] = id
+                customerNames.add(name)
             }
-            binding.spCustomer.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
+            val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, customerNames)
+            binding.actvCustomer.setAdapter(adapter)
+            binding.actvCustomer.setText("") // Empty by default
         }
     }
 
     private fun loadItems() {
         db.collection("items").get().addOnSuccessListener { snap ->
-            itemList.clear()
-            val names = mutableListOf<String>()
-            for (doc in snap) {
-                val item = doc.toObject(ItemMaster::class.java)
-                itemList.add(item)
-                names.add(item.itemName)
+            if (!snap.isEmpty) {
+                itemNames.clear()
+                for (doc in snap) {
+                    doc.getString("name")?.let { itemNames.add(it) }
+                }
             }
-            binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
+            binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
         }
     }
 
     private fun loadBatchesForItem(itemName: String) {
         db.collection("stock_batches")
             .whereEqualTo("itemName", itemName)
-            .whereEqualTo("status", "ACTIVE")
             .get()
             .addOnSuccessListener { snap ->
-                activeBatches.clear()
-                val batchLabels = mutableListOf<String>()
+                matchingBatches.clear()
+                batchDisplayList.clear()
                 for (doc in snap) {
-                    val b = doc.toObject(StockBatch::class.java)
-                    if (b.availableKgs > 0 || b.availableBags > 0) {
-                        activeBatches.add(b)
-                        batchLabels.add("${b.batchCode} (${b.supplierName})")
+                    val availKgs = doc.getDouble("availableKgs") ?: 0.0
+                    if (availKgs > 0) {
+                        val bId = doc.getString("batchId") ?: doc.id
+                        val supName = doc.getString("supplierName") ?: ""
+                        val availBags = doc.getLong("availableBags") ?: 0L
+                        val map = mapOf(
+                            "docId" to doc.id,
+                            "batchId" to bId,
+                            "availableBags" to availBags,
+                            "availableKgs" to availKgs
+                        )
+                        matchingBatches.add(map)
+                        batchDisplayList.add("$bId ($supName) - %.1f Kgs".format(availKgs))
                     }
                 }
-
-                if (activeBatches.isEmpty()) {
-                    selectedBatch = null
-                    binding.spSupplierBatch.adapter = ArrayAdapter(
-                        this,
-                        android.R.layout.simple_spinner_dropdown_item,
-                        listOf("No Active Stock Available")
-                    )
-                    binding.tvLiveStockBanner.text = "Stock Alert: 0 Stock available for $itemName!"
-                } else {
-                    binding.spSupplierBatch.adapter = ArrayAdapter(
-                        this,
-                        android.R.layout.simple_spinner_dropdown_item,
-                        batchLabels
-                    )
+                if (batchDisplayList.isEmpty()) {
+                    batchDisplayList.add("No Stock Available")
+                    binding.tvLiveStockBanner.text = "Available Stock: 0 Bags | 0.0 Kgs"
                 }
+                binding.spSupplierBatch.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, batchDisplayList)
             }
     }
 
-    private fun updateLiveStockBanner(batch: StockBatch) {
-        selectedBatch = batch
-        val isOnion = batch.itemName.equals("Onion", ignoreCase = true)
-        binding.tvLiveStockBanner.text = if (isOnion) {
-            "LIVE STOCK [${batch.batchCode}]:  ${batch.availableBags} Bags  |  ${batch.availableKgs} Kgs\n(Purchase Cost: ₹${batch.purchaseRate}/kg)"
-        } else {
-            "LIVE STOCK [${batch.batchCode}]:  ${batch.availableKgs} Kgs Available\n(Purchase Cost: ₹${batch.purchaseRate}/kg)"
-        }
-    }
-
-    private fun setupListeners() {
-        // When Item changes -> toggle Onion fields & load Supplier Stock Batches
-        binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (itemList.isNotEmpty()) {
-                    val item = itemList[pos]
-                    val isOnion = item.unitType == "BAG_KG" || item.itemName.equals("Onion", true)
-                    binding.layoutSalesOnion.visibility = if (isOnion) View.VISIBLE else View.GONE
-                    loadBatchesForItem(item.itemName)
-                }
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        // When Supplier Stock ID changes -> automatically display Bags & Kgs stock
-        binding.spSupplierBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (activeBatches.isNotEmpty() && pos < activeBatches.size) {
-                    updateLiveStockBanner(activeBatches[pos])
-                }
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        // Manual Bag Weights auto-sum (e.g., "45, 49, 60" -> 154 Kgs & 3 Bags)
-        binding.etSalesManualWeights.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
-                val weights = s.toString().split(",", " ", "+")
-                    .mapNotNull { it.trim().toDoubleOrNull() }
-                if (weights.isNotEmpty()) {
-                    binding.etSalesNetKgs.setText(weights.sum().toString())
-                    if (binding.etSalesBags.text.isEmpty()) {
-                        binding.etSalesBags.setText(weights.size.toString())
-                    }
-                }
-            }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-
-        // Add Item to Multi-Item Sales Cart
-        binding.btnAddSalesItem.setOnClickListener {
-            val batch = selectedBatch
-            if (batch == null) {
-                Toast.makeText(this, "Select a valid Supplier Stock ID", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val isOnion = binding.layoutSalesOnion.visibility == View.VISIBLE
-            val bags = if (isOnion) (binding.etSalesBags.text.toString().toIntOrNull() ?: 0) else 0
-            val bagWeightsText = if (isOnion) binding.etSalesManualWeights.text.toString().trim() else ""
-            val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
-            val rate = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
-            val bagRate = if (isOnion) (binding.etSalesBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
-
-            if (netKgs <= 0 || rate <= 0) {
-                Toast.makeText(this, "Enter valid Net Kgs and Sales Rate", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            // Stock Over-sell Safety Warning
-            if (isOnion && bags > batch.availableBags) {
-                Toast.makeText(this, "Warning: Only ${batch.availableBags} Bags available in ${batch.batchCode}!", Toast.LENGTH_LONG).show()
-            } else if (netKgs > batch.availableKgs) {
-                Toast.makeText(this, "Warning: Only ${batch.availableKgs} Kgs available in ${batch.batchCode}!", Toast.LENGTH_LONG).show()
-            }
-
-            val totalBagCharge = bags * bagRate
-            val itemAmount = netKgs * rate
-            val lineTotal = itemAmount + totalBagCharge
-
-            val lineItem = BillItem(
-                itemName = batch.itemName,
-                batchCode = batch.batchCode,
-                supplierName = batch.supplierName,
-                bags = bags,
-                bagWeightsText = bagWeightsText,
-                netKgs = netKgs,
-                ratePerKg = rate,
-                bagChargeRate = bagRate,
-                totalBagCharge = totalBagCharge,
-                itemAmount = itemAmount,
-                lineTotal = lineTotal
-            )
-
-            salesCart.add(lineItem)
-            updateSalesCartUI()
-            clearSalesItemInputs()
-        }
-
-        binding.btnSaveSalesBill.setOnClickListener {
-            saveSalesBill()
-        }
-    }
-
-    private fun updateSalesCartUI() {
+    private fun refreshCartDisplay() {
+        grandTotal = 0.0
         val sb = StringBuilder()
-        var grandTotal = 0.0
-        salesCart.forEachIndexed { idx, it ->
-            sb.append("${idx + 1}. ${it.itemName} [ID: ${it.batchCode} - ${it.supplierName}]\n")
-            if (it.bags > 0) {
-                sb.append("   Bags: ${it.bags} (${it.bagWeightsText}) | Bag Fee: ₹${it.totalBagCharge}\n")
-            }
-            sb.append("   ${it.netKgs} Kg × ₹${it.ratePerKg} = ₹${it.lineTotal}\n\n")
-            grandTotal += it.lineTotal
+        cartItems.forEachIndexed { idx, row ->
+            val name = row["itemName"] as String
+            val bags = row["bags"] as Int
+            val kgs = row["netKgs"] as Double
+            val rate = row["ratePerKg"] as Double
+            val total = row["lineTotal"] as Double
+            grandTotal += total
+
+            val bagInfo = if (bags > 0) " ($bags Bags)" else ""
+            sb.append("${idx + 1}. $name$bagInfo: $kgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
         }
-        binding.tvSalesCartList.text = if (sb.isEmpty()) "No items added to bill yet." else sb.toString()
+        binding.tvSalesCartList.text = if (sb.isEmpty()) "No items added to bill yet." else sb.toString().trim()
         binding.tvSalesGrandTotal.text = "Grand Total: Rs. %.2f".format(grandTotal)
     }
 
-    private fun clearSalesItemInputs() {
-        binding.etSalesBags.text.clear()
-        binding.etSalesManualWeights.text.clear()
-        binding.etSalesNetKgs.text.clear()
-        binding.etSalesRatePerKg.text.clear()
-    }
+    private fun deductStockAndUpdateCustomer(payMode: String) {
+        for (row in cartItems) {
+            val docId = row["batchDocId"] as String
+            val soldBags = row["bags"] as Int
+            val soldKgs = row["netKgs"] as Double
 
-    private fun saveSalesBill() {
-        if (salesCart.isEmpty() || customerList.isEmpty()) {
-            Toast.makeText(this, "Select Customer and add at least 1 item", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val cust = customerList[binding.spCustomer.selectedItemPosition]
-        val dateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
-        val billId = db.collection("transactions").document().id
-        val payMode = binding.spSalesPayMode.selectedItem.toString()
-
-        val totalBags = salesCart.sumOf { it.bags }
-        val totalKgs = salesCart.sumOf { it.netKgs }
-        val totalBagCharges = salesCart.sumOf { it.totalBagCharge }
-        val grandTotal = salesCart.sumOf { it.lineTotal }
-
-        val tx = BillTransaction(
-            billId = billId,
-            billNo = binding.etSalesBillNo.text.toString().ifEmpty { "SAL-${System.currentTimeMillis() % 10000}" },
-            date = dateStr,
-            type = "SALES",
-            partyId = cust.id,
-            partyName = cust.name,
-            paymentMode = payMode,
-            totalBags = totalBags,
-            totalKgs = totalKgs,
-            totalBagCharges = totalBagCharges,
-            grandTotal = grandTotal,
-            items = salesCart
-        )
-
-        val batch = db.batch()
-        batch.set(db.collection("transactions").document(billId), tx)
-
-        // Auto-deduct Bags and Kgs from each selected Supplier Stock Batch
-        for (item in salesCart) {
-            val stockRef = db.collection("stock_batches").document(item.batchCode)
-            if (item.bags > 0) {
-                batch.update(stockRef, "availableBags", FieldValue.increment(-item.bags.toLong()))
+            val batchRef = db.collection("stock_batches").document(docId)
+            db.runTransaction { tr ->
+                val snap = tr.get(batchRef)
+                val currBags = snap.getLong("availableBags") ?: 0L
+                val currKgs = snap.getDouble("availableKgs") ?: 0.0
+                tr.update(batchRef, mapOf(
+                    "availableBags" to (currBags - soldBags).coerceAtLeast(0L),
+                    "availableKgs" to (currKgs - soldKgs).coerceAtLeast(0.0)
+                ))
             }
-            batch.update(stockRef, "availableKgs", FieldValue.increment(-item.netKgs))
         }
 
-        // Update Customer Outstanding Balance if Credit
-        if (payMode == "CREDIT") {
-            batch.update(db.collection("customers").document(cust.id), "currentBalance", FieldValue.increment(grandTotal))
+        if (payMode.equals("Credit", ignoreCase = true) && selectedCustomerId.isNotEmpty()) {
+            val custRef = db.collection("customers").document(selectedCustomerId)
+            db.runTransaction { tr ->
+                val snap = tr.get(custRef)
+                val curr = snap.getDouble("currentBalance") ?: 0.0
+                tr.update(custRef, "currentBalance", curr + grandTotal)
+            }
         }
 
-        batch.commit().addOnSuccessListener {
-            Toast.makeText(this, "Sales Bill Saved & Stock Deducted!", Toast.LENGTH_LONG).show()
-            finish()
-        }.addOnFailureListener {
-            Toast.makeText(this, "Error: ${it.message}", Toast.LENGTH_SHORT).show()
-        }
+        Toast.makeText(this, "Sales Bill Saved & Stock Updated!", Toast.LENGTH_SHORT).show()
+        finish()
     }
 }
