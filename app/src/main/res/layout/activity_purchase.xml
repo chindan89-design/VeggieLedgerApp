@@ -29,25 +29,31 @@
             android:layout_marginBottom="10dp">
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Name (Type to Search) *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1565C0" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Name (Search) *" android:textSize="11sp" android:textStyle="bold" android:textColor="#1565C0" />
                 <AutoCompleteTextView
                     android:id="@+id/actvSupplier"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:hint="Type supplier name..."
                     android:completionThreshold="1"
+                    android:textColor="#000000"
                     android:background="@android:drawable/edit_text"
                     android:padding="8dp"
                     android:textSize="14sp" />
             </LinearLayout>
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="11sp" android:textStyle="bold" />
-                <Spinner android:id="@+id/spPayMode" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
+                <Spinner
+                    android:id="@+id/spPayMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:spinnerMode="dialog"
+                    android:background="@android:drawable/btn_dropdown" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 2: Auto Bill No & Generated Batch ID -->
+        <!-- Row 2: Auto Bill No & Stock Lot ID -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -56,12 +62,12 @@
             android:layout_marginBottom="12dp">
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Bill No" android:textSize="11sp" android:textStyle="bold" />
-                <EditText android:id="@+id/etBillNo" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Auto Bill No" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Bill No" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etBillNo" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Auto Bill No" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
             </LinearLayout>
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stock Lot ID" android:textSize="11sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stock Lot ID" android:textSize="11sp" android:textStyle="bold" android:textColor="#333333" />
                 <TextView android:id="@+id/tvGeneratedBatchId" android:layout_width="match_parent" android:layout_height="48dp" android:text="Auto Lot ID" android:gravity="center_vertical" android:background="#E3F2FD" android:textColor="#1565C0" android:textStyle="bold" android:padding="8dp" />
             </LinearLayout>
         </LinearLayout>
@@ -75,10 +81,47 @@
             android:padding="10dp"
             android:layout_marginBottom="12dp">
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select Item *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" />
-            <Spinner android:id="@+id/spItem" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" android:layout_marginBottom="8dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select Item *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1565C0" android:layout_marginBottom="4dp" />
 
-            <!-- Bags & Bag Charge Side-by-Side (No Manual Weights!) -->
+            <RadioGroup
+                android:id="@+id/rgPurchaseItem"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="#FFFFFF"
+                android:padding="6dp"
+                android:layout_marginBottom="10dp">
+
+                <RadioButton
+                    android:id="@+id/rbPurOnion"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Onion"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rbPurGarlic"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Garlic"
+                    android:textColor="#000000"
+                    android:textStyle="bold" />
+
+                <RadioButton
+                    android:id="@+id/rbPurCoconut"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Coconut"
+                    android:textColor="#000000"
+                    android:textStyle="bold" />
+            </RadioGroup>
+
+            <!-- Bags & Bag Charge Side-by-Side -->
             <LinearLayout
                 android:id="@+id/layoutOnionFields"
                 android:layout_width="match_parent"
@@ -88,13 +131,13 @@
                 android:layout_marginBottom="8dp">
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No. of Bags" android:textSize="12sp" android:textStyle="bold" />
-                    <EditText android:id="@+id/etBags" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:inputType="number" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No. of Bags" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText android:id="@+id/etBags" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:textColor="#000000" android:inputType="number" android:background="@android:drawable/edit_text" android:padding="8dp" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bag Charge / Bag (Rs)" android:textSize="12sp" android:textStyle="bold" />
-                    <EditText android:id="@+id/etBagRate" android:layout_width="match_parent" android:layout_height="48dp" android:text="10" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bag Charge / Bag (Rs)" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText android:id="@+id/etBagRate" android:layout_width="match_parent" android:layout_height="48dp" android:text="10" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -107,22 +150,22 @@
                 android:layout_marginBottom="10dp">
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Total Net Kgs *" android:textSize="12sp" android:textStyle="bold" />
-                    <EditText android:id="@+id/etNetKgs" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.0 Kgs" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Total Net Kgs *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText android:id="@+id/etNetKgs" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.0 Kgs" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rate / Kg (Rs) *" android:textSize="12sp" android:textStyle="bold" />
-                    <EditText android:id="@+id/etRatePerKg" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rate / Kg (Rs) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <EditText android:id="@+id/etRatePerKg" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
                 </LinearLayout>
             </LinearLayout>
 
-            <Button android:id="@+id/btnAddItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO PURCHASE BILL" android:backgroundTint="#1976D2" />
+            <Button android:id="@+id/btnAddItem" android:layout_width="match_parent" android:layout_height="46dp" android:text="+ ADD ITEM TO PURCHASE BILL" android:backgroundTint="#1976D2" android:textColor="#FFFFFF" />
         </LinearLayout>
 
-        <TextView android:id="@+id/tvAddedItemsList" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="No items added yet." android:background="#FFFFFF" android:padding="10dp" android:textSize="13sp" android:layout_marginBottom="10dp" />
+        <TextView android:id="@+id/tvAddedItemsList" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="No items added yet." android:background="#FFFFFF" android:textColor="#000000" android:padding="10dp" android:textSize="13sp" android:layout_marginBottom="10dp" />
         <TextView android:id="@+id/tvGrandTotal" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grand Total: Rs. 0.00" android:textSize="18sp" android:textStyle="bold" android:textColor="#1565C0" android:layout_marginBottom="12dp" />
-        <Button android:id="@+id/btnSavePurchase" android:layout_width="match_parent" android:layout_height="52dp" android:text="SUBMIT PURCHASE &amp; CREATE STOCK" android:backgroundTint="#1565C0" />
+        <Button android:id="@+id/btnSavePurchase" android:layout_width="match_parent" android:layout_height="52dp" android:text="SUBMIT PURCHASE &amp; CREATE STOCK" android:backgroundTint="#1565C0" android:textColor="#FFFFFF" />
 
     </LinearLayout>
 </ScrollView>
