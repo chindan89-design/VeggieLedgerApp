@@ -23,7 +23,7 @@ class SalesActivity : AppCompatActivity() {
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
 
-    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
+    private var selectedItemName: String = "Onion"
     private val matchingBatches = JSONArray()
     private val batchDisplayList = ArrayList<String>()
 
@@ -42,16 +42,15 @@ class SalesActivity : AppCompatActivity() {
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spSalesPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        // Set default items immediately BEFORE listener
-        binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-
-        binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                val item = binding.spSalesItem.selectedItem?.toString() ?: ""
-                binding.layoutSalesOnion.visibility = if (item.contains("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
-                loadBatchesForItem(item)
+        // RadioGroup listener for Item Selection
+        binding.rgSalesItem.setOnCheckedChangeListener { _, checkedId ->
+            selectedItemName = when (checkedId) {
+                R.id.rbSalesGarlic -> "Garlic"
+                R.id.rbSalesCoconut -> "Coconut"
+                else -> "Onion"
             }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
+            binding.layoutSalesOnion.visibility = if (selectedItemName == "Onion") View.VISIBLE else View.GONE
+            loadBatchesForItem(selectedItemName)
         }
 
         binding.spSupplierBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -67,12 +66,10 @@ class SalesActivity : AppCompatActivity() {
         }
 
         loadCustomers()
-        loadItemsFromDb()
-        // Trigger initial load for first item ("Onion")
-        loadBatchesForItem(itemNames[0])
+        // Initial load for default selected radio button ("Onion")
+        loadBatchesForItem("Onion")
 
         binding.btnAddSalesItem.setOnClickListener {
-            val itemName = binding.spSalesItem.selectedItem?.toString() ?: return@setOnClickListener
             val batchIdx = binding.spSupplierBatch.selectedItemPosition
             if (batchIdx < 0 || batchIdx >= matchingBatches.length()) {
                 Toast.makeText(this, "No stock lot selected", Toast.LENGTH_SHORT).show()
@@ -86,7 +83,7 @@ class SalesActivity : AppCompatActivity() {
 
             val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
-            val isOnion = itemName.contains("Onion", ignoreCase = true)
+            val isOnion = selectedItemName == "Onion"
             val bags = if (isOnion) (binding.etSalesBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etSalesBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
@@ -102,7 +99,7 @@ class SalesActivity : AppCompatActivity() {
             val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
             val row = JSONObject()
-            row.put("itemName", itemName)
+            row.put("itemName", selectedItemName)
             row.put("batchDocId", batchDocId)
             row.put("batchCode", batchCode)
             row.put("bags", bags)
@@ -197,18 +194,6 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadItemsFromDb() {
-        db.collection("items").get().addOnSuccessListener { snap ->
-            for (doc in snap) {
-                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
-                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
-                    itemNames.add(n)
-                }
-            }
-            binding.spSalesItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-        }
-    }
-
     private fun loadBatchesForItem(itemName: String) {
         db.collection("stock_batches")
             .get()
@@ -240,7 +225,9 @@ class SalesActivity : AppCompatActivity() {
                     val first = matchingBatches.getJSONObject(0)
                     binding.tvLiveStockBanner.text = "Available Stock: ${first.getLong("availableBags")} Bags | %.2f Kgs".format(first.getDouble("availableKgs"))
                 }
-                binding.spSupplierBatch.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, batchDisplayList)
+                val batchAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
+                batchAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                binding.spSupplierBatch.adapter = batchAdapter
             }
     }
 
