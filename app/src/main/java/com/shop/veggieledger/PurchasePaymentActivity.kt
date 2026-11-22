@@ -22,6 +22,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivityPurchasePaymentBinding
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,7 +49,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private var editingPaymentDocId: String = ""
     private var oldPaymentSupplierId: String = ""
     private var oldPaymentAmount: Double = 0.0
-    private val oldAllocations = ArrayList>()
+    private val oldAllocationsJson = JSONArray()
 
     private val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
 
@@ -209,6 +211,10 @@ class PurchasePaymentActivity : AppCompatActivity() {
         }
     }
 
+    private fun clearJsonArray(arr: JSONArray) {
+        while (arr.length() > 0) arr.remove(0)
+    }
+
     private fun applyPaymentBillUpdates(amount: Double) {
         for (b in pendingBills) {
             if (b.allocatedNow > 0.0) {
@@ -232,7 +238,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
                 val msg = if (isEditMode) "Payment Updated Successfully!" else "Payment Saved & Bill-wise Adjusted!"
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 editingPaymentDocId = ""
-                oldAllocations.clear()
+                clearJsonArray(oldAllocationsJson)
                 resetForm()
                 if (isEditMode) loadPaymentsForEditFilter()
             }
@@ -241,7 +247,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private fun switchToNewMode() {
         isEditMode = false
         editingPaymentDocId = ""
-        oldAllocations.clear()
+        clearJsonArray(oldAllocationsJson)
         binding.layoutEditPayPanel.visibility = View.GONE
         binding.btnModeNewPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
         binding.btnModeEditPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
@@ -254,7 +260,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private fun switchToEditMode() {
         isEditMode = true
         editingPaymentDocId = ""
-        oldAllocations.clear()
+        clearJsonArray(oldAllocationsJson)
         binding.layoutEditPayPanel.visibility = View.VISIBLE
         binding.btnModeEditPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
         binding.btnModeNewPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
@@ -454,22 +460,22 @@ class PurchasePaymentActivity : AppCompatActivity() {
         val modeIdx = modes.indexOfFirst { it.equals(pMode, ignoreCase = true) }
         if (modeIdx >= 0) binding.spPayMode.setSelection(modeIdx)
 
-        oldAllocations.clear()
+        clearJsonArray(oldAllocationsJson)
         val rawAllocs = data["billAllocations"] as? List<*>
         if (rawAllocs != null) {
             for (entry in rawAllocs) {
                 val map = entry as? Map<*, *> ?: continue
-                val cleanMap = HashMap<String, Any>()
-                cleanMap["billDocId"] = map["billDocId"]?.toString() ?: ""
-                cleanMap["allocatedAmount"] = (map["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
-                oldAllocations.add(cleanMap)
+                val obj = JSONObject()
+                obj.put("billDocId", map["billDocId"]?.toString() ?: "")
+                obj.put("allocatedAmount", (map["allocatedAmount"] as? Number)?.toDouble() ?: 0.0)
+                oldAllocationsJson.put(obj)
             }
         }
 
-        // Reverse old allocations on purchase docs so user edits from clean state
-        for (alloc in oldAllocations) {
-            val bDocId = alloc["billDocId"]?.toString() ?: ""
-            val prevAlloc = (alloc["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
+        for (i in 0 until oldAllocationsJson.length()) {
+            val obj = oldAllocationsJson.getJSONObject(i)
+            val bDocId = obj.optString("billDocId", "")
+            val prevAlloc = obj.optDouble("allocatedAmount", 0.0)
             if (bDocId.isNotEmpty() && prevAlloc > 0.0) {
                 val purRef = db.collection("purchases").document(bDocId)
                 db.runTransaction { tr ->
