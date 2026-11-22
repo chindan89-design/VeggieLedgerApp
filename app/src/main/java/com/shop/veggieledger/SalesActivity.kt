@@ -16,16 +16,16 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
-    private val customerMap = mutableMapOf<String, String>() // Name -> ID
-    private val customerNames = mutableListOf<String>()
+    private val customerMap = HashMap<String, String>()
+    private val customerNames = ArrayList<String>()
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
 
-    private val itemNames = mutableListOf("Onion", "Garlic", "Coconut")
-    private val matchingBatches = mutableListOf>()
-    private val batchDisplayList = mutableListOf<String>()
+    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
+    private val matchingBatches = ArrayList>()
+    private val batchDisplayList = ArrayList<String>()
 
-    private val cartItems = mutableListOf>()
+    private val cartItems = ArrayList>()
     private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,17 +35,12 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        // 1. Auto Sales Bill No
         generateAutoSalesBillNo()
 
-        // 2. Payment Modes
-        val payModes = listOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
+        val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spSalesPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        // 3. Load Customers into Empty Searchable Box
         loadCustomers()
-
-        // 4. Load Items
         loadItems()
 
         binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -69,7 +64,6 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        // Add Item to Sales Cart
         binding.btnAddSalesItem.setOnClickListener {
             val itemName = binding.spSalesItem.selectedItem?.toString() ?: return@setOnClickListener
             val batchIdx = binding.spSupplierBatch.selectedItemPosition
@@ -98,19 +92,18 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Formula: (Total Net Kgs * Rate/Kg) + (No. of Bags * Bag Charge)
             val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
-            val row = mapOf(
-                "itemName" to itemName,
-                "batchDocId" to batchDocId,
-                "batchCode" to batchCode,
-                "bags" to bags,
-                "bagRate" to bagRate,
-                "netKgs" to netKgs,
-                "ratePerKg" to ratePerKg,
-                "lineTotal" to lineTotal
-            )
+            val row = HashMap<String, Any>()
+            row["itemName"] = itemName
+            row["batchDocId"] = batchDocId
+            row["batchCode"] = batchCode
+            row["bags"] = bags
+            row["bagRate"] = bagRate
+            row["netKgs"] = netKgs
+            row["ratePerKg"] = ratePerKg
+            row["lineTotal"] = lineTotal
+
             cartItems.add(row)
             refreshCartDisplay()
 
@@ -119,7 +112,6 @@ class SalesActivity : AppCompatActivity() {
             binding.etSalesRatePerKg.setText("")
         }
 
-        // Submit Sales Bill
         binding.btnSaveSalesBill.setOnClickListener {
             val typedCustomer = binding.actvCustomer.text.toString().trim()
             if (typedCustomer.isEmpty() || !customerMap.containsKey(typedCustomer)) {
@@ -179,7 +171,7 @@ class SalesActivity : AppCompatActivity() {
             }
             val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, customerNames)
             binding.actvCustomer.setAdapter(adapter)
-            binding.actvCustomer.setText("") // Empty by default
+            binding.actvCustomer.setText("")
         }
     }
 
@@ -208,12 +200,11 @@ class SalesActivity : AppCompatActivity() {
                         val bId = doc.getString("batchId") ?: doc.id
                         val supName = doc.getString("supplierName") ?: ""
                         val availBags = doc.getLong("availableBags") ?: 0L
-                        val map = mapOf(
-                            "docId" to doc.id,
-                            "batchId" to bId,
-                            "availableBags" to availBags,
-                            "availableKgs" to availKgs
-                        )
+                        val map = HashMap<String, Any>()
+                        map["docId"] = doc.id
+                        map["batchId"] = bId
+                        map["availableBags"] = availBags
+                        map["availableKgs"] = availKgs
                         matchingBatches.add(map)
                         batchDisplayList.add("$bId ($supName) - %.1f Kgs".format(availKgs))
                     }
@@ -229,7 +220,8 @@ class SalesActivity : AppCompatActivity() {
     private fun refreshCartDisplay() {
         grandTotal = 0.0
         val sb = StringBuilder()
-        cartItems.forEachIndexed { idx, row ->
+        for (idx in cartItems.indices) {
+            val row = cartItems[idx]
             val name = row["itemName"] as String
             val bags = row["bags"] as Int
             val kgs = row["netKgs"] as Double
