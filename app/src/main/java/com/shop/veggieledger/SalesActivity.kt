@@ -1,5 +1,6 @@
 package com.shop.veggieledger
 
+import android.app.DatePickerDialog
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -22,7 +23,9 @@ class SalesActivity : AppCompatActivity() {
     private val customerNames = ArrayList<String>()
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
+    private var selectedDateStr: String = ""
 
+    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
     private var selectedItemName: String = "Onion"
     private val matchingBatches = JSONArray()
     private val batchDisplayList = ArrayList<String>()
@@ -37,21 +40,38 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
+        // 1. Setup Date Picker (First Field)
+        val cal = Calendar.getInstance()
+        selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+        binding.etSalesDate.setText(selectedDateStr)
+        binding.etSalesDate.setOnClickListener {
+            DatePickerDialog(this, { _, y, m, d ->
+                cal.set(y, m, d)
+                selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+                binding.etSalesDate.setText(selectedDateStr)
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+        }
+
+        // 2. Setup Item Dropdown (Second Field)
+        val defaultItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
+        defaultItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spSalesItem.adapter = defaultItemAdapter
+
+        binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                selectedItemName = binding.spSalesItem.selectedItem?.toString() ?: "Onion"
+                binding.layoutSalesOnion.visibility = if (selectedItemName.equals("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
+                loadBatchesForItem(selectedItemName)
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
         generateAutoSalesBillNo()
 
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
-        binding.spSalesPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
-
-        // RadioGroup listener for Item Selection
-        binding.rgSalesItem.setOnCheckedChangeListener { _, checkedId ->
-            selectedItemName = when (checkedId) {
-                R.id.rbSalesGarlic -> "Garlic"
-                R.id.rbSalesCoconut -> "Coconut"
-                else -> "Onion"
-            }
-            binding.layoutSalesOnion.visibility = if (selectedItemName == "Onion") View.VISIBLE else View.GONE
-            loadBatchesForItem(selectedItemName)
-        }
+        val payAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
+        payAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spSalesPayMode.adapter = payAdapter
 
         binding.spSupplierBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
@@ -65,9 +85,9 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
+        loadItemsFromDb()
         loadCustomers()
-        // Initial load for default selected radio button ("Onion")
-        loadBatchesForItem("Onion")
+        loadBatchesForItem(selectedItemName)
 
         binding.btnAddSalesItem.setOnClickListener {
             val batchIdx = binding.spSupplierBatch.selectedItemPosition
@@ -83,7 +103,7 @@ class SalesActivity : AppCompatActivity() {
 
             val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
-            val isOnion = selectedItemName == "Onion"
+            val isOnion = selectedItemName.equals("Onion", ignoreCase = true)
             val bags = if (isOnion) (binding.etSalesBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etSalesBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
@@ -131,7 +151,6 @@ class SalesActivity : AppCompatActivity() {
             selectedCustomerId = customerMap[typedCustomer] ?: ""
             val billNo = binding.etSalesBillNo.text.toString().trim()
             val payMode = binding.spSalesPayMode.selectedItem.toString()
-            val today = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
 
             val itemsForDb = ArrayList<Any>()
             for (i in 0 until cartItems.length()) {
@@ -155,7 +174,7 @@ class SalesActivity : AppCompatActivity() {
                 "customerId" to selectedCustomerId,
                 "customerName" to selectedCustomerName,
                 "payMode" to payMode,
-                "date" to today,
+                "date" to selectedDateStr,
                 "timestamp" to System.currentTimeMillis(),
                 "items" to itemsForDb,
                 "grandTotal" to grandTotal
@@ -175,6 +194,20 @@ class SalesActivity : AppCompatActivity() {
         db.collection("sales").get().addOnSuccessListener { snap ->
             val nextNum = snap.size() + 1
             binding.etSalesBillNo.setText(String.format("SAL-%03d", nextNum))
+        }
+    }
+
+    private fun loadItemsFromDb() {
+        db.collection("items").get().addOnSuccessListener { snap ->
+            for (doc in snap) {
+                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
+                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
+                    itemNames.add(n)
+                }
+            }
+            val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding.spSalesItem.adapter = adapter
         }
     }
 
