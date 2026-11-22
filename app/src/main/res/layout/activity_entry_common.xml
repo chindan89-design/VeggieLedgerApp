@@ -21,7 +21,6 @@
             android:gravity="center"
             android:layout_marginBottom="14dp" />
 
-        <!-- Pending Balance Banner -->
         <TextView
             android:id="@+id/tvCurrentBalInfo"
             android:layout_width="match_parent"
@@ -34,7 +33,7 @@
             android:background="#FFF3E0"
             android:layout_marginBottom="14dp" />
 
-        <!-- Row 1: Party/Type & Payment Mode (Side-by-Side) -->
+        <!-- Row 1: Searchable Party Name & Payment Mode -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -42,54 +41,32 @@
             android:weightSum="2"
             android:layout_marginBottom="12dp">
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginEnd="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Select Party / Type *"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Party Name (Search) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#1B5E20" />
+                <AutoCompleteTextView
+                    android:id="@+id/actvEntryParty"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="Type name..."
+                    android:completionThreshold="1"
+                    android:background="@android:drawable/edit_text"
+                    android:padding="8dp"
+                    android:textSize="14sp" />
                 <Spinner
                     android:id="@+id/spEntryPartyOrType"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
+                    android:visibility="gone"
                     android:background="@android:drawable/btn_dropdown" />
             </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Payment Mode *"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <Spinner
-                    android:id="@+id/spEntryMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:background="@android:drawable/btn_dropdown" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Payment Mode *" android:textSize="12sp" android:textStyle="bold" />
+                <Spinner android:id="@+id/spEntryMode" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 2: Amount & Reference/Category (Side-by-Side) -->
+        <!-- Row 2: Amount & Notes -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -97,61 +74,17 @@
             android:weightSum="2"
             android:layout_marginBottom="12dp">
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginEnd="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Enter Amount (Rs.) *"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/etEntryAmount"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="0.00"
-                    android:inputType="numberDecimal"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enter Amount (Rs.) *" android:textSize="12sp" android:textStyle="bold" />
+                <EditText android:id="@+id/etEntryAmount" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
             </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="6dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Notes / Remarks"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333"
-                    android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/etEntryNotes"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="Optional notes"
-                    android:background="@android:drawable/edit_text"
-                    android:padding="8dp"
-                    android:textSize="14sp" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Notes / Remarks" android:textSize="12sp" android:textStyle="bold" />
+                <EditText android:id="@+id/etEntryNotes" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Optional notes" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Category / Reference (Visible for Expense/Income) -->
         <EditText
             android:id="@+id/etEntryCategoryOrRef"
             android:layout_width="match_parent"
