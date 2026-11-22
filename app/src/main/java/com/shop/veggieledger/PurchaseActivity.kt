@@ -13,6 +13,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.floor
 
 class PurchaseActivity : AppCompatActivity() {
 
@@ -41,7 +42,6 @@ class PurchaseActivity : AppCompatActivity() {
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        // Supplier name select / type pannum pothu Stock Lot ID auto-update aagum
         binding.actvSupplier.setOnItemClickListener { _, _, _, _ ->
             updateLotIdPreview()
         }
@@ -57,38 +57,70 @@ class PurchaseActivity : AppCompatActivity() {
         binding.actvSupplier.addTextChangedListener(liveIdWatcher)
         binding.etBags.addTextChangedListener(liveIdWatcher)
 
-        // RadioGroup listener for Item Selection
+        // Auto calculate Kudumi (3% with <0.5 floor and >=0.5 +1 rule) ONLY for Coconut
+        binding.etNetKgs.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (selectedItemName == "Coconut") {
+                    calculateCoconutKudumi()
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
         binding.rgPurchaseItem.setOnCheckedChangeListener { _, checkedId ->
             selectedItemName = when (checkedId) {
                 R.id.rbPurGarlic -> "Garlic"
                 R.id.rbPurCoconut -> "Coconut"
                 else -> "Onion"
             }
+
+            // Show Bags ONLY for Onion
             binding.layoutOnionFields.visibility = if (selectedItemName == "Onion") View.VISIBLE else View.GONE
+
+            // Show Kudumi & Thadukki ONLY for Coconut
+            if (selectedItemName == "Coconut") {
+                binding.layoutCoconutFields.visibility = View.VISIBLE
+                calculateCoconutKudumi()
+            } else {
+                binding.layoutCoconutFields.visibility = View.GONE
+                binding.etKudumi.setText("")
+                binding.etThadukki.setText("")
+            }
+
             updateLotIdPreview()
         }
 
         loadSuppliers()
 
         binding.btnAddItem.setOnClickListener {
-            val netKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+            val purchaseKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
             val isOnion = selectedItemName == "Onion"
+            val isCoconut = selectedItemName == "Coconut"
+
             val bags = if (isOnion) (binding.etBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
-            if (netKgs <= 0.0 || ratePerKg <= 0.0) {
-                Toast.makeText(this, "Enter valid Net Kgs and Rate/Kg", Toast.LENGTH_SHORT).show()
+            val kudumi = if (isCoconut) (binding.etKudumi.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+            val thadukki = if (isCoconut) (binding.etThadukki.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+
+            if (purchaseKgs <= 0.0 || ratePerKg <= 0.0) {
+                Toast.makeText(this, "Enter valid Purchase Kgs and Rate/Kg", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
+            val netKgs = (purchaseKgs - kudumi - thadukki).coerceAtLeast(0.0)
             val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
 
             val row = JSONObject()
             row.put("itemName", selectedItemName)
             row.put("bags", bags)
             row.put("bagRate", bagRate)
+            row.put("purchaseKgs", purchaseKgs)
+            row.put("kudumi", kudumi)
+            row.put("thadukki", thadukki)
             row.put("netKgs", netKgs)
             row.put("ratePerKg", ratePerKg)
             row.put("lineTotal", lineTotal)
@@ -99,6 +131,8 @@ class PurchaseActivity : AppCompatActivity() {
             binding.etBags.setText("")
             binding.etNetKgs.setText("")
             binding.etRatePerKg.setText("")
+            binding.etKudumi.setText("")
+            binding.etThadukki.setText("")
             updateLotIdPreview()
         }
 
@@ -129,6 +163,9 @@ class PurchaseActivity : AppCompatActivity() {
                 map["itemName"] = row.getString("itemName")
                 map["bags"] = row.getInt("bags")
                 map["bagRate"] = row.getDouble("bagRate")
+                map["purchaseKgs"] = row.getDouble("purchaseKgs")
+                map["kudumi"] = row.getDouble("kudumi")
+                map["thadukki"] = row.getDouble("thadukki")
                 map["netKgs"] = row.getDouble("netKgs")
                 map["ratePerKg"] = row.getDouble("ratePerKg")
                 map["lineTotal"] = row.getDouble("lineTotal")
@@ -159,6 +196,19 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
+    private fun calculateCoconutKudumi() {
+        val purKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+        if (purKgs > 0.0) {
+            val rawThreePercent = purKgs * 0.03
+            val wholePart = floor(rawThreePercent).toInt()
+            val decimalPart = rawThreePercent - wholePart
+            val finalKudumi = if (decimalPart >= 0.5) (wholePart + 1) else wholePart
+            binding.etKudumi.setText(finalKudumi.toString())
+        } else {
+            binding.etKudumi.setText("")
+        }
+    }
+
     private fun fetchNextBillNumber() {
         db.collection("purchases").get().addOnSuccessListener { snap ->
             val nextNum = snap.size() + 1
@@ -176,15 +226,13 @@ class PurchaseActivity : AppCompatActivity() {
         }
         val dayOnly = SimpleDateFormat("dd", Locale.getDefault()).format(Date())
 
-        // Cart-la irukkara bags + ippo type pannirukkara bags total
         var totalBags = 0
         for (i in 0 until cartItems.length()) {
             totalBags += cartItems.getJSONObject(i).getInt("bags")
         }
-        val currentTypingBags = binding.etBags.text.toString().toIntOrNull() ?: 0
+        val currentTypingBags = if (selectedItemName == "Onion") (binding.etBags.text.toString().toIntOrNull() ?: 0) else 0
         totalBags += currentTypingBags
 
-        // Format: First 3 letters of Supplier + Day + Total Bags (e.g., MUR-22-50)
         binding.tvGeneratedBatchId.text = "$prefix-$dayOnly-$totalBags"
     }
 
@@ -211,13 +259,20 @@ class PurchaseActivity : AppCompatActivity() {
             val row = cartItems.getJSONObject(idx)
             val name = row.getString("itemName")
             val bags = row.getInt("bags")
-            val kgs = row.getDouble("netKgs")
+            val purKgs = row.getDouble("purchaseKgs")
+            val kudumi = row.getDouble("kudumi")
+            val thadukki = row.getDouble("thadukki")
+            val netKgs = row.getDouble("netKgs")
             val rate = row.getDouble("ratePerKg")
             val total = row.getDouble("lineTotal")
             grandTotal += total
 
-            val bagInfo = if (bags > 0) " ($bags Bags)" else ""
-            sb.append("${idx + 1}. $name$bagInfo: $kgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
+            if (name == "Coconut") {
+                sb.append("${idx + 1}. $name | Pur: $purKgs - (K:$kudumi + T:$thadukki) = Net $netKgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
+            } else {
+                val bagInfo = if (bags > 0) " ($bags Bags)" else ""
+                sb.append("${idx + 1}. $name$bagInfo: $netKgs Kgs x Rs.$rate = Rs.%.2f\n".format(total))
+            }
         }
         binding.tvAddedItemsList.text = if (sb.isEmpty()) "No items added yet." else sb.toString().trim()
         binding.tvGrandTotal.text = "Grand Total: Rs. %.2f".format(grandTotal)
@@ -228,7 +283,7 @@ class PurchaseActivity : AppCompatActivity() {
             val row = cartItems.getJSONObject(i)
             val itemName = row.getString("itemName")
             val bags = row.getInt("bags")
-            val kgs = row.getDouble("netKgs")
+            val netKgs = row.getDouble("netKgs")
             val rate = row.getDouble("ratePerKg")
 
             val batchDoc = db.collection("stock_batches").document()
@@ -238,7 +293,7 @@ class PurchaseActivity : AppCompatActivity() {
                 "supplierName" to selectedSupplierName,
                 "itemName" to itemName,
                 "availableBags" to bags,
-                "availableKgs" to kgs,
+                "availableKgs" to netKgs,
                 "purchaseRate" to rate,
                 "timestamp" to System.currentTimeMillis()
             )
