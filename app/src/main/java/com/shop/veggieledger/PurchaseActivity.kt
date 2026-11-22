@@ -1,6 +1,8 @@
 package com.shop.veggieledger
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Toast
@@ -33,10 +35,27 @@ class PurchaseActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Purchase Entry"
 
-        generateAutoBillAndBatch()
+        fetchNextBillNumber()
+        updateLotIdPreview()
 
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
+
+        // Supplier name select / type pannum pothu Stock Lot ID auto-update aagum
+        binding.actvSupplier.setOnItemClickListener { _, _, _, _ ->
+            updateLotIdPreview()
+        }
+
+        val liveIdWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                updateLotIdPreview()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        }
+
+        binding.actvSupplier.addTextChangedListener(liveIdWatcher)
+        binding.etBags.addTextChangedListener(liveIdWatcher)
 
         // RadioGroup listener for Item Selection
         binding.rgPurchaseItem.setOnCheckedChangeListener { _, checkedId ->
@@ -46,6 +65,7 @@ class PurchaseActivity : AppCompatActivity() {
                 else -> "Onion"
             }
             binding.layoutOnionFields.visibility = if (selectedItemName == "Onion") View.VISIBLE else View.GONE
+            updateLotIdPreview()
         }
 
         loadSuppliers()
@@ -79,6 +99,7 @@ class PurchaseActivity : AppCompatActivity() {
             binding.etBags.setText("")
             binding.etNetKgs.setText("")
             binding.etRatePerKg.setText("")
+            updateLotIdPreview()
         }
 
         binding.btnSavePurchase.setOnClickListener {
@@ -94,6 +115,8 @@ class PurchaseActivity : AppCompatActivity() {
 
             selectedSupplierName = typedSupplier
             selectedSupplierId = supplierMap[typedSupplier] ?: ""
+            updateLotIdPreview()
+
             val billNo = binding.etBillNo.text.toString().trim()
             val batchId = binding.tvGeneratedBatchId.text.toString().trim()
             val payMode = binding.spPayMode.selectedItem.toString()
@@ -136,13 +159,33 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-    private fun generateAutoBillAndBatch() {
+    private fun fetchNextBillNumber() {
         db.collection("purchases").get().addOnSuccessListener { snap ->
             val nextNum = snap.size() + 1
             binding.etBillNo.setText(String.format("PUR-%03d", nextNum))
         }
-        val shortTime = SimpleDateFormat("ddMM-HHmm", Locale.getDefault()).format(Date())
-        binding.tvGeneratedBatchId.text = "LOT-$shortTime"
+    }
+
+    private fun updateLotIdPreview() {
+        val supplierName = binding.actvSupplier.text.toString()
+        val cleanName = supplierName.replace("[^A-Za-z]".toRegex(), "").uppercase(Locale.getDefault())
+        val prefix = when {
+            cleanName.length >= 3 -> cleanName.substring(0, 3)
+            cleanName.isNotEmpty() -> cleanName.padEnd(3, 'X')
+            else -> "SUP"
+        }
+        val dayOnly = SimpleDateFormat("dd", Locale.getDefault()).format(Date())
+
+        // Cart-la irukkara bags + ippo type pannirukkara bags total
+        var totalBags = 0
+        for (i in 0 until cartItems.length()) {
+            totalBags += cartItems.getJSONObject(i).getInt("bags")
+        }
+        val currentTypingBags = binding.etBags.text.toString().toIntOrNull() ?: 0
+        totalBags += currentTypingBags
+
+        // Format: First 3 letters of Supplier + Day + Total Bags (e.g., MUR-22-50)
+        binding.tvGeneratedBatchId.text = "$prefix-$dayOnly-$totalBags"
     }
 
     private fun loadSuppliers() {
@@ -211,7 +254,7 @@ class PurchaseActivity : AppCompatActivity() {
             }
         }
 
-        Toast.makeText(this, "Purchase Saved & Stock Added!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Purchase Saved ($batchId) & Stock Added!", Toast.LENGTH_SHORT).show()
         finish()
     }
 }
