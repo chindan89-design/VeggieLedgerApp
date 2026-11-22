@@ -10,19 +10,22 @@
         android:id="@+id/tvReportTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="OUTSTANDING REPORT SHEET"
+        android:text="REPORT SHEET"
         android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="#1B5E20"
         android:layout_marginBottom="8dp" />
 
+    <!-- Group Filter (Customer Outstanding-க்கு மட்டும் பயன்படும்) -->
     <Spinner
         android:id="@+id/spReportGroupFilter"
         android:layout_width="match_parent"
         android:layout_height="46dp"
         android:background="@android:drawable/btn_dropdown"
+        android:visibility="gone"
         android:layout_marginBottom="8dp" />
 
+    <!-- Customer Outstanding Summary -->
     <TextView
         android:id="@+id/tvReportTotal"
         android:layout_width="match_parent"
@@ -33,14 +36,55 @@
         android:textColor="#D84315"
         android:background="#FFF3E0"
         android:padding="10dp"
+        android:visibility="gone"
         android:layout_marginBottom="8dp" />
 
+    <!-- Supplier Outstanding & Profit/Loss Summary -->
+    <TextView
+        android:id="@+id/tvReportSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Summary Loading..."
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textColor="#1565C0"
+        android:background="#E3F2FD"
+        android:padding="10dp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Customer Outstanding List -->
     <ListView
         android:id="@+id/lvReportSheet"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:background="#FFFFFF"
-        android:dividerHeight="1dp" />
+        android:dividerHeight="1dp"
+        android:visibility="gone" />
+
+    <!-- Supplier Outstanding & Profit/Loss Body -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#FFFFFF"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/tvReportBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="#212121" />
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnShareReport"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="SHARE / EXPORT REPORT"
+        android:backgroundTint="#1B5E20"
+        android:textColor="#FFFFFF"
+        android:layout_marginTop="8dp" />
 
 </LinearLayout>
