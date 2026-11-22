@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivityPurchaseBinding
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -23,7 +24,7 @@ class PurchaseActivity : AppCompatActivity() {
     private var selectedSupplierName: String = ""
 
     private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
-    private val cartItems = ArrayList<JSONObject>()
+    private val cartItems = JSONArray()
     private var grandTotal = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,23 +39,26 @@ class PurchaseActivity : AppCompatActivity() {
         val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
         binding.spPayMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, payModes)
 
-        loadSuppliers()
-        loadItems()
+        // Set default items immediately BEFORE listener
+        binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
 
         binding.spItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 val item = binding.spItem.selectedItem?.toString() ?: ""
-                binding.layoutOnionFields.visibility = if (item.equals("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
+                binding.layoutOnionFields.visibility = if (item.contains("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
+
+        loadSuppliers()
+        loadItemsFromDb()
 
         binding.btnAddItem.setOnClickListener {
             val itemName = binding.spItem.selectedItem?.toString() ?: return@setOnClickListener
             val netKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
-            val isOnion = itemName.equals("Onion", ignoreCase = true)
+            val isOnion = itemName.contains("Onion", ignoreCase = true)
             val bags = if (isOnion) (binding.etBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
@@ -73,7 +77,7 @@ class PurchaseActivity : AppCompatActivity() {
             row.put("ratePerKg", ratePerKg)
             row.put("lineTotal", lineTotal)
 
-            cartItems.add(row)
+            cartItems.put(row)
             refreshCartDisplay()
 
             binding.etBags.setText("")
@@ -87,7 +91,7 @@ class PurchaseActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please search and select a valid Supplier", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (cartItems.isEmpty()) {
+            if (cartItems.length() == 0) {
                 Toast.makeText(this, "Add at least one item to bill", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -99,8 +103,9 @@ class PurchaseActivity : AppCompatActivity() {
             val payMode = binding.spPayMode.selectedItem.toString()
             val today = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
 
-            val itemsForDb = ArrayList<HashMap<String, Any>>()
-            for (row in cartItems) {
+            val itemsForDb = ArrayList<Any>()
+            for (i in 0 until cartItems.length()) {
+                val row = cartItems.getJSONObject(i)
                 val map = HashMap<String, Any>()
                 map["itemName"] = row.getString("itemName")
                 map["bags"] = row.getInt("bags")
@@ -160,33 +165,23 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-            private fun loadItems() {
-        // உடனே default items (Onion, Garlic, Coconut) தெரியும்படி set செய்தல்
-        binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-
+    private fun loadItemsFromDb() {
         db.collection("items").get().addOnSuccessListener { snap ->
-            val fetched = ArrayList<String>()
             for (doc in snap) {
-                val n = doc.getString("name") ?: doc.getString("itemName")
-                if (!n.isNullOrBlank()) {
-                    fetched.add(n)
+                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
+                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
+                    itemNames.add(n)
                 }
             }
-            if (fetched.isNotEmpty()) {
-                itemNames.clear()
-                itemNames.addAll(fetched)
-                binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
-            }
+            binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
         }
     }
-
-        
 
     private fun refreshCartDisplay() {
         grandTotal = 0.0
         val sb = StringBuilder()
-        for (idx in cartItems.indices) {
-            val row = cartItems[idx]
+        for (idx in 0 until cartItems.length()) {
+            val row = cartItems.getJSONObject(idx)
             val name = row.getString("itemName")
             val bags = row.getInt("bags")
             val kgs = row.getDouble("netKgs")
@@ -202,7 +197,8 @@ class PurchaseActivity : AppCompatActivity() {
     }
 
     private fun updateStockAndSupplierBalance(batchId: String, payMode: String) {
-        for (row in cartItems) {
+        for (i in 0 until cartItems.length()) {
+            val row = cartItems.getJSONObject(i)
             val itemName = row.getString("itemName")
             val bags = row.getInt("bags")
             val kgs = row.getDouble("netKgs")
