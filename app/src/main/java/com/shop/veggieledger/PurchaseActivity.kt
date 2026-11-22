@@ -160,7 +160,7 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-        private fun loadItems() {
+            private fun loadItems() {
         // உடனே default items (Onion, Garlic, Coconut) தெரியும்படி set செய்தல்
         binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
 
@@ -178,7 +178,8 @@ class PurchaseActivity : AppCompatActivity() {
                 binding.spItem.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, itemNames)
             }
         }
-        }
+    }
+
         
 
     private fun refreshCartDisplay() {
