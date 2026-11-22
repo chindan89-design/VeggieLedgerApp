@@ -49,6 +49,7 @@ class SalesReceiptActivity : AppCompatActivity() {
     private var editingReceiptDocId: String = ""
     private var oldReceiptCustomerId: String = ""
     private var oldReceiptAmount: Double = 0.0
+    private var oldReceiptDiscount: Double = 0.0
     private val oldAllocationsJson = JSONArray()
 
     private val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
@@ -119,17 +120,21 @@ class SalesReceiptActivity : AppCompatActivity() {
             showCustomerSearchDialog()
         }
 
-        binding.etRecAmount.addTextChangedListener(object : TextWatcher {
+        val amountWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 allocateAmountToBills()
                 refreshBillWiseGrid()
             }
             override fun afterTextChanged(s: Editable?) {}
-        })
+        }
+        binding.etRecAmount.addTextChangedListener(amountWatcher)
+        binding.etRecDiscount.addTextChangedListener(amountWatcher)
 
         binding.btnSaveReceipt.setOnClickListener {
             val amount = binding.etRecAmount.text.toString().toDoubleOrNull() ?: 0.0
+            val discount = binding.etRecDiscount.text.toString().toDoubleOrNull() ?: 0.0
+            val totalSettled = amount + discount
             val recNo = binding.etRecNo.text.toString().trim()
             val mode = binding.spRecMode.selectedItem?.toString() ?: "Cash"
             val remarks = binding.etRecRemarks.text.toString().trim()
@@ -138,8 +143,8 @@ class SalesReceiptActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please select a Customer", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (amount <= 0.0) {
-                Toast.makeText(this, "Enter valid Receipt Amount", Toast.LENGTH_SHORT).show()
+            if (totalSettled <= 0.0) {
+                Toast.makeText(this, "Enter valid Receipt Amount or Discount", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (isEditMode && editingReceiptDocId.isEmpty()) {
@@ -170,13 +175,15 @@ class SalesReceiptActivity : AppCompatActivity() {
                     "customerId" to selectedCustomerId,
                     "customerName" to selectedCustomerName,
                     "amount" to amount,
+                    "discount" to discount,
+                    "totalSettled" to totalSettled,
                     "payMode" to mode,
                     "remarks" to remarks,
                     "billAllocations" to allocationsForDb
                 )
                 db.collection("receipts").document(editingReceiptDocId).update(updateData)
                     .addOnSuccessListener {
-                        applyReceiptBillUpdates(amount)
+                        applyReceiptBillUpdates(totalSettled)
                     }
                     .addOnFailureListener {
                         binding.btnSaveReceipt.isEnabled = true
@@ -191,6 +198,8 @@ class SalesReceiptActivity : AppCompatActivity() {
                     "customerId" to selectedCustomerId,
                     "customerName" to selectedCustomerName,
                     "amount" to amount,
+                    "discount" to discount,
+                    "totalSettled" to totalSettled,
                     "payMode" to mode,
                     "remarks" to remarks,
                     "billAllocations" to allocationsForDb,
@@ -199,7 +208,7 @@ class SalesReceiptActivity : AppCompatActivity() {
 
                 db.collection("receipts").document(recId).set(recData)
                     .addOnSuccessListener {
-                        applyReceiptBillUpdates(amount)
+                        applyReceiptBillUpdates(totalSettled)
                     }
                     .addOnFailureListener {
                         binding.btnSaveReceipt.isEnabled = true
@@ -213,7 +222,7 @@ class SalesReceiptActivity : AppCompatActivity() {
         while (arr.length() > 0) arr.remove(0)
     }
 
-    private fun applyReceiptBillUpdates(amount: Double) {
+    private fun applyReceiptBillUpdates(totalSettled: Double) {
         for (b in pendingBills) {
             if (b.allocatedNow > 0.0) {
                 val newPaid = b.alreadyPaid + b.allocatedNow
@@ -229,7 +238,7 @@ class SalesReceiptActivity : AppCompatActivity() {
             }
         }
 
-        val updatedBalance = (calculatedTotalOutstanding - amount).coerceAtLeast(0.0)
+        val updatedBalance = (calculatedTotalOutstanding - totalSettled).coerceAtLeast(0.0)
         db.collection("customers").document(selectedCustomerId)
             .set(mapOf("currentBalance" to updatedBalance), SetOptions.merge())
             .addOnCompleteListener {
@@ -295,6 +304,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                     matchCount++
                     val rNo = doc.getString("receiptNo") ?: doc.id
                     val amt = doc.getDouble("amount") ?: 0.0
+                    val disc = doc.getDouble("discount") ?: 0.0
                     val pMode = doc.getString("payMode") ?: "Cash"
 
                     val rowCard = LinearLayout(this)
@@ -309,8 +319,9 @@ class SalesReceiptActivity : AppCompatActivity() {
                     cardLp.setMargins(0, 0, 0, 10)
                     rowCard.layoutParams = cardLp
 
+                    val discInfo = if (disc > 0.0) " | Disc: %.2f".format(disc) else ""
                     val infoTv = TextView(this)
-                    infoTv.text = "$rNo | $cName\n$pMode | Rs. %.2f".format(amt)
+                    infoTv.text = "$rNo \vert{}$cName\n$pMode \vert{} Rec: Rs. \%.2f$discInfo".format(amt)
                     infoTv.setTextColor(Color.parseColor("#1B5E20"))
                     infoTv.setTypeface(null, Typeface.BOLD)
                     infoTv.textSize = 13f
@@ -378,6 +389,8 @@ class SalesReceiptActivity : AppCompatActivity() {
     private fun deleteReceiptAndRestore(docId: String, data: Map<String, Any>) {
         val custId = data["customerId"]?.toString() ?: ""
         val amt = (data["amount"] as? Number)?.toDouble() ?: 0.0
+        val disc = (data["discount"] as? Number)?.toDouble() ?: 0.0
+        val totalRev = amt + disc
         val rawAllocs = data["billAllocations"] as? List<*>
 
         db.collection("receipts").document(docId).delete()
@@ -414,7 +427,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                         val snap = tr.get(custRef)
                         if (snap.exists()) {
                             val curr = snap.getDouble("currentBalance") ?: 0.0
-                            tr.update(custRef, "currentBalance", curr + amt)
+                            tr.update(custRef, "currentBalance", curr + totalRev)
                         }
                     }
                 }
@@ -435,6 +448,7 @@ class SalesReceiptActivity : AppCompatActivity() {
         editingReceiptDocId = docId
         oldReceiptCustomerId = data["customerId"]?.toString() ?: ""
         oldReceiptAmount = (data["amount"] as? Number)?.toDouble() ?: 0.0
+        oldReceiptDiscount = (data["discount"] as? Number)?.toDouble() ?: 0.0
 
         val rNo = data["receiptNo"]?.toString() ?: ""
         val cName = data["customerName"]?.toString() ?: ""
@@ -490,6 +504,7 @@ class SalesReceiptActivity : AppCompatActivity() {
         }
 
         binding.etRecAmount.setText("%.2f".format(oldReceiptAmount))
+        binding.etRecDiscount.setText(if (oldReceiptDiscount > 0.0) "%.2f".format(oldReceiptDiscount) else "")
         loadPendingBillsForCustomer(selectedCustomerId, selectedCustomerName, selectedCustomerOpBal)
         Toast.makeText(this, "Loaded $rNo for editing", Toast.LENGTH_SHORT).show()
     }
@@ -610,7 +625,12 @@ class SalesReceiptActivity : AppCompatActivity() {
     }
 
     private fun allocateAmountToBills() {
-        var remaining = binding.etRecAmount.text.toString().toDoubleOrNull() ?: 0.0
+        val amt = binding.etRecAmount.text.toString().toDoubleOrNull() ?: 0.0
+        val disc = binding.etRecDiscount.text.toString().toDoubleOrNull() ?: 0.0
+        var remaining = amt + disc
+
+        binding.tvRecTotalSettled.text = "Total Settled:\nRs. %.2f".format(remaining)
+
         for (b in pendingBills) b.allocatedNow = 0.0
 
         if (targetSpecificBillDocId.isNotEmpty()) {
@@ -686,7 +706,9 @@ class SalesReceiptActivity : AppCompatActivity() {
 
             tr.setOnClickListener {
                 targetSpecificBillDocId = b.docId
-                binding.etRecAmount.setText("%.2f".format(b.pendingAmount))
+                val currDisc = binding.etRecDiscount.text.toString().toDoubleOrNull() ?: 0.0
+                val netToPay = (b.pendingAmount - currDisc).coerceAtLeast(0.0)
+                binding.etRecAmount.setText("%.2f".format(netToPay))
                 Toast.makeText(this, "Selected ${b.billNo} (Rs. %.2f)".format(b.pendingAmount), Toast.LENGTH_SHORT).show()
             }
 
@@ -732,7 +754,9 @@ class SalesReceiptActivity : AppCompatActivity() {
 
         binding.etSearchCustomer.setText("")
         binding.tvCustOutstanding.text = "Total Outstanding Balance: Rs. 0.00"
+        binding.tvRecTotalSettled.text = "Total Settled:\nRs. 0.00"
         binding.etRecAmount.setText("")
+        binding.etRecDiscount.setText("")
         binding.etRecRemarks.setText("")
         binding.spRecMode.setSelection(0)
         binding.btnSaveReceipt.isEnabled = true
