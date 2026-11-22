@@ -31,6 +31,8 @@
         <activity android:name=".SupplierOutstandingActivity" />
         <activity android:name=".ProfitLossActivity" />
         <activity android:name=".TransactionHistoryActivity" />
+        <activity android:name=".ReceiptActivity" android:exported="false" />
+        <activity android:name=".PaymentActivity" android:exported="false" />
         
-    </application>
+     </application>
 </manifest>
