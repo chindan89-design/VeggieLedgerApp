@@ -44,7 +44,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 2: Contact & Place -->
+        <!-- Row 2: Supplier Code & Phone -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -53,19 +53,34 @@
             android:layout_marginBottom="10dp">
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mobile / Contact" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-                <EditText android:id="@+id/etSupContact" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Phone Number" android:inputType="phone" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Supplier Code" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupCode" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Auto Code" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
             </LinearLayout>
 
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Place / City" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-                <EditText android:id="@+id/etSupPlace" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. Nashik, Pollachi" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Phone Number" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupPhone" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Mobile No" android:inputType="phone" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Row 3: Opening Balance -->
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Opening Balance (Rs.)" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
-        <EditText android:id="@+id/etSupOpBal" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:inputType="numberDecimal" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" android:layout_marginBottom="14dp" />
+        <!-- Row 3: Place & Opening Balance -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="14dp">
+
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Place / City" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupPlace" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. Nashik, Pollachi" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Opening Balance (Rs.)" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                <EditText android:id="@+id/etSupOpBal" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:inputType="numberDecimal" android:textColor="#000000" android:background="@android:drawable/edit_text" android:padding="8dp" android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
 
         <Button
             android:id="@+id/btnSaveSupplier"
