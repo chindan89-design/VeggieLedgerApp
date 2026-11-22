@@ -92,36 +92,12 @@
                 android:padding="6dp"
                 android:layout_marginBottom="10dp">
 
-                <RadioButton
-                    android:id="@+id/rbPurOnion"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Onion"
-                    android:textColor="#000000"
-                    android:textStyle="bold"
-                    android:checked="true" />
-
-                <RadioButton
-                    android:id="@+id/rbPurGarlic"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Garlic"
-                    android:textColor="#000000"
-                    android:textStyle="bold" />
-
-                <RadioButton
-                    android:id="@+id/rbPurCoconut"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Coconut"
-                    android:textColor="#000000"
-                    android:textStyle="bold" />
+                <RadioButton android:id="@+id/rbPurOnion" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Onion" android:textColor="#000000" android:textStyle="bold" android:checked="true" />
+                <RadioButton android:id="@+id/rbPurGarlic" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Garlic" android:textColor="#000000" android:textStyle="bold" />
+                <RadioButton android:id="@+id/rbPurCoconut" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Coconut" android:textColor="#000000" android:textStyle="bold" />
             </RadioGroup>
 
-            <!-- Bags & Bag Charge Side-by-Side -->
+            <!-- Bags & Bag Charge Side-by-Side (Onion-க்கு மட்டும்) -->
             <LinearLayout
                 android:id="@+id/layoutOnionFields"
                 android:layout_width="match_parent"
@@ -141,22 +117,43 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Net Kgs & Purchase Rate Side-by-Side -->
+            <!-- Purchase Kgs & Rate / Kg Side-by-Side -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:weightSum="2"
-                android:layout_marginBottom="10dp">
+                android:layout_marginBottom="8dp">
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Total Net Kgs *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Purchase Kgs *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
                     <EditText android:id="@+id/etNetKgs" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.0 Kgs" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Rate / Kg (Rs) *" android:textSize="12sp" android:textStyle="bold" android:textColor="#333333" />
                     <EditText android:id="@+id/etRatePerKg" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Kudumi (3% Auto) & Thadukki Side-by-Side (Coconut-க்கு மட்டும்) -->
+            <LinearLayout
+                android:id="@+id/layoutCoconutFields"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:visibility="gone"
+                android:layout_marginBottom="10dp">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Kudumi (3% Auto)" android:textSize="12sp" android:textStyle="bold" android:textColor="#D84315" />
+                    <EditText android:id="@+id/etKudumi" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Thadukki" android:textSize="12sp" android:textStyle="bold" android:textColor="#D84315" />
+                    <EditText android:id="@+id/etThadukki" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0" android:textColor="#000000" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
                 </LinearLayout>
             </LinearLayout>
 
