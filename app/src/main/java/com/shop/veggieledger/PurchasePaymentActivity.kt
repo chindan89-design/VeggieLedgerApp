@@ -2,12 +2,15 @@ package com.shop.veggieledger
 
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.View
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -28,6 +31,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private val db = FirebaseFirestore.getInstance()
 
     private val supplierList = ArrayList<SupplierItem>()
+    private val editFilterSupplierList = ArrayList<String>()
     private val pendingBills = ArrayList<PendingPurBill>()
 
     private var selectedSupplierId: String = ""
@@ -35,7 +39,17 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private var selectedSupplierOpBal: Double = 0.0
     private var calculatedTotalPayable: Double = 0.0
     private var selectedDateStr: String = ""
+    private var editFilterDateStr: String = ""
     private var targetSpecificBillDocId: String = ""
+
+    // Edit Mode State
+    private var isEditMode: Boolean = false
+    private var editingPaymentDocId: String = ""
+    private var oldPaymentSupplierId: String = ""
+    private var oldPaymentAmount: Double = 0.0
+    private val oldAllocations = ArrayList>()
+
+    private val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
 
     data class SupplierItem(val id: String, val name: String, val balance: Double, val opBal: Double)
 
@@ -58,9 +72,15 @@ class PurchasePaymentActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Purchase Payment"
 
+        binding.btnModeNewPay.setOnClickListener { switchToNewMode() }
+        binding.btnModeEditPay.setOnClickListener { switchToEditMode() }
+
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+        editFilterDateStr = selectedDateStr
         binding.etPayDate.setText(selectedDateStr)
+        binding.etEditPayFilterDate.setText(editFilterDateStr)
+
         binding.etPayDate.setOnClickListener {
             DatePickerDialog(this, { _, y, m, d ->
                 cal.set(y, m, d)
@@ -69,7 +89,23 @@ class PurchasePaymentActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
+        val editCal = Calendar.getInstance()
+        binding.etEditPayFilterDate.setOnClickListener {
+            DatePickerDialog(this, { _, y, m, d ->
+                editCal.set(y, m, d)
+                editFilterDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(editCal.time)
+                binding.etEditPayFilterDate.setText(editFilterDateStr)
+                loadPaymentsForEditFilter()
+            }, editCal.get(Calendar.YEAR), editCal.get(Calendar.MONTH), editCal.get(Calendar.DAY_OF_MONTH)).show()
+        }
+
+        binding.spEditPayFilterSupplier.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                if (isEditMode) loadPaymentsForEditFilter()
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
         val modeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, modes)
         modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spPayMode.adapter = modeAdapter
@@ -105,6 +141,10 @@ class PurchasePaymentActivity : AppCompatActivity() {
                 Toast.makeText(this, "Enter valid Payment Amount", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            if (isEditMode && editingPaymentDocId.isEmpty()) {
+                Toast.makeText(this, "Please select a payment voucher above to edit", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
 
             binding.btnSavePayment.isEnabled = false
             allocateAmountToBills()
@@ -123,50 +163,331 @@ class PurchasePaymentActivity : AppCompatActivity() {
                 }
             }
 
-            val payId = db.collection("payments").document().id
-            val payData = hashMapOf(
-                "id" to payId,
-                "paymentNo" to payNo,
-                "date" to selectedDateStr,
-                "supplierId" to selectedSupplierId,
-                "supplierName" to selectedSupplierName,
-                "amount" to amount,
-                "payMode" to mode,
-                "remarks" to remarks,
-                "billAllocations" to allocationsForDb,
-                "timestamp" to System.currentTimeMillis()
-            )
+            if (isEditMode && editingPaymentDocId.isNotEmpty()) {
+                val updateData = hashMapOf<String, Any>(
+                    "paymentNo" to payNo,
+                    "date" to selectedDateStr,
+                    "supplierId" to selectedSupplierId,
+                    "supplierName" to selectedSupplierName,
+                    "amount" to amount,
+                    "payMode" to mode,
+                    "remarks" to remarks,
+                    "billAllocations" to allocationsForDb
+                )
+                db.collection("payments").document(editingPaymentDocId).update(updateData)
+                    .addOnSuccessListener {
+                        applyPaymentBillUpdates(amount)
+                    }
+                    .addOnFailureListener {
+                        binding.btnSavePayment.isEnabled = true
+                        Toast.makeText(this, "Failed to update payment", Toast.LENGTH_SHORT).show()
+                    }
+            } else {
+                val payId = db.collection("payments").document().id
+                val payData = hashMapOf(
+                    "id" to payId,
+                    "paymentNo" to payNo,
+                    "date" to selectedDateStr,
+                    "supplierId" to selectedSupplierId,
+                    "supplierName" to selectedSupplierName,
+                    "amount" to amount,
+                    "payMode" to mode,
+                    "remarks" to remarks,
+                    "billAllocations" to allocationsForDb,
+                    "timestamp" to System.currentTimeMillis()
+                )
 
-            db.collection("payments").document(payId).set(payData)
-                .addOnSuccessListener {
-                    for (b in pendingBills) {
-                        if (b.allocatedNow > 0.0) {
-                            val newPaid = b.alreadyPaid + b.allocatedNow
-                            val newBal = (b.totalAmount - newPaid).coerceAtLeast(0.0)
-                            val status = if (newBal <= 0.01) "Paid" else "Partial"
-                            db.collection("purchases").document(b.docId).update(
-                                mapOf(
-                                    "paidAmount" to newPaid,
-                                    "balanceAmount" to newBal,
-                                    "paymentStatus" to status
-                                )
-                            )
-                        }
+                db.collection("payments").document(payId).set(payData)
+                    .addOnSuccessListener {
+                        applyPaymentBillUpdates(amount)
+                    }
+                    .addOnFailureListener {
+                        binding.btnSavePayment.isEnabled = true
+                        Toast.makeText(this, "Failed to save payment", Toast.LENGTH_SHORT).show()
+                    }
+            }
+        }
+    }
+
+    private fun applyPaymentBillUpdates(amount: Double) {
+        for (b in pendingBills) {
+            if (b.allocatedNow > 0.0) {
+                val newPaid = b.alreadyPaid + b.allocatedNow
+                val newBal = (b.totalAmount - newPaid).coerceAtLeast(0.0)
+                val status = if (newBal <= 0.01) "Paid" else "Partial"
+                db.collection("purchases").document(b.docId).update(
+                    mapOf(
+                        "paidAmount" to newPaid,
+                        "balanceAmount" to newBal,
+                        "paymentStatus" to status
+                    )
+                )
+            }
+        }
+
+        val updatedBalance = (calculatedTotalPayable - amount).coerceAtLeast(0.0)
+        db.collection("suppliers").document(selectedSupplierId)
+            .set(mapOf("currentBalance" to updatedBalance), SetOptions.merge())
+            .addOnCompleteListener {
+                val msg = if (isEditMode) "Payment Updated Successfully!" else "Payment Saved & Bill-wise Adjusted!"
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                editingPaymentDocId = ""
+                oldAllocations.clear()
+                resetForm()
+                if (isEditMode) loadPaymentsForEditFilter()
+            }
+    }
+
+    private fun switchToNewMode() {
+        isEditMode = false
+        editingPaymentDocId = ""
+        oldAllocations.clear()
+        binding.layoutEditPayPanel.visibility = View.GONE
+        binding.btnModeNewPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
+        binding.btnModeEditPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
+        binding.tvPayHeader.text = "PURCHASE PAYMENT (BILL-WISE)"
+        binding.btnSavePayment.text = "SAVE PAYMENT & UPDATE BILLS"
+        binding.btnSavePayment.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
+        resetForm()
+    }
+
+    private fun switchToEditMode() {
+        isEditMode = true
+        editingPaymentDocId = ""
+        oldAllocations.clear()
+        binding.layoutEditPayPanel.visibility = View.VISIBLE
+        binding.btnModeEditPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
+        binding.btnModeNewPay.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
+        binding.tvPayHeader.text = "EDIT / DELETE PURCHASE PAYMENT"
+        binding.btnSavePayment.text = "UPDATE PAYMENT"
+        binding.btnSavePayment.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
+        resetForm()
+        loadPaymentsForEditFilter()
+    }
+
+    private fun loadPaymentsForEditFilter() {
+        val selectedFilterSup = binding.spEditPayFilterSupplier.selectedItem?.toString() ?: "All Suppliers"
+        binding.llMatchingPayList.removeAllViews()
+
+        val loadingTv = TextView(this)
+        loadingTv.text = "Loading payments..."
+        loadingTv.setTextColor(Color.DKGRAY)
+        loadingTv.setPadding(12, 12, 12, 12)
+        binding.llMatchingPayList.addView(loadingTv)
+
+        db.collection("payments")
+            .whereEqualTo("date", editFilterDateStr)
+            .get()
+            .addOnSuccessListener { snap ->
+                binding.llMatchingPayList.removeAllViews()
+                var matchCount = 0
+
+                for (doc in snap) {
+                    val sName = doc.getString("supplierName") ?: ""
+                    if (selectedFilterSup != "All Suppliers" && !sName.equals(selectedFilterSup, ignoreCase = true)) {
+                        continue
                     }
 
-                    val updatedBalance = (calculatedTotalPayable - amount).coerceAtLeast(0.0)
-                    db.collection("suppliers").document(selectedSupplierId)
-                        .set(mapOf("currentBalance" to updatedBalance), SetOptions.merge())
-                        .addOnCompleteListener {
-                            Toast.makeText(this, "Payment Saved & Bill-wise Adjusted!", Toast.LENGTH_SHORT).show()
-                            resetForm()
+                    matchCount++
+                    val pNo = doc.getString("paymentNo") ?: doc.id
+                    val amt = doc.getDouble("amount") ?: 0.0
+                    val pMode = doc.getString("payMode") ?: "Cash"
+
+                    val rowCard = LinearLayout(this)
+                    rowCard.orientation = LinearLayout.HORIZONTAL
+                    rowCard.gravity = Gravity.CENTER_VERTICAL
+                    rowCard.setBackgroundColor(Color.WHITE)
+                    rowCard.setPadding(16, 14, 16, 14)
+                    val cardLp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    cardLp.setMargins(0, 0, 0, 10)
+                    rowCard.layoutParams = cardLp
+
+                    val infoTv = TextView(this)
+                    infoTv.text = "$pNo | $sName\n$pMode | Rs. %.2f".format(amt)
+                    infoTv.setTextColor(Color.parseColor("#1565C0"))
+                    infoTv.setTypeface(null, Typeface.BOLD)
+                    infoTv.textSize = 13f
+                    infoTv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+                    val editBtn = TextView(this)
+                    editBtn.text = "EDIT"
+                    editBtn.setTextColor(Color.WHITE)
+                    editBtn.setBackgroundColor(Color.parseColor("#1565C0"))
+                    editBtn.setTypeface(null, Typeface.BOLD)
+                    editBtn.textSize = 12f
+                    editBtn.setPadding(24, 14, 24, 14)
+                    val editLp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    editLp.setMargins(8, 0, 8, 0)
+                    editBtn.layoutParams = editLp
+                    editBtn.setOnClickListener {
+                        populateFormFromPaymentDoc(doc.id, doc.data)
+                    }
+
+                    val delBtn = TextView(this)
+                    delBtn.text = "DEL"
+                    delBtn.setTextColor(Color.WHITE)
+                    delBtn.setBackgroundColor(Color.parseColor("#C62828"))
+                    delBtn.setTypeface(null, Typeface.BOLD)
+                    delBtn.textSize = 12f
+                    delBtn.setPadding(24, 14, 24, 14)
+                    delBtn.setOnClickListener {
+                        confirmAndDeletePayment(doc.id, pNo, doc.data)
+                    }
+
+                    rowCard.addView(infoTv)
+                    rowCard.addView(editBtn)
+                    rowCard.addView(delBtn)
+                    binding.llMatchingPayList.addView(rowCard)
+                }
+
+                if (matchCount == 0) {
+                    val noTv = TextView(this)
+                    noTv.text = "No payments found for $editFilterDateStr ($selectedFilterSup)."
+                    noTv.setTextColor(Color.RED)
+                    noTv.setPadding(12, 14, 12, 14)
+                    binding.llMatchingPayList.addView(noTv)
+                }
+            }
+            .addOnFailureListener {
+                binding.llMatchingPayList.removeAllViews()
+                Toast.makeText(this, "Error loading payments", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun confirmAndDeletePayment(docId: String, pNo: String, data: Map<String, Any>) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Payment")
+            .setMessage("Are you sure you want to delete $pNo? Purchase bill balances and Supplier payable will be restored.")
+            .setPositiveButton("DELETE") { _, _ ->
+                deletePaymentAndRestore(docId, data)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun deletePaymentAndRestore(docId: String, data: Map<String, Any>) {
+        val supId = data["supplierId"]?.toString() ?: ""
+        val amt = (data["amount"] as? Number)?.toDouble() ?: 0.0
+        val rawAllocs = data["billAllocations"] as? List<*>
+
+        db.collection("payments").document(docId).delete()
+            .addOnSuccessListener {
+                if (rawAllocs != null) {
+                    for (entry in rawAllocs) {
+                        val map = entry as? Map<*, *> ?: continue
+                        val bDocId = map["billDocId"]?.toString() ?: ""
+                        val allocAmt = (map["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
+                        if (bDocId.isNotEmpty() && allocAmt > 0.0) {
+                            val purRef = db.collection("purchases").document(bDocId)
+                            db.runTransaction { tr ->
+                                val snap = tr.get(purRef)
+                                if (snap.exists()) {
+                                    val total = snap.getDouble("grandTotal") ?: 0.0
+                                    val currPaid = snap.getDouble("paidAmount") ?: 0.0
+                                    val restoredPaid = (currPaid - allocAmt).coerceAtLeast(0.0)
+                                    val restoredBal = (total - restoredPaid).coerceAtLeast(0.0)
+                                    val status = if (restoredPaid <= 0.01) "Unpaid" else "Partial"
+                                    tr.update(purRef, mapOf(
+                                        "paidAmount" to restoredPaid,
+                                        "balanceAmount" to restoredBal,
+                                        "paymentStatus" to status
+                                    ))
+                                }
+                            }
                         }
+                    }
                 }
-                .addOnFailureListener {
-                    binding.btnSavePayment.isEnabled = true
-                    Toast.makeText(this, "Failed to save payment", Toast.LENGTH_SHORT).show()
+
+                if (supId.isNotEmpty()) {
+                    val supRef = db.collection("suppliers").document(supId)
+                    db.runTransaction { tr ->
+                        val snap = tr.get(supRef)
+                        if (snap.exists()) {
+                            val curr = snap.getDouble("currentBalance") ?: 0.0
+                            tr.update(supRef, "currentBalance", curr + amt)
+                        }
+                    }
                 }
+
+                if (editingPaymentDocId == docId) {
+                    editingPaymentDocId = ""
+                    resetForm()
+                }
+                Toast.makeText(this, "Payment Deleted & Balances Restored!", Toast.LENGTH_SHORT).show()
+                loadPaymentsForEditFilter()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Failed to delete payment", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun populateFormFromPaymentDoc(docId: String, data: Map<String, Any>) {
+        editingPaymentDocId = docId
+        oldPaymentSupplierId = data["supplierId"]?.toString() ?: ""
+        oldPaymentAmount = (data["amount"] as? Number)?.toDouble() ?: 0.0
+
+        val pNo = data["paymentNo"]?.toString() ?: ""
+        val sName = data["supplierName"]?.toString() ?: ""
+        val pDate = data["date"]?.toString() ?: editFilterDateStr
+        val pMode = data["payMode"]?.toString() ?: "Cash"
+        val remarks = data["remarks"]?.toString() ?: ""
+
+        selectedDateStr = pDate
+        selectedSupplierId = oldPaymentSupplierId
+        selectedSupplierName = sName
+        targetSpecificBillDocId = ""
+
+        val foundSup = supplierList.find { it.id == oldPaymentSupplierId }
+        selectedSupplierOpBal = foundSup?.opBal ?: 0.0
+
+        binding.etPayDate.setText(pDate)
+        binding.etPayNo.setText(pNo)
+        binding.etSearchSupplier.setText(sName)
+        binding.etPayRemarks.setText(remarks)
+
+        val modeIdx = modes.indexOfFirst { it.equals(pMode, ignoreCase = true) }
+        if (modeIdx >= 0) binding.spPayMode.setSelection(modeIdx)
+
+        oldAllocations.clear()
+        val rawAllocs = data["billAllocations"] as? List<*>
+        if (rawAllocs != null) {
+            for (entry in rawAllocs) {
+                val map = entry as? Map<*, *> ?: continue
+                val cleanMap = HashMap<String, Any>()
+                cleanMap["billDocId"] = map["billDocId"]?.toString() ?: ""
+                cleanMap["allocatedAmount"] = (map["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
+                oldAllocations.add(cleanMap)
+            }
         }
+
+        // Reverse old allocations on purchase docs so user edits from clean state
+        for (alloc in oldAllocations) {
+            val bDocId = alloc["billDocId"]?.toString() ?: ""
+            val prevAlloc = (alloc["allocatedAmount"] as? Number)?.toDouble() ?: 0.0
+            if (bDocId.isNotEmpty() && prevAlloc > 0.0) {
+                val purRef = db.collection("purchases").document(bDocId)
+                db.runTransaction { tr ->
+                    val snap = tr.get(purRef)
+                    if (snap.exists()) {
+                        val total = snap.getDouble("grandTotal") ?: 0.0
+                        val currPaid = snap.getDouble("paidAmount") ?: 0.0
+                        val revPaid = (currPaid - prevAlloc).coerceAtLeast(0.0)
+                        val revBal = (total - revPaid).coerceAtLeast(0.0)
+                        tr.update(purRef, mapOf("paidAmount" to revPaid, "balanceAmount" to revBal))
+                    }
+                }
+            }
+        }
+
+        binding.etPayAmount.setText("%.2f".format(oldPaymentAmount))
+        loadPendingBillsForSupplier(selectedSupplierId, selectedSupplierName, selectedSupplierOpBal)
+        Toast.makeText(this, "Loaded $pNo for editing", Toast.LENGTH_SHORT).show()
     }
 
     private fun showSupplierSearchDialog() {
@@ -380,13 +701,21 @@ class PurchasePaymentActivity : AppCompatActivity() {
     private fun loadSuppliers() {
         db.collection("suppliers").get().addOnSuccessListener { snap ->
             supplierList.clear()
+            editFilterSupplierList.clear()
+            editFilterSupplierList.add("All Suppliers")
+
             for (doc in snap) {
                 val name = doc.getString("name") ?: continue
                 val bal = doc.getDouble("currentBalance") ?: 0.0
                 val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
                 supplierList.add(SupplierItem(doc.id, name, bal, opBal))
+                editFilterSupplierList.add(name)
             }
             supplierList.sortBy { it.name.lowercase(Locale.getDefault()) }
+
+            val filterAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, editFilterSupplierList)
+            filterAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding.spEditPayFilterSupplier.adapter = filterAdapter
         }
     }
 
@@ -405,7 +734,7 @@ class PurchasePaymentActivity : AppCompatActivity() {
         binding.etPayRemarks.setText("")
         binding.spPayMode.setSelection(0)
         binding.btnSavePayment.isEnabled = true
-        fetchNextPaymentNo()
+        if (!isEditMode) fetchNextPaymentNo() else binding.etPayNo.setText("")
         loadSuppliers()
     }
 }
