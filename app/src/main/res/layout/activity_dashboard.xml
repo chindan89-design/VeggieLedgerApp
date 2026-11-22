@@ -1,144 +1,343 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#F5F7FA">
+    android:background="#F0F4F8"
+    android:padding="12dp">
 
-    <!-- Secondary Quick Strip Bar -->
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#1B5E20"
-        android:padding="6dp"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/stripSales"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:text="+ SALES"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/stripPurchase"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:text="+ PURCHASE"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/stripReceipt"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:text="+ RECEIPT"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/stripPayment"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:text="+ PAY"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/stripExpense"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:text="+ EXPENSE"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/stripHistory"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:text="HISTORY"
-                android:textColor="#FFEB3B"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </HorizontalScrollView>
-
-    <!-- Live Summary Overview -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
         <TextView
             android:id="@+id/tvWelcome"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Veggie Mandi Overview"
-            android:textSize="20sp"
+            android:text="Veggie Mandi Live Summary"
+            android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="#1B5E20"
-            android:layout_marginBottom="16dp" />
+            android:gravity="center"
+            android:layout_marginBottom="10dp" />
 
-        <TextView
-            android:id="@+id/tvDashCustDue"
+        <!-- Quick Strip Bar -->
+        <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Total Customer Pending: Loading..."
-            android:textSize="16sp"
-            android:textStyle="bold"
+            android:scrollbars="none"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/stripSales"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:text="+ SALES"
+                    android:backgroundTint="#1B5E20"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/stripPurchase"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:text="+ PURCHASE"
+                    android:backgroundTint="#1565C0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/stripReceipt"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:text="+ RECEIPT"
+                    android:backgroundTint="#2E7D32"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/stripPayment"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:text="+ PAYMENT"
+                    android:backgroundTint="#0277BD"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/stripExpense"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:text="EXP / INC"
+                    android:backgroundTint="#E65100"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/stripHistory"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:text="HISTORY"
+                    android:backgroundTint="#455A64"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- DATE PICKER + VIEW BUTTON -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:background="#FFFFFF"
-            android:padding="16dp"
-            android:textColor="#2E7D32"
-            android:layout_marginBottom="10dp" />
+            android:padding="10dp"
+            android:layout_marginBottom="12dp">
 
-        <TextView
-            android:id="@+id/tvDashSupDue"
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Date:"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#1B5E20"
+                android:layout_marginEnd="8dp" />
+
+            <EditText
+                android:id="@+id/etDashDate"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:focusable="false"
+                android:clickable="true"
+                android:textColor="#000000"
+                android:textStyle="bold"
+                android:textSize="15sp"
+                android:background="@android:drawable/edit_text"
+                android:padding="8dp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnDashViewDate"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="VIEW"
+                android:backgroundTint="#1B5E20"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- 1. LIVE AVAILABLE STOCK (ONLY ITEMS WITH STOCK > 0) -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Total Supplier Payable: Loading..."
-            android:textSize="16sp"
-            android:textStyle="bold"
+            android:orientation="vertical"
             android:background="#FFFFFF"
-            android:padding="16dp"
-            android:textColor="#1565C0"
-            android:layout_marginBottom="10dp" />
+            android:padding="12dp"
+            android:layout_marginBottom="12dp">
 
-        <TextView
-            android:id="@+id/tvDashStockSummary"
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="1. LIVE AVAILABLE STOCK"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#1B5E20"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:id="@+id/llDashStockItems"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <!-- 2. SELECTED DATE TRANSACTIONS -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Active Stock Batches: Loading..."
-            android:textSize="15sp"
-            android:background="#FFF9C4"
-            android:padding="16dp"
-            android:textColor="#E65100"
-            android:layout_marginBottom="10dp" />
+            android:orientation="vertical"
+            android:background="#FFFFFF"
+            android:padding="12dp"
+            android:layout_marginBottom="12dp">
 
-        <TextView
+            <TextView
+                android:id="@+id/tvDashDateSectionTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="2. SUMMARY FOR SELECTED DATE"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#1565C0"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Purchase & Sales -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="6dp">
+
+                <TextView
+                    android:id="@+id/tvDayPurchase"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Purchase\nRs. 0.00"
+                    android:background="#E3F2FD"
+                    android:textColor="#1565C0"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:padding="10dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvDaySales"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Sales\nRs. 0.00"
+                    android:background="#E8F5E9"
+                    android:textColor="#1B5E20"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:padding="10dp"
+                    android:layout_marginStart="4dp" />
+            </LinearLayout>
+
+            <!-- Receipt & Payment -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="6dp">
+
+                <TextView
+                    android:id="@+id/tvDayReceipt"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Receipt\nRs. 0.00"
+                    android:background="#F1F8E9"
+                    android:textColor="#2E7D32"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:padding="10dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvDayPayment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Payment\nRs. 0.00"
+                    android:background="#E1F5FE"
+                    android:textColor="#0277BD"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:padding="10dp"
+                    android:layout_marginStart="4dp" />
+            </LinearLayout>
+
+            <!-- Income & Expenses -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+                <TextView
+                    android:id="@+id/tvDayIncome"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Income\nRs. 0.00"
+                    android:background="#E0F2F1"
+                    android:textColor="#00695C"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:padding="10dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvDayExpense"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Expenses\nRs. 0.00"
+                    android:background="#FFEBEE"
+                    android:textColor="#C62828"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:padding="10dp"
+                    android:layout_marginStart="4dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 3. OVERALL TOTAL COLLECTABLE & PAYABLE -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Tip: Use the top menu strip (Masters, Entries, Reports) or the green quick bar above to navigate."
-            android:textSize="13sp"
-            android:textColor="#666666"
-            android:layout_marginTop="8dp" />
+            android:orientation="vertical"
+            android:background="#FFFFFF"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="3. OVERALL BALANCE SUMMARY"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#E65100"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+                <TextView
+                    android:id="@+id/tvDashCustDue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Total Collectable\nRs. 0.00"
+                    android:background="#FFF3E0"
+                    android:textColor="#E65100"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvDashSupDue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Total Payable\nRs. 0.00"
+                    android:background="#E3F2FD"
+                    android:textColor="#1565C0"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:layout_marginStart="4dp" />
+            </LinearLayout>
+        </LinearLayout>
 
     </LinearLayout>
-</LinearLayout>
+</ScrollView>
