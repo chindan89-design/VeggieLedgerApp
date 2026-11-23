@@ -33,6 +33,7 @@
         <activity android:name=".TransactionHistoryActivity" />
         <activity android:name=".ReceiptActivity" android:exported="false" />
         <activity android:name=".PaymentActivity" android:exported="false" />
+        <activity android:name=".ReportsHubActivity" android:exported="false" />
         
      </application>
 </manifest>
