@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Xml
 import android.view.Gravity
 import android.widget.ArrayAdapter
 import android.widget.EditText
@@ -23,10 +24,13 @@ import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivitySalesBinding
 import org.json.JSONArray
 import org.json.JSONObject
+import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.zip.ZipInputStream
 
 class SalesActivity : AppCompatActivity() {
 
@@ -35,6 +39,7 @@ class SalesActivity : AppCompatActivity() {
 
     private val customerList = arrayListOf<CustomerItem>()
     private val itemNames = arrayListOf("Coconut", "Onion", "Garlic")
+    private lateinit var itemAdapter: ArrayAdapter<String>
     private val billItemsArray = JSONArray()
 
     private var selectedDateStr: String = ""
@@ -51,7 +56,7 @@ class SalesActivity : AppCompatActivity() {
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            importSalesFromCsvUri(uri)
+            importSalesFromFileUri(uri)
         }
     }
 
@@ -78,9 +83,15 @@ class SalesActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
+        // Pay Mode Spinner
         val modeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
         modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spSalesPayMode.adapter = modeAdapter
+
+        // Set Default Item Spinner Adapter immediately so it is always selectable
+        itemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
+        itemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spSalesItem.adapter = itemAdapter
 
         fetchNextBillNo()
         loadCustomers()
@@ -266,19 +277,27 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    private fun importSalesFromCsvUri(uri: Uri) {
+    private fun importSalesFromFileUri(uri: Uri) {
         try {
-            val inputStream = contentResolver.openInputStream(uri) ?: return
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            val lines = reader.readLines()
-            reader.close()
-
-            if (lines.size <= 1) {
-                Toast.makeText(this, "File is empty or has only headers", Toast.LENGTH_SHORT).show()
+            val rawBytes = contentResolver.openInputStream(uri)?.readBytes()
+            if (rawBytes == null || rawBytes.isEmpty()) {
+                Toast.makeText(this, "Selected file is empty!", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            Toast.makeText(this, "Importing ${lines.size - 1} rows & updating stock...", Toast.LENGTH_SHORT).show()
+            val isXlsx = rawBytes.size >= 2 && rawBytes[0] == 0x50.toByte() && rawBytes[1] == 0x4B.toByte()
+            val parsedRows: List<List<String>> = if (isXlsx) {
+                parseXlsxRows(rawBytes)
+            } else {
+                parseCsvRows(rawBytes)
+            }
+
+            if (parsedRows.size <= 1) {
+                Toast.makeText(this, "No data rows found in file!", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            Toast.makeText(this, "Reading ${parsedRows.size - 1} rows...", Toast.LENGTH_SHORT).show()
 
             db.collection("customers").get().addOnSuccessListener { custSnap ->
                 db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
@@ -311,29 +330,48 @@ class SalesActivity : AppCompatActivity() {
                     var importedCount = 0
                     val addedCreditPerCust = HashMap<String, Double>()
                     val fifoFallbackList = arrayListOf<Triple<String, Int, Double>>()
+                    val modifiedStockIds = HashSet<String>()
 
-                    for (i in 1 until lines.size) {
-                        val line = lines[i].trim()
-                        if (line.isEmpty()) continue
+                    val headerRow = parsedRows[0].map { h -> h.trim().lowercase(Locale.getDefault()) }
+                    val hasStockCol = headerRow.any { h -> h.contains("stock") || h.contains("lot") || h.contains("batch") }
 
-                        val cols = line.split(",")
-                        if (cols.size < 10) continue
+                    for (i in 1 until parsedRows.size) {
+                        val cols = parsedRows[i]
+                        if (cols.size < 6) continue
 
-                        // Columns: Date, BillNo, CustomerName, PayMode, ItemName, StockId, Bags, NetKgs, Rate, Amount, BagCharge, GrandTotal
-                        val dateStr = cols[0].trim()
-                        val billNo = cols[1].trim()
-                        val custName = cols[2].trim()
-                        val payMode = cols[3].trim().ifEmpty { "Credit" }
-                        val itemName = cols[4].trim()
-                        val stockIdInput = cols[5].trim()
-                        val bags = cols[6].trim().toIntOrNull() ?: 0
-                        val netKgs = cols[7].trim().toDoubleOrNull() ?: 0.0
-                        val rate = cols[8].trim().toDoubleOrNull() ?: 0.0
-                        val amount = cols[9].trim().toDoubleOrNull() ?: (netKgs * rate)
-                        val bagCharge = if (cols.size > 10) (cols[10].trim().toDoubleOrNull() ?: 0.0) else 0.0
-                        val grandTotal = if (cols.size > 11) (cols[11].trim().toDoubleOrNull() ?: (amount + bagCharge)) else (amount + bagCharge)
+                        val dateStr = cols.getOrElse(0) { selectedDateStr }.trim().ifEmpty { selectedDateStr }
+                        val billNo = cols.getOrElse(1) { "SAL-IMP-$i" }.trim()
+                        val custName = cols.getOrElse(2) { "" }.trim()
+                        val payMode = cols.getOrElse(3) { "Credit" }.trim().ifEmpty { "Credit" }
+                        val itemName = cols.getOrElse(4) { "Coconut" }.trim()
 
-                        if (custName.isEmpty() || grandTotal <= 0.0) continue
+                        val stockIdInput: String
+                        val bags: Int
+                        val netKgs: Double
+                        val rate: Double
+                        val amount: Double
+                        val bagCharge: Double
+                        val grandTotal: Double
+
+                        if (hasStockCol) {
+                            stockIdInput = cols.getOrElse(5) { "" }.trim()
+                            bags = cleanNum(cols.getOrElse(6) { "0" }).toInt()
+                            netKgs = cleanNum(cols.getOrElse(7) { "0" })
+                            rate = cleanNum(cols.getOrElse(8) { "0" })
+                            amount = cleanNum(cols.getOrElse(9) { "0" }).let { if (it > 0.0) it else netKgs * rate }
+                            bagCharge = cleanNum(cols.getOrElse(10) { "0" })
+                            grandTotal = cleanNum(cols.getOrElse(11) { "0" }).let { if (it > 0.0) it else amount + bagCharge }
+                        } else {
+                            stockIdInput = ""
+                            bags = cleanNum(cols.getOrElse(5) { "0" }).toInt()
+                            netKgs = cleanNum(cols.getOrElse(6) { "0" })
+                            rate = cleanNum(cols.getOrElse(7) { "0" })
+                            amount = cleanNum(cols.getOrElse(8) { "0" }).let { if (it > 0.0) it else netKgs * rate }
+                            bagCharge = cleanNum(cols.getOrElse(9) { "0" })
+                            grandTotal = cleanNum(cols.getOrElse(10) { "0" }).let { if (it > 0.0) it else amount + bagCharge }
+                        }
+
+                        if (custName.isEmpty() || (grandTotal <= 0.0 && netKgs <= 0.0 && bags <= 0)) continue
 
                         val custKey = custName.lowercase(Locale.getDefault())
                         val custId = custIdMap[custKey] ?: ""
@@ -383,12 +421,19 @@ class SalesActivity : AppCompatActivity() {
                             val currK = stockAvailKgsMap[matchedStockDocId] ?: 0.0
                             stockAvailBagsMap[matchedStockDocId] = (currB - bags).coerceAtLeast(0)
                             stockAvailKgsMap[matchedStockDocId] = (currK - netKgs).coerceAtLeast(0.0)
+                            modifiedStockIds.add(matchedStockDocId)
                         } else if (itemName.isNotEmpty()) {
                             fifoFallbackList.add(Triple(itemName, bags, netKgs))
                         }
                     }
 
-                    for ((sDocId, newBags) in stockAvailBagsMap) {
+                    if (importedCount == 0) {
+                        Toast.makeText(this, "0 valid rows found! Check column headers.", Toast.LENGTH_LONG).show()
+                        return@addOnSuccessListener
+                    }
+
+                    for (sDocId in modifiedStockIds) {
+                        val newBags = stockAvailBagsMap[sDocId] ?: 0
                         val newKgs = stockAvailKgsMap[sDocId] ?: 0.0
                         batch.update(
                             db.collection("stock_batches").document(sDocId),
@@ -409,18 +454,147 @@ class SalesActivity : AppCompatActivity() {
                             for (fb in fifoFallbackList) {
                                 deductStockFifo(fb.first, fb.second, fb.third)
                             }
-                            Toast.makeText(this, "Imported $importedCount Sales & Updated Stock!", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "SUCCESS! Imported $importedCount Sales Bills!", Toast.LENGTH_LONG).show()
                             fetchNextBillNo()
                             loadCustomers()
                         }
-                        .addOnFailureListener {
-                            Toast.makeText(this, "Import failed! Check internet.", Toast.LENGTH_SHORT).show()
+                        .addOnFailureListener { err ->
+                            Toast.makeText(this, "DB Save Error: ${err.message}", Toast.LENGTH_LONG).show()
                         }
                 }
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "File error: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Import Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun cleanNum(raw: String): Double {
+        return raw.replace(",", "").replace("Rs.", "", ignoreCase = true).trim().toDoubleOrNull() ?: 0.0
+    }
+
+    private fun parseCsvRows(bytes: ByteArray): List<List<String>> {
+        val result = arrayListOf<List<String>>()
+        val reader = BufferedReader(InputStreamReader(ByteArrayInputStream(bytes)))
+        reader.forEachLine { line ->
+            if (line.trim().isNotEmpty()) {
+                val tokens = arrayListOf<String>()
+                val sb = StringBuilder()
+                var inQuotes = false
+                for (ch in line) {
+                    when {
+                        ch == '"' -> inQuotes = !inQuotes
+                        ch == ',' && !inQuotes -> {
+                            tokens.add(sb.toString().trim())
+                            sb.setLength(0)
+                        }
+                        else -> sb.append(ch)
+                    }
+                }
+                tokens.add(sb.toString().trim())
+                result.add(tokens)
+            }
+        }
+        return result
+    }
+
+    private fun parseXlsxRows(bytes: ByteArray): List<List<String>> {
+        val sharedStrings = arrayListOf<String>()
+        var sheetXmlBytes: ByteArray? = null
+
+        val zis = ZipInputStream(ByteArrayInputStream(bytes))
+        var entry = zis.nextEntry
+        while (entry != null) {
+            val name = entry.name
+            if (name == "xl/sharedStrings.xml") {
+                val ssBytes = zis.readBytes()
+                val parser = Xml.newPullParser()
+                parser.setInput(ByteArrayInputStream(ssBytes), "UTF-8")
+                var event = parser.eventType
+                val currentStr = StringBuilder()
+                var inSi = false
+                while (event != XmlPullParser.END_DOCUMENT) {
+                    if (event == XmlPullParser.START_TAG && parser.name == "si") {
+                        inSi = true
+                        currentStr.setLength(0)
+                    } else if (event == XmlPullParser.START_TAG && parser.name == "t" && inSi) {
+                        currentStr.append(parser.nextText())
+                    } else if (event == XmlPullParser.END_TAG && parser.name == "si") {
+                        sharedStrings.add(currentStr.toString())
+                        inSi = false
+                    }
+                    event = parser.next()
+                }
+            } else if (name == "xl/worksheets/sheet1.xml") {
+                sheetXmlBytes = zis.readBytes()
+            }
+            zis.closeEntry()
+            entry = zis.nextEntry
+        }
+        zis.close()
+
+        val rows = arrayListOf<List<String>>()
+        if (sheetXmlBytes == null) return rows
+
+        val parser = Xml.newPullParser()
+        parser.setInput(ByteArrayInputStream(sheetXmlBytes), "UTF-8")
+        var event = parser.eventType
+        var currentRow = ArrayList<String>()
+        var cellType = ""
+        var colIndex = 0
+
+        while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.START_TAG) {
+                when (parser.name) {
+                    "row" -> {
+                        currentRow = ArrayList()
+                        colIndex = 0
+                    }
+                    "c" -> {
+                        cellType = parser.getAttributeValue(null, "t") ?: ""
+                        val ref = parser.getAttributeValue(null, "r") ?: ""
+                        val targetCol = colLetterToIndex(ref)
+                        while (currentRow.size < targetCol) {
+                            currentRow.add("")
+                        }
+                        colIndex = targetCol
+                    }
+                    "v" -> {
+                        val rawVal = parser.nextText()
+                        val finalVal = if (cellType == "s") {
+                            val idx = rawVal.toIntOrNull() ?: -1
+                            if (idx in sharedStrings.indices) sharedStrings[idx] else rawVal
+                        } else {
+                            rawVal
+                        }
+                        if (colIndex == currentRow.size) currentRow.add(finalVal)
+                        else if (colIndex < currentRow.size) currentRow[colIndex] = finalVal
+                    }
+                    "t" -> {
+                        val inlineText = parser.nextText()
+                        if (colIndex == currentRow.size) currentRow.add(inlineText)
+                        else if (colIndex < currentRow.size) currentRow[colIndex] = inlineText
+                    }
+                }
+            } else if (event == XmlPullParser.END_TAG && parser.name == "row") {
+                if (currentRow.isNotEmpty()) {
+                    rows.add(currentRow)
+                }
+            }
+            event = parser.next()
+        }
+        return rows
+    }
+
+    private fun colLetterToIndex(cellRef: String): Int {
+        var col = 0
+        for (ch in cellRef) {
+            if (ch in 'A'..'Z') {
+                col = col * 26 + (ch - 'A' + 1)
+            } else {
+                break
+            }
+        }
+        return if (col > 0) col - 1 else 0
     }
 
     private fun showCustomerSearchDialog() {
@@ -577,17 +751,19 @@ class SalesActivity : AppCompatActivity() {
 
     private fun loadItems() {
         db.collection("items").get().addOnSuccessListener { snap ->
-            if (!snap.isEmpty) {
-                itemNames.clear()
-                for (doc in snap) {
-                    val n = doc.getString("name") ?: continue
-                    itemNames.add(n)
+            val fetched = arrayListOf<String>()
+            for (doc in snap) {
+                val n = (doc.getString("name") ?: doc.getString("itemName") ?: "").trim()
+                if (n.isNotEmpty() && !fetched.contains(n)) {
+                    fetched.add(n)
                 }
-                itemNames.sort()
             }
-            val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            binding.spSalesItem.adapter = adapter
+            if (fetched.isNotEmpty()) {
+                fetched.sort()
+                itemNames.clear()
+                itemNames.addAll(fetched)
+                itemAdapter.notifyDataSetChanged()
+            }
         }
     }
 
