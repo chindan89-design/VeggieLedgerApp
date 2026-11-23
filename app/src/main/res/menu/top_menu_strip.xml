@@ -2,42 +2,102 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- 1. MASTERS MENU -->
+    <!-- Masters -->
     <item
-        android:id="@+id/menu_masters"
-        android:title="Masters ▾"
-        app:showAsAction="always">
+        android:id="@+id/nav_customers"
+        android:title="Customers"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/nav_suppliers"
+        android:title="Suppliers"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/nav_items"
+        android:title="Items"
+        app:showAsAction="never" />
+
+    <!-- Transactions -->
+    <item
+        android:id="@+id/nav_sales"
+        android:title="Sales Entry"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/nav_purchase"
+        android:title="Purchase Entry"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/nav_sales_receipt"
+        android:title="Sales Receipt"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/nav_purchase_payment"
+        android:title="Purchase Payment"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/nav_expense_income"
+        android:title="Expenses / Income"
+        app:showAsAction="never" />
+
+    <!-- PURCHASE REPORTS SUB-MENU -->
+    <item
+        android:id="@+id/menu_purchase_reports"
+        android:title="Purchase Reports ▸"
+        app:showAsAction="never">
         <menu>
-            <item android:id="@+id/nav_customers" android:title="Customer Details (+)" />
-            <item android:id="@+id/nav_suppliers" android:title="Supplier Details (+)" />
-            <item android:id="@+id/nav_items" android:title="Items Setup (+)" />
+            <item
+                android:id="@+id/nav_pur_supplier_rep"
+                android:title="1. Supplier Report" />
+            <item
+                android:id="@+id/nav_pur_details"
+                android:title="2. Purchase Details" />
+            <item
+                android:id="@+id/nav_pur_itemwise"
+                android:title="3. Itemwise Report" />
+            <item
+                android:id="@+id/nav_pur_sup_statement"
+                android:title="4. Supplier Statement" />
+            <item
+                android:id="@+id/nav_sup_out"
+                android:title="5. Supplier Outstanding" />
         </menu>
     </item>
 
-    <!-- 2. ENTRIES MENU -->
+    <!-- SALES REPORTS SUB-MENU -->
     <item
-        android:id="@+id/menu_entries"
-        android:title="Entries ▾"
-        app:showAsAction="always">
+        android:id="@+id/menu_sales_reports"
+        android:title="Sales Reports ▸"
+        app:showAsAction="never">
         <menu>
-            <item android:id="@+id/nav_sales" android:title="Sales Bill" />
-            <item android:id="@+id/nav_purchase" android:title="Purchase Entry" />
-            <item android:id="@+id/nav_sales_receipt" android:title="Sales Receipt (Collection)" />
-            <item android:id="@+id/nav_purchase_payment" android:title="Purchase Payment" />
-            <item android:id="@+id/nav_expense_income" android:title="Expenses &amp; Extra Income" />
+            <item
+                android:id="@+id/nav_sal_customer_rep"
+                android:title="1. Customer Report" />
+            <item
+                android:id="@+id/nav_sal_details"
+                android:title="2. Sales Details" />
+            <item
+                android:id="@+id/nav_sal_itemwise"
+                android:title="3. Itemwise Report" />
+            <item
+                android:id="@+id/nav_sal_cust_statement"
+                android:title="4. Customer Statement" />
+            <item
+                android:id="@+id/nav_cust_out"
+                android:title="5. Customer Outstanding" />
         </menu>
     </item>
 
-    <!-- 3. REPORTS MENU -->
+    <!-- OTHERS REPORTS SUB-MENU -->
     <item
-        android:id="@+id/menu_reports"
-        android:title="Reports ▾"
-        app:showAsAction="always">
+        android:id="@+id/menu_other_reports"
+        android:title="Others ▸"
+        app:showAsAction="never">
         <menu>
-            <item android:id="@+id/nav_cust_out" android:title="Customer Outstanding Sheet" />
-            <item android:id="@+id/nav_sup_out" android:title="Supplier Outstanding Sheet" />
-            <item android:id="@+id/nav_pnl" android:title="Profit &amp; Loss (P&amp;L)" />
-            <item android:id="@+id/nav_history" android:title="History / Edit / Delete" />
+            <item
+                android:id="@+id/nav_pnl"
+                android:title="Profit &amp; Loss (P&amp;L)" />
+            <item
+                android:id="@+id/nav_history"
+                android:title="Transaction History" />
         </menu>
     </item>
 
