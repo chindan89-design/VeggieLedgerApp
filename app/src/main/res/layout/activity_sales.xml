@@ -20,7 +20,16 @@
             android:textColor="#1B5E20"
             android:gravity="center"
             android:layout_marginBottom="8dp" />
-
+        <Button
+            android:id="@+id/btnImportSalesCsv"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="IMPORT SALES (EXCEL / CSV)"
+            android:backgroundTint="#E65100"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:layout_marginBottom="10dp" />
+        
         <!-- Mode Switch: NEW BILL vs EDIT / DEL BILL -->
         <LinearLayout
             android:layout_width="match_parent"
