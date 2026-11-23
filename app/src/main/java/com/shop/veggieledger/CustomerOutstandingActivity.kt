@@ -45,7 +45,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    // Number of customer rows per A4 page so Page Total fits cleanly at the bottom of every page
     private val ROWS_PER_A4_PAGE = 26
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -279,6 +278,13 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
                     for (doc in sortedCusts) {
                         val name = doc.getString("name")?.trim() ?: continue
+                        val phone = (doc.getString("contact")
+                            ?: doc.getString("phone")
+                            ?: doc.getString("mobile")
+                            ?: doc.getString("contactNo")
+                            ?: "").trim()
+                        val cleanPhone = if (phone == "0" || phone == "-") "" else phone
+
                         val nameKey = "NAME_${name.lowercase(Locale.getDefault())}"
                         val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
                         val salesAmt = salesMap[doc.id] ?: salesMap[nameKey] ?: 0.0
@@ -290,6 +296,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
                         val obj = JSONObject()
                         obj.put("name", name)
+                        obj.put("phone", cleanPhone)
                         obj.put("opBal", opBal)
                         obj.put("sales", salesAmt)
                         obj.put("income", incAmt)
@@ -324,7 +331,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         tv.setTextColor(textColor)
         tv.setBackgroundColor(bgColor)
         tv.textSize = 12f
-        tv.setPadding(16, 14, 16, 14)
+        tv.setPadding(14, 14, 14, 14)
         tv.gravity = if (alignRight) Gravity.END else Gravity.START
         if (bold) tv.setTypeface(null, Typeface.BOLD)
         val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT)
@@ -342,6 +349,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", inc), alignRight = true, bold = true, bgColor = bgColor))
         row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", disc), alignRight = true, bold = true, bgColor = bgColor))
         row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", cl), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell("", bold = true, bgColor = bgColor))
         row.addView(makeBorderedCell("                    ", bold = true, bgColor = bgColor))
         tableLayout.addView(row)
     }
@@ -352,7 +360,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         tableLayout.removeAllViews()
 
-        // Header Row: NAME | OP.BAL | SALES | INCOME | DISCOUNT | CL.BAL | PAYMENT
+        // Header Row: NAME | OP.BAL | SALES | INCOME | DISCOUNT | CL.BAL | PH.NO | PAYMENT
         val headerRow = TableRow(this)
         headerRow.setBackgroundColor(Color.BLACK)
         val hdrBg = Color.parseColor("#E0E0E0")
@@ -363,6 +371,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         headerRow.addView(makeBorderedCell("INCOME", alignRight = true, bold = true, bgColor = hdrBg))
         headerRow.addView(makeBorderedCell("DISCOUNT", alignRight = true, bold = true, bgColor = hdrBg))
         headerRow.addView(makeBorderedCell("CL.BAL", alignRight = true, bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("PH.NO", bold = true, bgColor = hdrBg))
         headerRow.addView(makeBorderedCell("PAYMENT", bold = true, bgColor = hdrBg))
         tableLayout.addView(headerRow)
 
@@ -397,6 +406,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         for (idx in filteredList.indices) {
             val obj = filteredList[idx]
             val name = obj.getString("name")
+            val phone = obj.optString("phone", "")
             val op = obj.getDouble("opBal")
             val sal = obj.getDouble("sales")
             val inc = obj.getDouble("income")
@@ -423,6 +433,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", inc), alignRight = true))
             tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", disc), alignRight = true))
             tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", cl), alignRight = true, bold = true))
+            tr.addView(makeBorderedCell(phone))
             tr.addView(makeBorderedCell("                    "))
             tableLayout.addView(tr)
 
@@ -495,6 +506,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             for (i in startIdx until endIdx) {
                 val obj = filteredList[i]
                 val name = obj.getString("name")
+                val phone = obj.optString("phone", "")
                 val op = obj.getDouble("opBal")
                 val sal = obj.getDouble("sales")
                 val inc = obj.getDouble("income")
@@ -516,8 +528,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 pageRowsHtml.append(
                     String.format(
                         Locale.getDefault(),
-                        "<tr><td style='text-align:left;font-weight:bold;'>%s</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td style='font-weight:bold;'>%.2f</td><td style='width:95px;'></td></tr>",
-                        name, op, sal, inc, disc, cl
+                        "<tr><td style='text-align:left;font-weight:bold;'>%s</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td style='font-weight:bold;'>%.2f</td><td style='text-align:center;'>%s</td><td style='width:85px;'></td></tr>",
+                        name, op, sal, inc, disc, cl, phone
                     )
                 )
             }
@@ -526,7 +538,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             pageRowsHtml.append(
                 String.format(
                     Locale.getDefault(),
-                    "<tr class='pagetotal'><td style='text-align:left;'>PAGE %d TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td></tr>",
+                    "<tr class='pagetotal'><td style='text-align:left;'>PAGE %d TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
                     (pageIdx + 1), pageOp, pageSales, pageInc, pageDisc, pageCl
                 )
             )
@@ -536,7 +548,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 pageRowsHtml.append(
                     String.format(
                         Locale.getDefault(),
-                        "<tr class='grandtotal'><td style='text-align:left;'>GRAND TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td></tr>",
+                        "<tr class='grandtotal'><td style='text-align:left;'>GRAND TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
                         grandOp, grandSales, grandInc, grandDisc, grandCl
                     )
                 )
@@ -567,6 +579,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                                 <th>INCOME</th>
                                 <th>DISCOUNT</th>
                                 <th>CL.BAL</th>
+                                <th>PH.NO</th>
                                 <th>PAYMENT</th>
                             </tr>
                         </thead>
@@ -591,11 +604,11 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 h3 { font-size: 14px; margin: 4px 0 10px 0; text-decoration: underline; }
                 .meta { width: 100%; margin-bottom: 8px; font-size: 11px; font-weight: bold; }
                 .meta td { border: none; padding: 2px 0; }
-                table.grid { width: 100%; border-collapse: collapse; font-size: 11px; }
-                table.grid th, table.grid td { border: 1px solid #000; padding: 5px 5px; text-align: right; }
+                table.grid { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 5px 4px; text-align: right; }
                 table.grid th { background-color: #EAEAEA; text-align: center; font-weight: bold; }
                 tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; }
-                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 12px; }
+                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 11.5px; }
             </style>
             </head>
             <body>
@@ -615,6 +628,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
         }
         printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing A4 Sheet with Page Totals & Grand Total...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing A4 Sheet...", Toast.LENGTH_SHORT).show()
     }
 }
