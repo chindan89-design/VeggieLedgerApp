@@ -45,7 +45,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    private val ROWS_PER_A4_PAGE = 26
+    // Adjusted to 33 rows per A4 page to accommodate +2pt font size and +1pt row padding cleanly
+    private val ROWS_PER_A4_PAGE = 33
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -149,7 +150,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         // Center Heading 1: THIRUVENI COCONUTS
         val tvShopName = TextView(this)
         tvShopName.text = "THIRUVENI COCONUTS"
-        tvShopName.textSize = 19f
+        tvShopName.textSize = 21f
         tvShopName.setTypeface(null, Typeface.BOLD)
         tvShopName.setTextColor(Color.BLACK)
         tvShopName.gravity = Gravity.CENTER
@@ -158,7 +159,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         // Center Heading 2: Address
         val tvShopAddr = TextView(this)
         tvShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
-        tvShopAddr.textSize = 12f
+        tvShopAddr.textSize = 14f
         tvShopAddr.setTypeface(null, Typeface.BOLD)
         tvShopAddr.setTextColor(Color.DKGRAY)
         tvShopAddr.gravity = Gravity.CENTER
@@ -168,7 +169,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         // Center Heading 3: CUSTOMER OUTSTANDING
         val tvSheetTitle = TextView(this)
         tvSheetTitle.text = "CUSTOMER OUTSTANDING"
-        tvSheetTitle.textSize = 15f
+        tvSheetTitle.textSize = 17f
         tvSheetTitle.setTypeface(null, Typeface.BOLD)
         tvSheetTitle.setTextColor(Color.BLACK)
         tvSheetTitle.gravity = Gravity.CENTER
@@ -183,7 +184,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         tvLeftCustName = TextView(this)
         tvLeftCustName.text = "CUSTOMER NAME: ALL CUSTOMERS"
-        tvLeftCustName.textSize = 12f
+        tvLeftCustName.textSize = 14f
         tvLeftCustName.setTypeface(null, Typeface.BOLD)
         tvLeftCustName.setTextColor(Color.BLACK)
         tvLeftCustName.gravity = Gravity.START
@@ -191,7 +192,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         tvRightDate = TextView(this)
         tvRightDate.text = "DATE: $selectedDateStr"
-        tvRightDate.textSize = 12f
+        tvRightDate.textSize = 14f
         tvRightDate.setTypeface(null, Typeface.BOLD)
         tvRightDate.setTextColor(Color.BLACK)
         tvRightDate.gravity = Gravity.END
@@ -330,8 +331,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         tv.text = text
         tv.setTextColor(textColor)
         tv.setBackgroundColor(bgColor)
-        tv.textSize = 12f
-        tv.setPadding(14, 14, 14, 14)
+        tv.textSize = 14f
+        tv.setPadding(15, 16, 15, 16)
         tv.gravity = if (alignRight) Gravity.END else Gravity.START
         if (bold) tv.setTypeface(null, Typeface.BOLD)
         val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT)
@@ -360,7 +361,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         tableLayout.removeAllViews()
 
-        // Header Row: NAME | OP.BAL | SALES | INCOME | DISCOUNT | CL.BAL | PH.NO | PAYMENT
         val headerRow = TableRow(this)
         headerRow.setBackgroundColor(Color.BLACK)
         val hdrBg = Color.parseColor("#E0E0E0")
@@ -455,7 +455,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
         }
 
-        // Final Grand Total Row at the very end
         addSummaryRowToScreen(
             "GRAND TOTAL",
             grandOp, grandSales, grandInc, grandDisc, grandCl,
@@ -528,7 +527,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 pageRowsHtml.append(
                     String.format(
                         Locale.getDefault(),
-                        "<tr><td style='text-align:left;font-weight:bold;'>%s</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td style='font-weight:bold;'>%.2f</td><td style='text-align:center;'>%s</td><td style='width:85px;'></td></tr>",
+                        "<tr><td class='namecol'>%s</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td style='font-weight:bold;'>%.2f</td><td style='text-align:center;'>%s</td><td></td></tr>",
                         name, op, sal, inc, disc, cl, phone
                     )
                 )
@@ -538,7 +537,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             pageRowsHtml.append(
                 String.format(
                     Locale.getDefault(),
-                    "<tr class='pagetotal'><td style='text-align:left;'>PAGE %d TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
+                    "<tr class='pagetotal'><td class='namecol'>PAGE %d TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
                     (pageIdx + 1), pageOp, pageSales, pageInc, pageDisc, pageCl
                 )
             )
@@ -548,7 +547,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 pageRowsHtml.append(
                     String.format(
                         Locale.getDefault(),
-                        "<tr class='grandtotal'><td style='text-align:left;'>GRAND TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
+                        "<tr class='grandtotal'><td class='namecol'>GRAND TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
                         grandOp, grandSales, grandInc, grandDisc, grandCl
                     )
                 )
@@ -558,7 +557,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
             pagesHtml.append(
                 """
-                <div style="$pageBreakStyle">
+                <div class="page-box" style="$pageBreakStyle">
                     <div class="center">
                         <h1>THIRUVENI COCONUTS</h1>
                         <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
@@ -571,6 +570,16 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                         </tr>
                     </table>
                     <table class="grid">
+                        <colgroup>
+                            <col style="width: 24%;">
+                            <col style="width: 11%;">
+                            <col style="width: 10%;">
+                            <col style="width: 10%;">
+                            <col style="width: 9%;">
+                            <col style="width: 12%;">
+                            <col style="width: 12%;">
+                            <col style="width: 12%;">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th>NAME</th>
@@ -596,19 +605,22 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             <html>
             <head>
             <style>
-                @page { size: A4 portrait; margin: 10mm; }
-                body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+                * { box-sizing: border-box; }
+                @page { size: A4 portrait; margin: 5mm 5mm 5mm 5mm; }
+                html, body { width: 100%; font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+                .page-box { width: 100%; }
                 .center { text-align: center; }
-                h1 { font-size: 19px; margin: 0; letter-spacing: 1px; }
-                h2 { font-size: 12px; margin: 3px 0 6px 0; font-weight: bold; }
-                h3 { font-size: 14px; margin: 4px 0 10px 0; text-decoration: underline; }
-                .meta { width: 100%; margin-bottom: 8px; font-size: 11px; font-weight: bold; }
-                .meta td { border: none; padding: 2px 0; }
-                table.grid { width: 100%; border-collapse: collapse; font-size: 10.5px; }
-                table.grid th, table.grid td { border: 1px solid #000; padding: 5px 4px; text-align: right; }
-                table.grid th { background-color: #EAEAEA; text-align: center; font-weight: bold; }
-                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; }
-                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 11.5px; }
+                h1 { font-size: 20px; margin: 0; letter-spacing: 0.8px; }
+                h2 { font-size: 13px; margin: 2px 0 4px 0; font-weight: bold; }
+                h3 { font-size: 15px; margin: 3px 0 6px 0; text-decoration: underline; }
+                .meta { width: 100%; margin-bottom: 5px; font-size: 12.5px; font-weight: bold; }
+                .meta td { border: none; padding: 1px 0; }
+                table.grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.8px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 6.5px 4px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 7px 3px; font-size: 11.5px; }
+                td.namecol { text-align: left !important; font-weight: bold; }
+                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 1.5px solid #000; padding: 7px 4px; }
+                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 12.5px; padding: 7.5px 4px; }
             </style>
             </head>
             <body>
@@ -624,10 +636,11 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Outstanding_$selectedDateStr")
                 val builder = PrintAttributes.Builder()
                 builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                 printManager.print("Customer Outstanding A4", printAdapter, builder.build())
             }
         }
         printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing A4 Sheet...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing Full-Page A4 Sheet (+2pt Font)...", Toast.LENGTH_SHORT).show()
     }
 }
