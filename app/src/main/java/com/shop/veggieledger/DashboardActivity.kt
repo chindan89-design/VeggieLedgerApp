@@ -192,7 +192,7 @@ class DashboardActivity : AppCompatActivity() {
         return true
     }
 
-    // Handle Top Menu Strip Item Clicks
+        // Handle Top Menu Strip Item Clicks
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.nav_customers -> startActivity(Intent(this, CustomerMasterActivity::class.java))
@@ -203,11 +203,32 @@ class DashboardActivity : AppCompatActivity() {
             R.id.nav_sales_receipt -> startActivity(Intent(this, SalesReceiptActivity::class.java))
             R.id.nav_purchase_payment -> startActivity(Intent(this, PurchasePaymentActivity::class.java))
             R.id.nav_expense_income -> startActivity(Intent(this, ExpenseIncomeActivity::class.java))
-            R.id.nav_cust_out -> startActivity(Intent(this, CustomerOutstandingActivity::class.java))
+
+            // Purchase Reports Sub-Menu
+            R.id.nav_pur_supplier_rep -> openReportHub("PUR_SUPPLIER")
+            R.id.nav_pur_details -> openReportHub("PUR_DETAILS")
+            R.id.nav_pur_itemwise -> openReportHub("PUR_ITEMWISE")
+            R.id.nav_pur_sup_statement -> openReportHub("PUR_STATEMENT")
             R.id.nav_sup_out -> startActivity(Intent(this, SupplierOutstandingActivity::class.java))
+
+            // Sales Reports Sub-Menu
+            R.id.nav_sal_customer_rep -> openReportHub("SAL_CUSTOMER")
+            R.id.nav_sal_details -> openReportHub("SAL_DETAILS")
+            R.id.nav_sal_itemwise -> openReportHub("SAL_ITEMWISE")
+            R.id.nav_sal_cust_statement -> openReportHub("SAL_STATEMENT")
+            R.id.nav_cust_out -> startActivity(Intent(this, CustomerOutstandingActivity::class.java))
+
+            // Others Sub-Menu
             R.id.nav_pnl -> startActivity(Intent(this, ProfitLossActivity::class.java))
             R.id.nav_history -> startActivity(Intent(this, TransactionHistoryActivity::class.java))
         }
         return super.onOptionsItemSelected(item)
     }
+
+    private fun openReportHub(type: String) {
+        val intent = Intent(this, ReportsHubActivity::class.java)
+        intent.putExtra("REPORT_TYPE", type)
+        startActivity(intent)
+    }
+    
 }
