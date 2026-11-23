@@ -20,6 +20,8 @@ import android.widget.TableRow
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -246,7 +248,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 partyNames.add(if (isPurchase) "All Suppliers" else "All Customers")
             }
 
-            val sortedDocs = snap.documents.sortedBy { (it.getString("name") ?: "").lowercase(Locale.getDefault()) }
+            val sortedDocs = snap.documents.sortedBy { doc -> (doc.getString("name") ?: "").lowercase(Locale.getDefault()) }
             for (doc in sortedDocs) {
                 val name = doc.getString("name") ?: continue
                 val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
@@ -390,7 +392,7 @@ class ReportsHubActivity : AppCompatActivity() {
             val sb = StringBuilder("${tvTitle.text} ($fromDateStr to $toDateStr)\n\n")
             var idx = 0
 
-            val docs = snap.documents.sortedBy { it.getLong("timestamp") ?: 0L }
+            val docs = snap.documents.sortedBy { doc -> doc.getLong("timestamp") ?: 0L }
             for (doc in docs) {
                 val date = doc.getString("date") ?: ""
                 if (!isDateInRange(date)) continue
@@ -497,7 +499,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
         db.collection(billCol).get().addOnSuccessListener { billSnap ->
             db.collection(voucherCol).get().addOnSuccessListener { vouSnap ->
-                val entries = arrayListOf>()
+                val entriesList = JSONArray()
 
                 for (doc in billSnap) {
                     val p = doc.getString(partyField) ?: ""
@@ -510,14 +512,14 @@ class ReportsHubActivity : AppCompatActivity() {
                     val billNo = doc.getString("billNo") ?: doc.id
                     val ts = doc.getLong("timestamp") ?: 0L
 
-                    entries.add(hashMapOf<String, Any>(
-                        "date" to date,
-                        "ref" to billNo,
-                        "desc" to "Bill ($mode)",
-                        "debit" to tot,
-                        "credit" to if (mode.equals("Cash", ignoreCase = true)) tot else 0.0,
-                        "ts" to ts
-                    ))
+                    val obj = JSONObject()
+                    obj.put("date", date)
+                    obj.put("ref", billNo)
+                    obj.put("desc", "Bill ($mode)")
+                    obj.put("debit", tot)
+                    obj.put("credit", if (mode.equals("Cash", ignoreCase = true)) tot else 0.0)
+                    obj.put("ts", ts)
+                    entriesList.put(obj)
                 }
 
                 for (doc in vouSnap) {
@@ -532,17 +534,22 @@ class ReportsHubActivity : AppCompatActivity() {
                     val mode = doc.getString("payMode") ?: "Cash"
                     val ts = doc.getLong("timestamp") ?: 0L
 
-                    entries.add(hashMapOf<String, Any>(
-                        "date" to date,
-                        "ref" to refNo,
-                        "desc" to "Voucher ($mode)",
-                        "debit" to 0.0,
-                        "credit" to (amt + disc),
-                        "ts" to ts
-                    ))
+                    val obj = JSONObject()
+                    obj.put("date", date)
+                    obj.put("ref", refNo)
+                    obj.put("desc", "Voucher ($mode)")
+                    obj.put("debit", 0.0)
+                    obj.put("credit", amt + disc)
+                    obj.put("ts", ts)
+                    entriesList.put(obj)
                 }
 
-                entries.sortBy { (it["ts"] as? Number)?.toLong() ?: 0L }
+                // Sort entries by timestamp using simple list
+                val sortedObjects = arrayListOf<JSONObject>()
+                for (i in 0 until entriesList.length()) {
+                    sortedObjects.add(entriesList.getJSONObject(i))
+                }
+                sortedObjects.sortBy { obj -> obj.optLong("ts", 0L) }
 
                 var runningBal = opBal
                 var idx = 0
@@ -553,14 +560,14 @@ class ReportsHubActivity : AppCompatActivity() {
 
                 val sb = StringBuilder("STATEMENT: $partyName ($fromDateStr to $toDateStr)\nOpening: Rs. %.2f\n\n".format(opBal))
 
-                for (e in entries) {
-                    val dr = (e["debit"] as? Number)?.toDouble() ?: 0.0
-                    val cr = (e["credit"] as? Number)?.toDouble() ?: 0.0
+                for (obj in sortedObjects) {
+                    val dr = obj.optDouble("debit", 0.0)
+                    val cr = obj.optDouble("credit", 0.0)
                     runningBal = (runningBal + dr - cr).coerceAtLeast(0.0)
 
-                    val dStr = e["date"].toString()
-                    val rStr = e["ref"].toString()
-                    val descStr = e["desc"].toString()
+                    val dStr = obj.optString("date", "")
+                    val rStr = obj.optString("ref", "")
+                    val descStr = obj.optString("desc", "")
 
                     addDataRow(
                         listOf(
