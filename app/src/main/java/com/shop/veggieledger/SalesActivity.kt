@@ -47,7 +47,6 @@ class SalesActivity : AppCompatActivity() {
 
     data class CustomerItem(val id: String, val name: String, val balance: Double)
 
-    // File Picker Launcher for Excel/CSV Sales Import
     private val pickSalesFileLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -63,12 +62,10 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        // Import Excel / CSV button click
         binding.btnImportSalesCsv.setOnClickListener {
             pickSalesFileLauncher.launch("*/*")
         }
 
-        // Date Picker Setup (Defaults to Today)
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         binding.etSalesDate.setText(selectedDateStr)
@@ -81,12 +78,10 @@ class SalesActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // Pay Mode Spinner
         val modeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
         modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spSalesPayMode.adapter = modeAdapter
 
-        // Load Customers & Items from Firestore
         fetchNextBillNo()
         loadCustomers()
         loadItems()
@@ -95,7 +90,6 @@ class SalesActivity : AppCompatActivity() {
             showCustomerSearchDialog()
         }
 
-        // Live Line Calculation
         val lineCalcWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -111,7 +105,6 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesRate.addTextChangedListener(lineCalcWatcher)
         binding.etSalesBagCharge.addTextChangedListener(lineCalcWatcher)
 
-        // Add Item Row to Bill Grid
         binding.btnAddSalesItem.setOnClickListener {
             val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
             val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
@@ -150,7 +143,6 @@ class SalesActivity : AppCompatActivity() {
             binding.tvLineAmountPreview.text = "Item Amt: Rs. 0.00"
         }
 
-        // Save Complete Sales Bill
         binding.btnSaveSalesBill.setOnClickListener {
             val billNo = binding.etSalesBillNo.text.toString().trim()
             val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
@@ -196,7 +188,6 @@ class SalesActivity : AppCompatActivity() {
                 )
                 itemsForDb.add(itemMap)
 
-                // Deduct stock from stock_batches FIFO
                 deductStockFifo(iName, bgs, kgs)
             }
 
@@ -287,100 +278,145 @@ class SalesActivity : AppCompatActivity() {
                 return
             }
 
-            Toast.makeText(this, "Importing ${lines.size - 1} rows...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Importing ${lines.size - 1} rows & updating stock...", Toast.LENGTH_SHORT).show()
 
             db.collection("customers").get().addOnSuccessListener { custSnap ->
-                val custIdMap = HashMap<String, String>()
-                val custBalMap = HashMap<String, Double>()
+                db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
 
-                for (doc in custSnap) {
-                    val cName = (doc.getString("name") ?: "").trim().lowercase(Locale.getDefault())
-                    if (cName.isNotEmpty()) {
-                        custIdMap[cName] = doc.id
-                        custBalMap[doc.id] = doc.getDouble("currentBalance") ?: 0.0
+                    val custIdMap = HashMap<String, String>()
+                    val custBalMap = HashMap<String, Double>()
+                    for (doc in custSnap) {
+                        val cName = (doc.getString("name") ?: "").trim().lowercase(Locale.getDefault())
+                        if (cName.isNotEmpty()) {
+                            custIdMap[cName] = doc.id
+                            custBalMap[doc.id] = doc.getDouble("currentBalance") ?: 0.0
+                        }
                     }
+
+                    val stockDocIdMap = HashMap<String, String>()
+                    val stockAvailBagsMap = HashMap<String, Int>()
+                    val stockAvailKgsMap = HashMap<String, Double>()
+
+                    for (doc in stockSnap) {
+                        val dId = doc.id
+                        val bId = (doc.getString("batchId") ?: doc.getString("lotId") ?: doc.getString("stockId") ?: "").trim().lowercase(Locale.getDefault())
+                        stockDocIdMap[dId.lowercase(Locale.getDefault())] = dId
+                        if (bId.isNotEmpty()) stockDocIdMap[bId] = dId
+
+                        stockAvailBagsMap[dId] = (doc.getLong("availableBags") ?: 0L).toInt()
+                        stockAvailKgsMap[dId] = doc.getDouble("availableKgs") ?: 0.0
+                    }
+
+                    val batch = db.batch()
+                    var importedCount = 0
+                    val addedCreditPerCust = HashMap<String, Double>()
+                    val fifoFallbackList = arrayListOf<Triple<String, Int, Double>>()
+
+                    for (i in 1 until lines.size) {
+                        val line = lines[i].trim()
+                        if (line.isEmpty()) continue
+
+                        val cols = line.split(",")
+                        if (cols.size < 10) continue
+
+                        // Columns: Date, BillNo, CustomerName, PayMode, ItemName, StockId, Bags, NetKgs, Rate, Amount, BagCharge, GrandTotal
+                        val dateStr = cols[0].trim()
+                        val billNo = cols[1].trim()
+                        val custName = cols[2].trim()
+                        val payMode = cols[3].trim().ifEmpty { "Credit" }
+                        val itemName = cols[4].trim()
+                        val stockIdInput = cols[5].trim()
+                        val bags = cols[6].trim().toIntOrNull() ?: 0
+                        val netKgs = cols[7].trim().toDoubleOrNull() ?: 0.0
+                        val rate = cols[8].trim().toDoubleOrNull() ?: 0.0
+                        val amount = cols[9].trim().toDoubleOrNull() ?: (netKgs * rate)
+                        val bagCharge = if (cols.size > 10) (cols[10].trim().toDoubleOrNull() ?: 0.0) else 0.0
+                        val grandTotal = if (cols.size > 11) (cols[11].trim().toDoubleOrNull() ?: (amount + bagCharge)) else (amount + bagCharge)
+
+                        if (custName.isEmpty() || grandTotal <= 0.0) continue
+
+                        val custKey = custName.lowercase(Locale.getDefault())
+                        val custId = custIdMap[custKey] ?: ""
+
+                        val itemEntry = hashMapOf<String, Any>(
+                            "itemName" to itemName,
+                            "stockId" to stockIdInput,
+                            "bags" to bags,
+                            "netKgs" to netKgs,
+                            "rate" to rate,
+                            "amount" to amount,
+                            "bagCharge" to bagCharge
+                        )
+
+                        val isCredit = payMode.equals("Credit", ignoreCase = true)
+                        val docId = db.collection("sales").document().id
+                        val saleData = hashMapOf<String, Any>(
+                            "id" to docId,
+                            "date" to dateStr,
+                            "billNo" to billNo,
+                            "customerId" to custId,
+                            "customerName" to custName,
+                            "payMode" to payMode,
+                            "items" to arrayListOf(itemEntry),
+                            "itemName" to itemName,
+                            "stockId" to stockIdInput,
+                            "bags" to bags,
+                            "netKgs" to netKgs,
+                            "totalBagCharges" to bagCharge,
+                            "grandTotal" to grandTotal,
+                            "paidAmount" to if (isCredit) 0.0 else grandTotal,
+                            "balanceAmount" to if (isCredit) grandTotal else 0.0,
+                            "paymentStatus" to if (isCredit) "Unpaid" else "Paid",
+                            "timestamp" to (System.currentTimeMillis() + i)
+                        )
+
+                        batch.set(db.collection("sales").document(docId), saleData)
+                        importedCount++
+
+                        if (isCredit && custId.isNotEmpty()) {
+                            addedCreditPerCust[custId] = (addedCreditPerCust[custId] ?: 0.0) + grandTotal
+                        }
+
+                        val matchedStockDocId = stockDocIdMap[stockIdInput.lowercase(Locale.getDefault())]
+                        if (matchedStockDocId != null) {
+                            val currB = stockAvailBagsMap[matchedStockDocId] ?: 0
+                            val currK = stockAvailKgsMap[matchedStockDocId] ?: 0.0
+                            stockAvailBagsMap[matchedStockDocId] = (currB - bags).coerceAtLeast(0)
+                            stockAvailKgsMap[matchedStockDocId] = (currK - netKgs).coerceAtLeast(0.0)
+                        } else if (itemName.isNotEmpty()) {
+                            fifoFallbackList.add(Triple(itemName, bags, netKgs))
+                        }
+                    }
+
+                    for ((sDocId, newBags) in stockAvailBagsMap) {
+                        val newKgs = stockAvailKgsMap[sDocId] ?: 0.0
+                        batch.update(
+                            db.collection("stock_batches").document(sDocId),
+                            hashMapOf<String, Any>(
+                                "availableBags" to newBags,
+                                "availableKgs" to newKgs
+                            )
+                        )
+                    }
+
+                    for ((cId, addAmt) in addedCreditPerCust) {
+                        val newBal = (custBalMap[cId] ?: 0.0) + addAmt
+                        batch.update(db.collection("customers").document(cId), "currentBalance", newBal)
+                    }
+
+                    batch.commit()
+                        .addOnSuccessListener {
+                            for (fb in fifoFallbackList) {
+                                deductStockFifo(fb.first, fb.second, fb.third)
+                            }
+                            Toast.makeText(this, "Imported $importedCount Sales & Updated Stock!", Toast.LENGTH_LONG).show()
+                            fetchNextBillNo()
+                            loadCustomers()
+                        }
+                        .addOnFailureListener {
+                            Toast.makeText(this, "Import failed! Check internet.", Toast.LENGTH_SHORT).show()
+                        }
                 }
-
-                val batch = db.batch()
-                var importedCount = 0
-                val addedCreditPerCust = HashMap<String, Double>()
-
-                for (i in 1 until lines.size) {
-                    val line = lines[i].trim()
-                    if (line.isEmpty()) continue
-
-                    val cols = line.split(",")
-                    if (cols.size < 9) continue
-
-                    val dateStr = cols[0].trim()
-                    val billNo = cols[1].trim()
-                    val custName = cols[2].trim()
-                    val payMode = cols[3].trim().ifEmpty { "Credit" }
-                    val itemName = cols[4].trim()
-                    val bags = cols[5].trim().toIntOrNull() ?: 0
-                    val netKgs = cols[6].trim().toDoubleOrNull() ?: 0.0
-                    val rate = cols[7].trim().toDoubleOrNull() ?: 0.0
-                    val amount = cols[8].trim().toDoubleOrNull() ?: (netKgs * rate)
-                    val bagCharge = if (cols.size > 9) (cols[9].trim().toDoubleOrNull() ?: 0.0) else 0.0
-                    val grandTotal = if (cols.size > 10) (cols[10].trim().toDoubleOrNull() ?: (amount + bagCharge)) else (amount + bagCharge)
-
-                    if (custName.isEmpty() || grandTotal <= 0.0) continue
-
-                    val custKey = custName.lowercase(Locale.getDefault())
-                    val custId = custIdMap[custKey] ?: ""
-
-                    val itemEntry = hashMapOf<String, Any>(
-                        "itemName" to itemName,
-                        "bags" to bags,
-                        "netKgs" to netKgs,
-                        "rate" to rate,
-                        "amount" to amount,
-                        "bagCharge" to bagCharge
-                    )
-
-                    val isCredit = payMode.equals("Credit", ignoreCase = true)
-                    val docId = db.collection("sales").document().id
-                    val saleData = hashMapOf<String, Any>(
-                        "id" to docId,
-                        "date" to dateStr,
-                        "billNo" to billNo,
-                        "customerId" to custId,
-                        "customerName" to custName,
-                        "payMode" to payMode,
-                        "items" to arrayListOf(itemEntry),
-                        "itemName" to itemName,
-                        "bags" to bags,
-                        "netKgs" to netKgs,
-                        "totalBagCharges" to bagCharge,
-                        "grandTotal" to grandTotal,
-                        "paidAmount" to if (isCredit) 0.0 else grandTotal,
-                        "balanceAmount" to if (isCredit) grandTotal else 0.0,
-                        "paymentStatus" to if (isCredit) "Unpaid" else "Paid",
-                        "timestamp" to (System.currentTimeMillis() + i)
-                    )
-
-                    batch.set(db.collection("sales").document(docId), saleData)
-                    importedCount++
-
-                    if (isCredit && custId.isNotEmpty()) {
-                        addedCreditPerCust[custId] = (addedCreditPerCust[custId] ?: 0.0) + grandTotal
-                    }
-                }
-
-                for ((cId, addAmt) in addedCreditPerCust) {
-                    val newBal = (custBalMap[cId] ?: 0.0) + addAmt
-                    batch.update(db.collection("customers").document(cId), "currentBalance", newBal)
-                }
-
-                batch.commit()
-                    .addOnSuccessListener {
-                        Toast.makeText(this, "Imported $importedCount Sales Bills Successfully!", Toast.LENGTH_LONG).show()
-                        fetchNextBillNo()
-                        loadCustomers()
-                    }
-                    .addOnFailureListener {
-                        Toast.makeText(this, "Import failed! Check internet.", Toast.LENGTH_SHORT).show()
-                    }
             }
         } catch (e: Exception) {
             Toast.makeText(this, "File error: ${e.message}", Toast.LENGTH_LONG).show()
