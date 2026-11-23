@@ -46,8 +46,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    // 26 rows per A4 portrait page so +1pt larger font (14.5px) fits cleanly without page overflow
-    private val ROWS_PER_A4_PAGE = 26
+    // 34 rows per A4 portrait page fills the page down to the bottom margin cleanly
+    private val ROWS_PER_A4_PAGE = 34
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -615,17 +615,17 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 html, body { width: 100%; font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
                 .page-box { width: 100%; }
                 .center { text-align: center; }
-                h1 { font-size: 23px; margin: 0; letter-spacing: 0.8px; }
-                h2 { font-size: 15.5px; margin: 2px 0 4px 0; font-weight: bold; }
-                h3 { font-size: 17.5px; margin: 3px 0 6px 0; text-decoration: underline; }
-                .meta { width: 100%; margin-bottom: 6px; font-size: 14.5px; font-weight: bold; }
+                h1 { font-size: 21px; margin: 0; letter-spacing: 0.8px; }
+                h2 { font-size: 14px; margin: 2px 0 3px 0; font-weight: bold; }
+                h3 { font-size: 16px; margin: 2px 0 5px 0; text-decoration: underline; }
+                .meta { width: 100%; margin-bottom: 4px; font-size: 13.5px; font-weight: bold; }
                 .meta td { border: none; padding: 1px 0; }
                 table.grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14.5px; }
-                table.grid th, table.grid td { border: 1px solid #000; padding: 7.5px 3px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 8px 2px; font-size: 13.5px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 5.5px 3px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 6px 2px; font-size: 13px; }
                 td.namecol { text-align: left !important; font-weight: bold; }
-                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; padding: 8px 3px; font-size: 14.5px; }
-                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 15px; padding: 8.5px 3px; }
+                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; padding: 6px 3px; font-size: 14.5px; }
+                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 15px; padding: 6.5px 3px; }
             </style>
             </head>
             <body>
@@ -646,6 +646,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
         }
         printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing A4 Sheet (+1pt Font)...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing Full-Height A4 Sheet...", Toast.LENGTH_SHORT).show()
     }
 }
