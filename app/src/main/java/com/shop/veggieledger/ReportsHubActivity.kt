@@ -54,7 +54,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
     private var fromDateStr: String = ""
     private var toDateStr: String = ""
-    private val partyNames = arrayListOf("All")
+    private val partyNames = arrayListOf("ALL CUSTOMERS")
     private val partyOpBalMap = HashMap<String, Double>()
     private val partyIdMap = HashMap<String, String>()
     private var shareReportText: String = ""
@@ -90,7 +90,7 @@ class ReportsHubActivity : AppCompatActivity() {
             "PUR_DETAILS" -> "Purchase Bill Details"
             "PUR_ITEMWISE" -> "Itemwise Purchase Report"
             "PUR_STATEMENT" -> "Supplier Ledger Statement"
-            "SAL_CUSTOMER" -> "Customer Report"
+            "SAL_CUSTOMER" -> "Customer Sales Report"
             "SAL_DETAILS" -> "Sales Bill Details"
             "SAL_ITEMWISE" -> "Itemwise Sales Report"
             "SAL_STATEMENT" -> "Customer Ledger Statement"
@@ -128,16 +128,32 @@ class ReportsHubActivity : AppCompatActivity() {
         tvTitle.setPadding(0, 0, 0, 12)
         filterCard.addView(tvTitle)
 
-        // Date Filter Row (From Date - Till Date)
+        // 1. FIRST: Customer / Party Dropdown Filter (Starts with ALL CUSTOMERS)
+        layoutPartyBox = LinearLayout(this)
+        layoutPartyBox.orientation = LinearLayout.VERTICAL
+        layoutPartyBox.setPadding(0, 0, 0, 10)
+        tvPartyLabel = TextView(this)
+        tvPartyLabel.text = "1. Customer Name"
+        tvPartyLabel.textSize = 12f
+        tvPartyLabel.setTypeface(null, Typeface.BOLD)
+        tvPartyLabel.setTextColor(Color.parseColor("#1B5E20"))
+        spPartyFilter = Spinner(this)
+        spPartyFilter.setBackgroundResource(android.R.drawable.btn_dropdown)
+        layoutPartyBox.addView(tvPartyLabel)
+        layoutPartyBox.addView(spPartyFilter)
+        filterCard.addView(layoutPartyBox)
+
+        // 2. SECOND: From Date - To Date Row
         val dateRow = LinearLayout(this)
         dateRow.orientation = LinearLayout.HORIZONTAL
         dateRow.weightSum = 2f
+        dateRow.setPadding(0, 0, 0, 8)
 
         val fromCol = LinearLayout(this)
         fromCol.orientation = LinearLayout.VERTICAL
         fromCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         val lblFrom = TextView(this)
-        lblFrom.text = "From Date"
+        lblFrom.text = "2. From Date"
         lblFrom.textSize = 12f
         lblFrom.setTypeface(null, Typeface.BOLD)
         etFromDate = EditText(this)
@@ -151,7 +167,7 @@ class ReportsHubActivity : AppCompatActivity() {
         toCol.orientation = LinearLayout.VERTICAL
         toCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         val lblTo = TextView(this)
-        lblTo.text = "Till Date"
+        lblTo.text = "3. To Date"
         lblTo.textSize = 12f
         lblTo.setTypeface(null, Typeface.BOLD)
         etToDate = EditText(this)
@@ -165,32 +181,18 @@ class ReportsHubActivity : AppCompatActivity() {
         dateRow.addView(toCol)
         filterCard.addView(dateRow)
 
-        // Party Dropdown Filter
-        layoutPartyBox = LinearLayout(this)
-        layoutPartyBox.orientation = LinearLayout.VERTICAL
-        layoutPartyBox.setPadding(0, 8, 0, 8)
-        tvPartyLabel = TextView(this)
-        tvPartyLabel.text = "Select Customer"
-        tvPartyLabel.textSize = 12f
-        tvPartyLabel.setTypeface(null, Typeface.BOLD)
-        spPartyFilter = Spinner(this)
-        spPartyFilter.setBackgroundResource(android.R.drawable.btn_dropdown)
-        layoutPartyBox.addView(tvPartyLabel)
-        layoutPartyBox.addView(spPartyFilter)
-        filterCard.addView(layoutPartyBox)
-
-        // Action Buttons: SHOW REPORT | PRINT A4 PDF | SHARE
+        // Action Buttons: SHOW REPORT | A4 PDF | SHARE
         val btnRow = LinearLayout(this)
         btnRow.orientation = LinearLayout.HORIZONTAL
         btnRow.weightSum = 3f
-        btnRow.setPadding(0, 6, 0, 4)
+        btnRow.setPadding(0, 4, 0, 4)
 
         val btnFilter = Button(this)
-        btnFilter.text = "SHOW"
+        btnFilter.text = "SHOW REPORT"
         btnFilter.setBackgroundColor(Color.parseColor("#1B5E20"))
         btnFilter.setTextColor(Color.WHITE)
         btnFilter.setTypeface(null, Typeface.BOLD)
-        val lpBtn1 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lpBtn1 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f)
         lpBtn1.setMargins(0, 0, 4, 0)
         btnFilter.layoutParams = lpBtn1
         btnFilter.setOnClickListener { runReport() }
@@ -200,7 +202,7 @@ class ReportsHubActivity : AppCompatActivity() {
         btnPrint.setBackgroundColor(Color.parseColor("#E65100"))
         btnPrint.setTextColor(Color.WHITE)
         btnPrint.setTypeface(null, Typeface.BOLD)
-        val lpBtn2 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lpBtn2 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.9f)
         lpBtn2.setMargins(4, 0, 4, 0)
         btnPrint.layoutParams = lpBtn2
         btnPrint.setOnClickListener { printCurrentReportA4() }
@@ -210,7 +212,7 @@ class ReportsHubActivity : AppCompatActivity() {
         btnShare.setBackgroundColor(Color.parseColor("#1565C0"))
         btnShare.setTextColor(Color.WHITE)
         btnShare.setTypeface(null, Typeface.BOLD)
-        val lpBtn3 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lpBtn3 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.9f)
         lpBtn3.setMargins(4, 0, 0, 0)
         btnShare.layoutParams = lpBtn3
         btnShare.setOnClickListener {
@@ -330,6 +332,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 calFrom.set(y, m, d)
                 fromDateStr = sdf.format(calFrom.time)
                 etFromDate.setText(fromDateStr)
+                runReport()
             }, calFrom.get(Calendar.YEAR), calFrom.get(Calendar.MONTH), calFrom.get(Calendar.DAY_OF_MONTH)).show()
         }
 
@@ -338,6 +341,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 calTo.set(y, m, d)
                 toDateStr = sdf.format(calTo.time)
                 etToDate.setText(toDateStr)
+                runReport()
             }, calTo.get(Calendar.YEAR), calTo.get(Calendar.MONTH), calTo.get(Calendar.DAY_OF_MONTH)).show()
         }
     }
@@ -354,7 +358,7 @@ class ReportsHubActivity : AppCompatActivity() {
         }
 
         layoutPartyBox.visibility = View.VISIBLE
-        tvPartyLabel.text = if (isPurchase) "Select Supplier" else "Select Customer"
+        tvPartyLabel.text = if (isPurchase) "1. Supplier Name" else "1. Customer Name"
         val collectionName = if (isPurchase) "suppliers" else "customers"
 
         db.collection(collectionName).get().addOnSuccessListener { snap ->
@@ -436,6 +440,28 @@ class ReportsHubActivity : AppCompatActivity() {
         tableLayout.addView(tr)
     }
 
+    /**
+     * Adds a full-width Customer Name banner row directly inside the table so details appear neatly underneath it.
+     */
+    private fun addCustomerSectionBannerRow(customerName: String, colSpanCount: Int) {
+        val tr = TableRow(this)
+        tr.setBackgroundColor(Color.BLACK)
+        val tv = TextView(this)
+        tv.text = "NAME: $customerName"
+        tv.setTextColor(Color.parseColor("#1B5E20"))
+        tv.setBackgroundColor(Color.parseColor("#E3F2FD"))
+        tv.textSize = 14.5f
+        tv.setTypeface(null, Typeface.BOLD)
+        tv.setPadding(14, 14, 14, 14)
+        tv.gravity = Gravity.START
+        val lp = TableRow.LayoutParams(TableRow.LayoutParams.MATCH_PARENT, TableRow.LayoutParams.WRAP_CONTENT)
+        lp.span = colSpanCount
+        lp.setMargins(1, 1, 1, 1)
+        tv.layoutParams = lp
+        tr.addView(tv)
+        tableLayout.addView(tr)
+    }
+
     private fun addDataRow(cells: List<String>, rowIndex: Int, rightAlignFromIndex: Int = 1, isTotalRow: Boolean = false) {
         val tr = TableRow(this)
         tr.setBackgroundColor(Color.BLACK)
@@ -449,7 +475,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 makeBorderedCell(
                     cells[i],
                     alignRight = (i >= rightAlignFromIndex),
-                    bold = (isTotalRow || i == 0 || i == cells.size - 1),
+                    bold = (isTotalRow || i == cells.size - 1),
                     bgColor = bg
                 )
             )
@@ -462,7 +488,7 @@ class ReportsHubActivity : AppCompatActivity() {
         tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
 
         when (reportType) {
-            "SAL_CUSTOMER" -> loadDetailedCustomerReport(selectedParty)
+            "SAL_CUSTOMER" -> loadGroupedCustomerSalesReport(selectedParty)
             "PUR_SUPPLIER" -> loadPartySummaryReport("purchases", "supplierName", selectedParty, "#1565C0")
             "PUR_DETAILS" -> loadBillDetailsReport("purchases", "supplierName", selectedParty, "#1565C0")
             "PUR_ITEMWISE" -> loadItemwiseReport("purchases", "#1565C0")
@@ -475,29 +501,17 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     /**
-     * Custom Customer Report:
-     * - Particular Customer:
-     *     Meta Left: CUSTOMER NAME: <Name>
-     *     Columns: DATE | OP.BAL | QTY | RATE | AMOUNT | PAYMENT | DISCOUNT | CL.BAL
-     * - All Customers:
-     *     Meta Left: CUSTOMER NAME: ALL CUSTOMERS
-     *     Columns: CUSTOMER NAME | DATE | OP.BAL | QTY | RATE | AMOUNT | PAYMENT | DISCOUNT | CL.BAL
+     * Exact Customer Report Format requested:
+     * - Customer Name header row on top
+     * - Underneath it: DATE | OP.BAL | QTY | RATE | AMOUNT | INCOME | DISCOUNT | CL.BAL
+     * - Works identically for both ALL CUSTOMERS (grouped section-by-section on A4) and a Particular Customer!
      */
-    private fun loadDetailedCustomerReport(selectedCust: String) {
+    private fun loadGroupedCustomerSalesReport(selectedCust: String) {
         val isAll = selectedCust.equals("ALL CUSTOMERS", ignoreCase = true) || selectedCust.startsWith("All")
         tvLeftMeta.text = "CUSTOMER NAME: $selectedCust"
 
-        if (isAll) {
-            addHeaderRow(
-                listOf("CUSTOMER NAME", "DATE", "OP.BAL", "QTY", "RATE", "AMOUNT", "PAYMENT", "DISCOUNT", "CL.BAL"),
-                "#1B5E20"
-            )
-        } else {
-            addHeaderRow(
-                listOf("DATE", "OP.BAL", "QTY", "RATE", "AMOUNT", "PAYMENT", "DISCOUNT", "CL.BAL"),
-                "#1B5E20"
-            )
-        }
+        val headers = listOf("DATE", "OP.BAL", "QTY", "RATE", "AMOUNT", "INCOME", "DISCOUNT", "CL.BAL")
+        addHeaderRow(headers, "#1B5E20")
 
         db.collection("customers").get().addOnSuccessListener { custSnap ->
             db.collection("sales").get().addOnSuccessListener { salesSnap ->
@@ -519,18 +533,16 @@ class ReportsHubActivity : AppCompatActivity() {
                     var grandOpTotal = 0.0
                     var grandQtyTotal = 0.0
                     var grandAmtTotal = 0.0
-                    var grandPayTotal = 0.0
+                    var grandIncTotal = 0.0
                     var grandDiscTotal = 0.0
                     var grandClTotal = 0.0
 
                     var rowIdx = 0
                     val htmlRows = StringBuilder()
-                    val shareSb = StringBuilder("CUSTOMER REPORT ($fromDateStr TO $toDateStr)\nCustomer: $selectedCust\n\n")
+                    val shareSb = StringBuilder("CUSTOMER SALES REPORT ($fromDateStr TO $toDateStr)\nFilter: $selectedCust\n\n")
 
                     for ((custId, custName, masterOpBal) in targetCustomers) {
                         val custNameLower = custName.lowercase(Locale.getDefault())
-
-                        // Calculate Opening Balance as of FromDate (Master OP + Credit Sales before FromDate - Receipts/Discounts before FromDate)
                         var effectiveOpBal = masterOpBal
 
                         val txList = arrayListOf<JSONObject>()
@@ -570,7 +582,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                     tx.put("qty", qtyVal)
                                     tx.put("rate", rtVal)
                                     tx.put("amount", finalAmt)
-                                    tx.put("payment", if (pMode.equals("Cash", ignoreCase = true)) finalAmt else 0.0)
+                                    tx.put("income", if (pMode.equals("Cash", ignoreCase = true)) finalAmt else 0.0)
                                     tx.put("discount", 0.0)
                                     tx.put("ts", ts + k)
                                     txList.add(tx)
@@ -583,7 +595,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                 tx.put("qty", kgs)
                                 tx.put("rate", rtVal)
                                 tx.put("amount", gTot)
-                                tx.put("payment", if (pMode.equals("Cash", ignoreCase = true)) gTot else 0.0)
+                                tx.put("income", if (pMode.equals("Cash", ignoreCase = true)) gTot else 0.0)
                                 tx.put("discount", 0.0)
                                 tx.put("ts", ts)
                                 txList.add(tx)
@@ -596,12 +608,12 @@ class ReportsHubActivity : AppCompatActivity() {
                             if (rCid != custId && rCname != custNameLower) continue
 
                             val dStr = rDoc.getString("date") ?: ""
-                            val payAmt = rDoc.getDouble("amount") ?: 0.0
+                            val incAmt = rDoc.getDouble("amount") ?: 0.0
                             val discAmt = rDoc.getDouble("discount") ?: 0.0
                             val ts = rDoc.getLong("timestamp") ?: 0L
 
                             if (isDateBeforeFrom(dStr)) {
-                                effectiveOpBal -= (payAmt + discAmt)
+                                effectiveOpBal -= (incAmt + discAmt)
                                 continue
                             }
 
@@ -612,7 +624,7 @@ class ReportsHubActivity : AppCompatActivity() {
                             tx.put("qty", 0.0)
                             tx.put("rate", 0.0)
                             tx.put("amount", 0.0)
-                            tx.put("payment", payAmt)
+                            tx.put("income", incAmt)
                             tx.put("discount", discAmt)
                             tx.put("ts", ts)
                             txList.add(tx)
@@ -620,35 +632,30 @@ class ReportsHubActivity : AppCompatActivity() {
 
                         effectiveOpBal = effectiveOpBal.coerceAtLeast(0.0)
 
-                        // Skip completely inactive zero customers when viewing ALL CUSTOMERS
+                        // Skip zero-balance inactive customers when showing ALL CUSTOMERS
                         if (isAll && effectiveOpBal == 0.0 && txList.isEmpty()) {
                             continue
                         }
 
                         txList.sortBy { obj -> obj.optLong("ts", 0L) }
 
+                        // Add Customer Name Section Header Row on top of this customer's rows
+                        addCustomerSectionBannerRow(custName, 8)
+                        htmlRows.append("<tr class='custbanner'><td colspan='8'>NAME: $custName</td></tr>")
+                        shareSb.append("=== $custName ===\n")
+
                         grandOpTotal += effectiveOpBal
                         var runningBal = effectiveOpBal
 
                         if (txList.isEmpty()) {
-                            // Customer has Opening Balance but no transactions in selected date range
                             grandClTotal += runningBal
-                            if (isAll) {
-                                addDataRow(
-                                    listOf(custName, fromDateStr, fmtVal(effectiveOpBal), "-", "-", "-", "-", "-", fmtVal(runningBal)),
-                                    rowIdx++,
-                                    rightAlignFromIndex = 2
-                                )
-                                htmlRows.append("<tr><td class='left bold'>$custName</td><td class='center'>$fromDateStr</td><td>${fmtVal(effectiveOpBal)}</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class='bold'>${fmtVal(runningBal)}</td></tr>")
-                            } else {
-                                addDataRow(
-                                    listOf(fromDateStr, fmtVal(effectiveOpBal), "-", "-", "-", "-", "-", fmtVal(runningBal)),
-                                    rowIdx++,
-                                    rightAlignFromIndex = 1
-                                )
-                                htmlRows.append("<tr><td class='center'>$fromDateStr</td><td>${fmtVal(effectiveOpBal)}</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class='bold'>${fmtVal(runningBal)}</td></tr>")
-                            }
-                            shareSb.append("$custName | Op: ${fmtVal(effectiveOpBal)} | Cl: ${fmtVal(runningBal)}\n")
+                            addDataRow(
+                                listOf(fromDateStr, fmtVal(effectiveOpBal), "-", "-", "-", "-", "-", fmtVal(runningBal)),
+                                rowIdx++,
+                                rightAlignFromIndex = 1
+                            )
+                            htmlRows.append("<tr><td class='center'>$fromDateStr</td><td>${fmtVal(effectiveOpBal)}</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class='bold'>${fmtVal(runningBal)}</td></tr>")
+                            shareSb.append("$fromDateStr | Op: ${fmtVal(effectiveOpBal)} | Cl: ${fmtVal(runningBal)}\n\n")
                         } else {
                             for (tIdx in txList.indices) {
                                 val tx = txList[tIdx]
@@ -656,73 +663,49 @@ class ReportsHubActivity : AppCompatActivity() {
                                 val qty = tx.optDouble("qty", 0.0)
                                 val rate = tx.optDouble("rate", 0.0)
                                 val amt = tx.optDouble("amount", 0.0)
-                                val pay = tx.optDouble("payment", 0.0)
+                                val inc = tx.optDouble("income", 0.0)
                                 val disc = tx.optDouble("discount", 0.0)
 
                                 val rowOp = if (tIdx == 0) effectiveOpBal else 0.0
-                                runningBal = (runningBal + amt - pay - disc).coerceAtLeast(0.0)
+                                runningBal = (runningBal + amt - inc - disc).coerceAtLeast(0.0)
 
                                 grandQtyTotal += qty
                                 grandAmtTotal += amt
-                                grandPayTotal += pay
+                                grandIncTotal += inc
                                 grandDiscTotal += disc
 
                                 if (tIdx == txList.size - 1) {
                                     grandClTotal += runningBal
                                 }
 
-                                if (isAll) {
-                                    val displayCust = if (tIdx == 0) custName else ""
-                                    addDataRow(
-                                        listOf(displayCust, dStr, fmtVal(rowOp), fmtQty(qty), fmtVal(rate), fmtVal(amt), fmtVal(pay), fmtVal(disc), fmtVal(runningBal)),
-                                        rowIdx++,
-                                        rightAlignFromIndex = 2
-                                    )
-                                    htmlRows.append("<tr><td class='left bold'>$displayCust</td><td class='center'>$dStr</td><td>${fmtVal(rowOp)}</td><td>${fmtQty(qty)}</td><td>${fmtVal(rate)}</td><td>${fmtVal(amt)}</td><td>${fmtVal(pay)}</td><td>${fmtVal(disc)}</td><td class='bold'>${fmtVal(runningBal)}</td></tr>")
-                                } else {
-                                    addDataRow(
-                                        listOf(dStr, fmtVal(rowOp), fmtQty(qty), fmtVal(rate), fmtVal(amt), fmtVal(pay), fmtVal(disc), fmtVal(runningBal)),
-                                        rowIdx++,
-                                        rightAlignFromIndex = 1
-                                    )
-                                    htmlRows.append("<tr><td class='center'>$dStr</td><td>${fmtVal(rowOp)}</td><td>${fmtQty(qty)}</td><td>${fmtVal(rate)}</td><td>${fmtVal(amt)}</td><td>${fmtVal(pay)}</td><td>${fmtVal(disc)}</td><td class='bold'>${fmtVal(runningBal)}</td></tr>")
-                                }
-                                shareSb.append("$custName ($dStr): Amt ${fmtVal(amt)} | Pay ${fmtVal(pay)} | Bal ${fmtVal(runningBal)}\n")
+                                addDataRow(
+                                    listOf(dStr, fmtVal(rowOp), fmtQty(qty), fmtVal(rate), fmtVal(amt), fmtVal(inc), fmtVal(disc), fmtVal(runningBal)),
+                                    rowIdx++,
+                                    rightAlignFromIndex = 1
+                                )
+                                htmlRows.append("<tr><td class='center'>$dStr</td><td>${fmtVal(rowOp)}</td><td>${fmtQty(qty)}</td><td>${fmtVal(rate)}</td><td>${fmtVal(amt)}</td><td>${fmtVal(inc)}</td><td>${fmtVal(disc)}</td><td class='bold'>${fmtVal(runningBal)}</td></tr>")
+                                shareSb.append("$dStr | Amt: ${fmtVal(amt)} | Inc: ${fmtVal(inc)} | Bal: ${fmtVal(runningBal)}\n")
                             }
+                            shareSb.append("\n")
                         }
                     }
 
                     // Final Total Row
-                    if (isAll) {
-                        addDataRow(
-                            listOf("GRAND TOTAL", "", fmtVal(grandOpTotal), fmtQty(grandQtyTotal), "-", fmtVal(grandAmtTotal), fmtVal(grandPayTotal), fmtVal(grandDiscTotal), fmtVal(grandClTotal)),
-                            rowIdx,
-                            rightAlignFromIndex = 2,
-                            isTotalRow = true
-                        )
-                        htmlRows.append("<tr class='total'><td class='left'>GRAND TOTAL</td><td></td><td>${fmtVal(grandOpTotal)}</td><td>${fmtQty(grandQtyTotal)}</td><td>-</td><td>${fmtVal(grandAmtTotal)}</td><td>${fmtVal(grandPayTotal)}</td><td>${fmtVal(grandDiscTotal)}</td><td>${fmtVal(grandClTotal)}</td></tr>")
-                    } else {
-                        addDataRow(
-                            listOf("TOTAL", fmtVal(grandOpTotal), fmtQty(grandQtyTotal), "-", fmtVal(grandAmtTotal), fmtVal(grandPayTotal), fmtVal(grandDiscTotal), fmtVal(grandClTotal)),
-                            rowIdx,
-                            rightAlignFromIndex = 1,
-                            isTotalRow = true
-                        )
-                        htmlRows.append("<tr class='total'><td class='left'>TOTAL</td><td>${fmtVal(grandOpTotal)}</td><td>${fmtQty(grandQtyTotal)}</td><td>-</td><td>${fmtVal(grandAmtTotal)}</td><td>${fmtVal(grandPayTotal)}</td><td>${fmtVal(grandDiscTotal)}</td><td>${fmtVal(grandClTotal)}</td></tr>")
-                    }
+                    val totalLabel = if (isAll) "GRAND TOTAL" else "TOTAL"
+                    addDataRow(
+                        listOf(totalLabel, fmtVal(grandOpTotal), fmtQty(grandQtyTotal), "-", fmtVal(grandAmtTotal), fmtVal(grandIncTotal), fmtVal(grandDiscTotal), fmtVal(grandClTotal)),
+                        rowIdx,
+                        rightAlignFromIndex = 1,
+                        isTotalRow = true
+                    )
+                    htmlRows.append("<tr class='total'><td class='left'>$totalLabel</td><td>${fmtVal(grandOpTotal)}</td><td>${fmtQty(grandQtyTotal)}</td><td>-</td><td>${fmtVal(grandAmtTotal)}</td><td>${fmtVal(grandIncTotal)}</td><td>${fmtVal(grandDiscTotal)}</td><td>${fmtVal(grandClTotal)}</td></tr>")
 
                     tvSummary.text = String.format(
                         Locale.getDefault(),
-                        "Sales: Rs. %s  |  Payment: Rs. %s  |  Closing Bal: Rs. %s",
-                        fmtVal(grandAmtTotal), fmtVal(grandPayTotal), fmtVal(grandClTotal)
+                        "Sales: Rs. %s  |  Income: Rs. %s  |  Closing Bal: Rs. %s",
+                        fmtVal(grandAmtTotal), fmtVal(grandIncTotal), fmtVal(grandClTotal)
                     )
                     shareReportText = shareSb.toString()
-
-                    val tableHeadersHtml = if (isAll) {
-                        "<tr><th>CUSTOMER NAME</th><th>DATE</th><th>OP.BAL</th><th>QTY</th><th>RATE</th><th>AMOUNT</th><th>PAYMENT</th><th>DISCOUNT</th><th>CL.BAL</th></tr>"
-                    } else {
-                        "<tr><th>DATE</th><th>OP.BAL</th><th>QTY</th><th>RATE</th><th>AMOUNT</th><th>PAYMENT</th><th>DISCOUNT</th><th>CL.BAL</th></tr>"
-                    }
 
                     lastPrintableHtml = """
                         <html>
@@ -737,19 +720,20 @@ class ReportsHubActivity : AppCompatActivity() {
                             h1 { font-size: 21px; margin: 0; }
                             h2 { font-size: 13px; margin: 2px 0 4px 0; }
                             h3 { font-size: 16px; margin: 3px 0 6px 0; text-decoration: underline; }
-                            .meta { width: 100%; margin-bottom: 6px; font-size: 12.5px; font-weight: bold; }
+                            .meta { width: 100%; margin-bottom: 6px; font-size: 13px; font-weight: bold; }
                             .meta td { border: none; padding: 2px 0; }
-                            table.grid { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-                            table.grid th, table.grid td { border: 1px solid #000; padding: 5px 4px; text-align: right; }
+                            table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+                            table.grid th, table.grid td { border: 1px solid #000; padding: 5.5px 4px; text-align: right; }
                             table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; }
-                            tr.total td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+                            tr.custbanner td { text-align: left !important; font-weight: bold; background-color: #E3F2FD; color: #0D47A1; font-size: 12.5px; padding: 6px; }
+                            tr.total td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 12.5px; }
                         </style>
                         </head>
                         <body>
                             <div class="center">
                                 <h1>THIRUVENI COCONUTS</h1>
                                 <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
-                                <h3>CUSTOMER REPORT</h3>
+                                <h3>CUSTOMER SALES REPORT</h3>
                             </div>
                             <table class="meta">
                                 <tr>
@@ -758,7 +742,18 @@ class ReportsHubActivity : AppCompatActivity() {
                                 </tr>
                             </table>
                             <table class="grid">
-                                <thead>$tableHeadersHtml</thead>
+                                <thead>
+                                    <tr>
+                                        <th>DATE</th>
+                                        <th>OP.BAL</th>
+                                        <th>QTY</th>
+                                        <th>RATE</th>
+                                        <th>AMOUNT</th>
+                                        <th>INCOME</th>
+                                        <th>DISCOUNT</th>
+                                        <th>CL.BAL</th>
+                                    </tr>
+                                </thead>
                                 <tbody>$htmlRows</tbody>
                             </table>
                         </body>
@@ -1000,14 +995,14 @@ class ReportsHubActivity : AppCompatActivity() {
         printWebView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Report_${fromDateStr}_to_${toDateStr}")
+                val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Sales_Report_${fromDateStr}_to_${toDateStr}")
                 val builder = PrintAttributes.Builder()
                 builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                 builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                printManager.print("Customer Report A4", printAdapter, builder.build())
+                printManager.print("Customer Sales Report A4", printAdapter, builder.build())
             }
         }
         printWebView.loadDataWithBaseURL(null, lastPrintableHtml, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing Customer Report A4 PDF...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing A4 PDF...", Toast.LENGTH_SHORT).show()
     }
 }
