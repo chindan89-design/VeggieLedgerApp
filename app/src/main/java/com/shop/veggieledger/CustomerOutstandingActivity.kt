@@ -46,8 +46,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    // Adjusted to 33 rows per A4 page to accommodate +2pt font size and +1pt row padding cleanly
-    private val ROWS_PER_A4_PAGE = 33
+    // 28 rows per A4 portrait page so larger font (13.5px) fits full page height without overflow
+    private val ROWS_PER_A4_PAGE = 28
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,7 +95,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         dateCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         val lblDate = TextView(this)
         lblDate.text = "As On Date"
-        lblDate.textSize = 11f
+        lblDate.textSize = 12f
         lblDate.setTypeface(null, Typeface.BOLD)
         etAsOnDate = EditText(this)
         etAsOnDate.setText(selectedDateStr)
@@ -119,7 +119,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         custCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         val lblCust = TextView(this)
         lblCust.text = "Filter Customer"
-        lblCust.textSize = 11f
+        lblCust.textSize = 12f
         lblCust.setTypeface(null, Typeface.BOLD)
         spCustomerFilter = Spinner(this)
         spCustomerFilter.setBackgroundResource(android.R.drawable.btn_dropdown)
@@ -155,7 +155,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         // Center Heading 1: THIRUVENI COCONUTS
         val tvShopName = TextView(this)
         tvShopName.text = "THIRUVENI COCONUTS"
-        tvShopName.textSize = 21f
+        tvShopName.textSize = 23f
         tvShopName.setTypeface(null, Typeface.BOLD)
         tvShopName.setTextColor(Color.BLACK)
         tvShopName.gravity = Gravity.CENTER
@@ -164,7 +164,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         // Center Heading 2: Address
         val tvShopAddr = TextView(this)
         tvShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
-        tvShopAddr.textSize = 14f
+        tvShopAddr.textSize = 15f
         tvShopAddr.setTypeface(null, Typeface.BOLD)
         tvShopAddr.setTextColor(Color.DKGRAY)
         tvShopAddr.gravity = Gravity.CENTER
@@ -174,7 +174,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         // Center Heading 3: CUSTOMER OUTSTANDING
         val tvSheetTitle = TextView(this)
         tvSheetTitle.text = "CUSTOMER OUTSTANDING"
-        tvSheetTitle.textSize = 17f
+        tvSheetTitle.textSize = 18f
         tvSheetTitle.setTypeface(null, Typeface.BOLD)
         tvSheetTitle.setTextColor(Color.BLACK)
         tvSheetTitle.gravity = Gravity.CENTER
@@ -189,7 +189,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         tvLeftCustName = TextView(this)
         tvLeftCustName.text = "CUSTOMER NAME: ALL CUSTOMERS"
-        tvLeftCustName.textSize = 14f
+        tvLeftCustName.textSize = 15f
         tvLeftCustName.setTypeface(null, Typeface.BOLD)
         tvLeftCustName.setTextColor(Color.BLACK)
         tvLeftCustName.gravity = Gravity.START
@@ -197,7 +197,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         tvRightDate = TextView(this)
         tvRightDate.text = "DATE: $selectedDateStr"
-        tvRightDate.textSize = 14f
+        tvRightDate.textSize = 15f
         tvRightDate.setTypeface(null, Typeface.BOLD)
         tvRightDate.setTextColor(Color.BLACK)
         tvRightDate.gravity = Gravity.END
@@ -336,8 +336,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         tv.text = text
         tv.setTextColor(textColor)
         tv.setBackgroundColor(bgColor)
-        tv.textSize = 14f
-        tv.setPadding(15, 16, 15, 16)
+        tv.textSize = 16f
+        tv.setPadding(16, 18, 16, 18)
         tv.gravity = if (alignRight) Gravity.END else Gravity.START
         if (bold) tv.setTypeface(null, Typeface.BOLD)
         val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT)
@@ -577,13 +577,13 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                     <table class="grid">
                         <colgroup>
                             <col style="width: 24%;">
+                            <col style="width: 11.5%;">
+                            <col style="width: 10%;">
+                            <col style="width: 10%;">
+                            <col style="width: 8.5%;">
+                            <col style="width: 12.5%;">
+                            <col style="width: 12.5%;">
                             <col style="width: 11%;">
-                            <col style="width: 10%;">
-                            <col style="width: 10%;">
-                            <col style="width: 9%;">
-                            <col style="width: 12%;">
-                            <col style="width: 12%;">
-                            <col style="width: 12%;">
                         </colgroup>
                         <thead>
                             <tr>
@@ -611,21 +611,21 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             <head>
             <style>
                 * { box-sizing: border-box; }
-                @page { size: A4 portrait; margin: 5mm 5mm 5mm 5mm; }
+                @page { size: A4 portrait; margin: 4mm 4mm 4mm 4mm; }
                 html, body { width: 100%; font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
                 .page-box { width: 100%; }
                 .center { text-align: center; }
-                h1 { font-size: 20px; margin: 0; letter-spacing: 0.8px; }
-                h2 { font-size: 13px; margin: 2px 0 4px 0; font-weight: bold; }
-                h3 { font-size: 15px; margin: 3px 0 6px 0; text-decoration: underline; }
-                .meta { width: 100%; margin-bottom: 5px; font-size: 12.5px; font-weight: bold; }
+                h1 { font-size: 22px; margin: 0; letter-spacing: 0.8px; }
+                h2 { font-size: 14.5px; margin: 2px 0 4px 0; font-weight: bold; }
+                h3 { font-size: 16.5px; margin: 3px 0 6px 0; text-decoration: underline; }
+                .meta { width: 100%; margin-bottom: 6px; font-size: 13.5px; font-weight: bold; }
                 .meta td { border: none; padding: 1px 0; }
-                table.grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.8px; }
-                table.grid th, table.grid td { border: 1px solid #000; padding: 6.5px 4px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 7px 3px; font-size: 11.5px; }
+                table.grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 7px 3px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 7.5px 2px; font-size: 12.5px; }
                 td.namecol { text-align: left !important; font-weight: bold; }
-                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 1.5px solid #000; padding: 7px 4px; }
-                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 12.5px; padding: 7.5px 4px; }
+                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; padding: 7.5px 3px; font-size: 13.5px; }
+                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 14px; padding: 8px 3px; }
             </style>
             </head>
             <body>
@@ -646,6 +646,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
         }
         printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing Full-Page A4 Sheet...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing Large-Font A4 Sheet...", Toast.LENGTH_SHORT).show()
     }
 }
