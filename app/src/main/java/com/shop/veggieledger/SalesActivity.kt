@@ -2,23 +2,29 @@ package com.shop.veggieledger
 
 import android.app.AlertDialog
 import android.app.DatePickerDialog
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
-import android.view.View
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivitySalesBinding
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,36 +33,28 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
-    private val customerMap = HashMap<String, String>()
-    private val customerNames = ArrayList<String>()
-    private val editFilterCustomerList = ArrayList<String>()
+    private val customerList = arrayListOf<CustomerItem>()
+    private val itemNames = arrayListOf("Coconut", "Onion", "Garlic")
+    private val billItemsArray = JSONArray()
 
+    private var selectedDateStr: String = ""
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
-    private var selectedDateStr: String = ""
-    private var editFilterDateStr: String = ""
+    private var selectedCustomerBalance: Double = 0.0
+    private var grandTotalBill: Double = 0.0
 
-    private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
-    private var selectedItemName: String = "Onion"
-    private val matchingBatches = JSONArray()
-    private val batchDisplayList = ArrayList<String>()
+    private val payModes = arrayListOf("Credit", "Cash", "GPay / UPI")
 
-    private val cartItems = JSONArray()
-    private var grandTotal = 0.0
+    data class CustomerItem(val id: String, val name: String, val balance: Double)
 
-    // Row-level Grid Edit index (-1 means adding new row)
-    private var editingGridRowIndex: Int = -1
-    private var pendingBatchDocIdToSelect: String = ""
-
-    // Bill-level Edit Mode State
-    private var isEditMode: Boolean = false
-    private var editingSalesDocId: String = ""
-    private var oldCustomerId: String = ""
-    private var oldPayMode: String = ""
-    private var oldGrandTotal: Double = 0.0
-    private val oldCartItems = JSONArray()
-
-    private val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
+    // File Picker Launcher for Excel/CSV Sales Import
+    private val pickSalesFileLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            importSalesFromCsvUri(uri)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,14 +63,15 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
-        binding.btnModeEditSales.setOnClickListener { switchToEditMode() }
+        // Import Excel / CSV button click
+        binding.btnImportSalesCsv.setOnClickListener {
+            pickSalesFileLauncher.launch("*/*")
+        }
 
+        // Date Picker Setup (Defaults to Today)
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
-        editFilterDateStr = selectedDateStr
         binding.etSalesDate.setText(selectedDateStr)
-        binding.etEditFilterDate.setText(editFilterDateStr)
 
         binding.etSalesDate.setOnClickListener {
             DatePickerDialog(this, { _, y, m, d ->
@@ -82,496 +81,473 @@ class SalesActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        val editCal = Calendar.getInstance()
-        binding.etEditFilterDate.setOnClickListener {
-            DatePickerDialog(this, { _, y, m, d ->
-                editCal.set(y, m, d)
-                editFilterDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(editCal.time)
-                binding.etEditFilterDate.setText(editFilterDateStr)
-                loadBillsForEditFilter()
-            }, editCal.get(Calendar.YEAR), editCal.get(Calendar.MONTH), editCal.get(Calendar.DAY_OF_MONTH)).show()
-        }
+        // Pay Mode Spinner
+        val modeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
+        modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spSalesPayMode.adapter = modeAdapter
 
-        binding.spEditFilterCustomer.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (isEditMode) loadBillsForEditFilter()
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        val defaultItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
-        defaultItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spSalesItem.adapter = defaultItemAdapter
-
-        binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                selectedItemName = binding.spSalesItem.selectedItem?.toString() ?: "Onion"
-                binding.layoutSalesOnion.visibility = if (selectedItemName.equals("Onion", ignoreCase = true)) View.VISIBLE else View.GONE
-                loadBatchesForItem(selectedItemName)
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        generateAutoSalesBillNo()
-
-        val payAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
-        payAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spSalesPayMode.adapter = payAdapter
-
-        binding.spSupplierBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
-                if (pos >= 0 && pos < matchingBatches.length()) {
-                    val b = matchingBatches.getJSONObject(pos)
-                    val bags = b.getLong("availableBags")
-                    val kgs = b.getDouble("availableKgs")
-                    binding.tvLiveStockBanner.text = "Available Stock: $bags Bags | %.2f Kgs".format(kgs)
-                }
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        loadItemsFromDb()
+        // Load Customers & Items from Firestore
+        fetchNextBillNo()
         loadCustomers()
-        loadBatchesForItem(selectedItemName)
-        refreshCartGrid()
+        loadItems()
 
-        binding.btnAddSalesItem.setOnClickListener {
-            val batchIdx = binding.spSupplierBatch.selectedItemPosition
-            if (batchIdx < 0 || batchIdx >= matchingBatches.length()) {
-                Toast.makeText(this, "No stock lot selected", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val selectedBatch = matchingBatches.getJSONObject(batchIdx)
-            val batchDocId = selectedBatch.getString("docId")
-            val batchCode = selectedBatch.getString("batchId")
-            val availKgs = selectedBatch.getDouble("availableKgs")
-
-            val netKgs = binding.etSalesNetKgs.text.toString().toDoubleOrNull() ?: 0.0
-            val ratePerKg = binding.etSalesRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
-            val isOnion = selectedItemName.equals("Onion", ignoreCase = true)
-            val bags = if (isOnion) (binding.etSalesBags.text.toString().toIntOrNull() ?: 0) else 0
-            val bagRate = if (isOnion) (binding.etSalesBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
-
-            if (netKgs <= 0.0 || ratePerKg <= 0.0) {
-                Toast.makeText(this, "Enter valid Net Kgs and Sales Rate", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            var previouslyUsedKgs = 0.0
-            if (editingSalesDocId.isNotEmpty()) {
-                for (k in 0 until oldCartItems.length()) {
-                    val oldRow = oldCartItems.getJSONObject(k)
-                    if (oldRow.optString("batchDocId") == batchDocId) {
-                        previouslyUsedKgs += oldRow.optDouble("netKgs", 0.0)
-                    }
-                }
-            }
-
-            if (netKgs > (availKgs + previouslyUsedKgs)) {
-                Toast.makeText(this, "Insufficient stock! Available: %.2f Kgs".format(availKgs + previouslyUsedKgs), Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val lineTotal = (netKgs * ratePerKg) + (bags * bagRate)
-
-            val row = JSONObject()
-            row.put("itemName", selectedItemName)
-            row.put("batchDocId", batchDocId)
-            row.put("batchCode", batchCode)
-            row.put("bags", bags)
-            row.put("bagRate", bagRate)
-            row.put("netKgs", netKgs)
-            row.put("ratePerKg", ratePerKg)
-            row.put("lineTotal", lineTotal)
-
-            if (editingGridRowIndex >= 0 && editingGridRowIndex < cartItems.length()) {
-                // Update the existing row in the grid
-                cartItems.put(editingGridRowIndex, row)
-                Toast.makeText(this, "Item Row Updated in Grid!", Toast.LENGTH_SHORT).show()
-            } else {
-                // Append new row
-                cartItems.put(row)
-            }
-
-            resetItemEntryInputs()
-            refreshCartGrid()
+        binding.etSalesCustomer.setOnClickListener {
+            showCustomerSearchDialog()
         }
 
+        // Live Line Calculation
+        val lineCalcWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
+                val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
+                val bagChg = binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0
+                val lineTot = (kgs * rate) + bagChg
+                binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Item Amt: Rs. %.2f", lineTot)
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        }
+        binding.etSalesKgs.addTextChangedListener(lineCalcWatcher)
+        binding.etSalesRate.addTextChangedListener(lineCalcWatcher)
+        binding.etSalesBagCharge.addTextChangedListener(lineCalcWatcher)
+
+        // Add Item Row to Bill Grid
+        binding.btnAddSalesItem.setOnClickListener {
+            val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+            val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
+            val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
+            val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
+            val bagChg = binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0
+
+            if (kgs <= 0.0 && bags <= 0) {
+                Toast.makeText(this, "Enter valid Bags or Net Kgs", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (rate <= 0.0) {
+                Toast.makeText(this, "Enter valid Rate", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val baseAmt = kgs * rate
+            val rowTotal = baseAmt + bagChg
+
+            val rowObj = JSONObject()
+            rowObj.put("itemName", itemName)
+            rowObj.put("bags", bags)
+            rowObj.put("netKgs", kgs)
+            rowObj.put("rate", rate)
+            rowObj.put("amount", baseAmt)
+            rowObj.put("bagCharge", bagChg)
+            rowObj.put("rowTotal", rowTotal)
+
+            billItemsArray.put(rowObj)
+            refreshBillItemsGrid()
+
+            binding.etSalesBags.setText("")
+            binding.etSalesKgs.setText("")
+            binding.etSalesRate.setText("")
+            binding.etSalesBagCharge.setText("")
+            binding.tvLineAmountPreview.text = "Item Amt: Rs. 0.00"
+        }
+
+        // Save Complete Sales Bill
         binding.btnSaveSalesBill.setOnClickListener {
-            val typedCustomer = binding.actvCustomer.text.toString().trim()
-            if (typedCustomer.isEmpty() || !customerMap.containsKey(typedCustomer)) {
-                Toast.makeText(this, "Please search and select a valid Customer", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (cartItems.length() == 0) {
-                Toast.makeText(this, "Add at least one item to sales bill", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (isEditMode && editingSalesDocId.isEmpty()) {
-                Toast.makeText(this, "Please select a bill from the list above to edit", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            selectedCustomerName = typedCustomer
-            selectedCustomerId = customerMap[typedCustomer] ?: ""
             val billNo = binding.etSalesBillNo.text.toString().trim()
-            val payMode = binding.spSalesPayMode.selectedItem.toString()
+            val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
 
-            val itemsForDb = ArrayList<Any>()
-            for (i in 0 until cartItems.length()) {
-                val row = cartItems.getJSONObject(i)
-                val map = HashMap<String, Any>()
-                map["itemName"] = row.getString("itemName")
-                map["batchDocId"] = row.getString("batchDocId")
-                map["batchCode"] = row.getString("batchCode")
-                map["bags"] = row.getInt("bags")
-                map["bagRate"] = row.getDouble("bagRate")
-                map["netKgs"] = row.getDouble("netKgs")
-                map["ratePerKg"] = row.getDouble("ratePerKg")
-                map["lineTotal"] = row.getDouble("lineTotal")
-                itemsForDb.add(map)
+            if (selectedCustomerId.isEmpty() && selectedCustomerName.isEmpty()) {
+                Toast.makeText(this, "Please select a Customer", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (billItemsArray.length() == 0) {
+                Toast.makeText(this, "Add at least one item to the bill", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
 
             binding.btnSaveSalesBill.isEnabled = false
 
-            if (isEditMode && editingSalesDocId.isNotEmpty()) {
-                val updateData = hashMapOf<String, Any>(
-                    "billNo" to billNo,
-                    "customerId" to selectedCustomerId,
-                    "customerName" to selectedCustomerName,
-                    "payMode" to payMode,
-                    "date" to selectedDateStr,
-                    "items" to itemsForDb,
-                    "grandTotal" to grandTotal
+            val itemsForDb = arrayListOf<Any>()
+            var totalBagsAll = 0
+            var totalKgsAll = 0.0
+            var totalBagChargesAll = 0.0
+            var firstItemName = ""
+
+            for (i in 0 until billItemsArray.length()) {
+                val obj = billItemsArray.getJSONObject(i)
+                val iName = obj.getString("itemName")
+                val bgs = obj.getInt("bags")
+                val kgs = obj.getDouble("netKgs")
+                val rt = obj.getDouble("rate")
+                val amt = obj.getDouble("amount")
+                val bChg = obj.getDouble("bagCharge")
+
+                if (i == 0) firstItemName = iName
+                totalBagsAll += bgs
+                totalKgsAll += kgs
+                totalBagChargesAll += bChg
+
+                val itemMap = hashMapOf<String, Any>(
+                    "itemName" to iName,
+                    "bags" to bgs,
+                    "netKgs" to kgs,
+                    "rate" to rt,
+                    "amount" to amt,
+                    "bagCharge" to bChg
                 )
-                db.collection("sales").document(editingSalesDocId).update(updateData)
+                itemsForDb.add(itemMap)
+
+                // Deduct stock from stock_batches FIFO
+                deductStockFifo(iName, bgs, kgs)
+            }
+
+            val isCredit = payMode.equals("Credit", ignoreCase = true)
+            val saleId = db.collection("sales").document().id
+            val saleData = hashMapOf<String, Any>(
+                "id" to saleId,
+                "billNo" to billNo,
+                "date" to selectedDateStr,
+                "customerId" to selectedCustomerId,
+                "customerName" to selectedCustomerName,
+                "payMode" to payMode,
+                "items" to itemsForDb,
+                "itemName" to firstItemName,
+                "bags" to totalBagsAll,
+                "netKgs" to totalKgsAll,
+                "totalBagCharges" to totalBagChargesAll,
+                "grandTotal" to grandTotalBill,
+                "paidAmount" to if (isCredit) 0.0 else grandTotalBill,
+                "balanceAmount" to if (isCredit) grandTotalBill else 0.0,
+                "paymentStatus" to if (isCredit) "Unpaid" else "Paid",
+                "timestamp" to System.currentTimeMillis()
+            )
+
+            db.collection("sales").document(saleId).set(saleData)
+                .addOnSuccessListener {
+                    if (isCredit && selectedCustomerId.isNotEmpty()) {
+                        val newCustBal = selectedCustomerBalance + grandTotalBill
+                        db.collection("customers").document(selectedCustomerId)
+                            .set(hashMapOf<String, Any>("currentBalance" to newCustBal), SetOptions.merge())
+                    }
+                    Toast.makeText(this, "Sales Bill $billNo Saved!", Toast.LENGTH_SHORT).show()
+                    resetForm()
+                }
+                .addOnFailureListener {
+                    binding.btnSaveSalesBill.isEnabled = true
+                    Toast.makeText(this, "Failed to save sales bill", Toast.LENGTH_SHORT).show()
+                }
+        }
+
+        refreshBillItemsGrid()
+    }
+
+    private fun deductStockFifo(itemName: String, bagsToDeduct: Int, kgsToDeduct: Double) {
+        db.collection("stock_batches").get().addOnSuccessListener { snap ->
+            var remBags = bagsToDeduct
+            var remKgs = kgsToDeduct
+
+            val matchingDocs = snap.documents.filter { doc ->
+                (doc.getString("itemName") ?: "").equals(itemName, ignoreCase = true)
+            }.sortedBy { doc -> doc.getLong("timestamp") ?: 0L }
+
+            for (doc in matchingDocs) {
+                if (remBags <= 0 && remKgs <= 0.001) break
+                val availBags = (doc.getLong("availableBags") ?: 0L).toInt()
+                val availKgs = doc.getDouble("availableKgs") ?: 0.0
+
+                if (availBags <= 0 && availKgs <= 0.001) continue
+
+                val dedBags = minOf(remBags, availBags)
+                val dedKgs = minOf(remKgs, availKgs)
+
+                val newBags = (availBags - dedBags).coerceAtLeast(0)
+                val newKgs = (availKgs - dedKgs).coerceAtLeast(0.0)
+
+                remBags -= dedBags
+                remKgs -= dedKgs
+
+                db.collection("stock_batches").document(doc.id).update(
+                    hashMapOf<String, Any>(
+                        "availableBags" to newBags,
+                        "availableKgs" to newKgs
+                    )
+                )
+            }
+        }
+    }
+
+    private fun importSalesFromCsvUri(uri: Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri) ?: return
+            val reader = BufferedReader(InputStreamReader(inputStream))
+            val lines = reader.readLines()
+            reader.close()
+
+            if (lines.size <= 1) {
+                Toast.makeText(this, "File is empty or has only headers", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            Toast.makeText(this, "Importing ${lines.size - 1} rows...", Toast.LENGTH_SHORT).show()
+
+            db.collection("customers").get().addOnSuccessListener { custSnap ->
+                val custIdMap = HashMap<String, String>()
+                val custBalMap = HashMap<String, Double>()
+
+                for (doc in custSnap) {
+                    val cName = (doc.getString("name") ?: "").trim().lowercase(Locale.getDefault())
+                    if (cName.isNotEmpty()) {
+                        custIdMap[cName] = doc.id
+                        custBalMap[doc.id] = doc.getDouble("currentBalance") ?: 0.0
+                    }
+                }
+
+                val batch = db.batch()
+                var importedCount = 0
+                val addedCreditPerCust = HashMap<String, Double>()
+
+                for (i in 1 until lines.size) {
+                    val line = lines[i].trim()
+                    if (line.isEmpty()) continue
+
+                    val cols = line.split(",")
+                    if (cols.size < 9) continue
+
+                    val dateStr = cols[0].trim()
+                    val billNo = cols[1].trim()
+                    val custName = cols[2].trim()
+                    val payMode = cols[3].trim().ifEmpty { "Credit" }
+                    val itemName = cols[4].trim()
+                    val bags = cols[5].trim().toIntOrNull() ?: 0
+                    val netKgs = cols[6].trim().toDoubleOrNull() ?: 0.0
+                    val rate = cols[7].trim().toDoubleOrNull() ?: 0.0
+                    val amount = cols[8].trim().toDoubleOrNull() ?: (netKgs * rate)
+                    val bagCharge = if (cols.size > 9) (cols[9].trim().toDoubleOrNull() ?: 0.0) else 0.0
+                    val grandTotal = if (cols.size > 10) (cols[10].trim().toDoubleOrNull() ?: (amount + bagCharge)) else (amount + bagCharge)
+
+                    if (custName.isEmpty() || grandTotal <= 0.0) continue
+
+                    val custKey = custName.lowercase(Locale.getDefault())
+                    val custId = custIdMap[custKey] ?: ""
+
+                    val itemEntry = hashMapOf<String, Any>(
+                        "itemName" to itemName,
+                        "bags" to bags,
+                        "netKgs" to netKgs,
+                        "rate" to rate,
+                        "amount" to amount,
+                        "bagCharge" to bagCharge
+                    )
+
+                    val isCredit = payMode.equals("Credit", ignoreCase = true)
+                    val docId = db.collection("sales").document().id
+                    val saleData = hashMapOf<String, Any>(
+                        "id" to docId,
+                        "date" to dateStr,
+                        "billNo" to billNo,
+                        "customerId" to custId,
+                        "customerName" to custName,
+                        "payMode" to payMode,
+                        "items" to arrayListOf(itemEntry),
+                        "itemName" to itemName,
+                        "bags" to bags,
+                        "netKgs" to netKgs,
+                        "totalBagCharges" to bagCharge,
+                        "grandTotal" to grandTotal,
+                        "paidAmount" to if (isCredit) 0.0 else grandTotal,
+                        "balanceAmount" to if (isCredit) grandTotal else 0.0,
+                        "paymentStatus" to if (isCredit) "Unpaid" else "Paid",
+                        "timestamp" to (System.currentTimeMillis() + i)
+                    )
+
+                    batch.set(db.collection("sales").document(docId), saleData)
+                    importedCount++
+
+                    if (isCredit && custId.isNotEmpty()) {
+                        addedCreditPerCust[custId] = (addedCreditPerCust[custId] ?: 0.0) + grandTotal
+                    }
+                }
+
+                for ((cId, addAmt) in addedCreditPerCust) {
+                    val newBal = (custBalMap[cId] ?: 0.0) + addAmt
+                    batch.update(db.collection("customers").document(cId), "currentBalance", newBal)
+                }
+
+                batch.commit()
                     .addOnSuccessListener {
-                        reconcileStockAndCustomerOnEdit(payMode)
+                        Toast.makeText(this, "Imported $importedCount Sales Bills Successfully!", Toast.LENGTH_LONG).show()
+                        fetchNextBillNo()
+                        loadCustomers()
                     }
                     .addOnFailureListener {
-                        binding.btnSaveSalesBill.isEnabled = true
-                        Toast.makeText(this, "Failed to update sales bill", Toast.LENGTH_SHORT).show()
-                    }
-            } else {
-                val salesId = db.collection("sales").document().id
-                val salesData = hashMapOf(
-                    "id" to salesId,
-                    "billNo" to billNo,
-                    "customerId" to selectedCustomerId,
-                    "customerName" to selectedCustomerName,
-                    "payMode" to payMode,
-                    "date" to selectedDateStr,
-                    "timestamp" to System.currentTimeMillis(),
-                    "items" to itemsForDb,
-                    "grandTotal" to grandTotal
-                )
-
-                db.collection("sales").document(salesId).set(salesData)
-                    .addOnSuccessListener {
-                        deductStockAndUpdateCustomer(payMode)
-                    }
-                    .addOnFailureListener {
-                        binding.btnSaveSalesBill.isEnabled = true
-                        Toast.makeText(this, "Failed to save sales bill", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Import failed! Check internet.", Toast.LENGTH_SHORT).show()
                     }
             }
+        } catch (e: Exception) {
+            Toast.makeText(this, "File error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun resetItemEntryInputs() {
-        editingGridRowIndex = -1
-        pendingBatchDocIdToSelect = ""
-        binding.etSalesBags.setText("")
-        binding.etSalesBagRate.setText("10")
-        binding.etSalesNetKgs.setText("")
-        binding.etSalesRatePerKg.setText("")
-        binding.btnAddSalesItem.text = "+ ADD ITEM TO SALES BILL"
-        binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32"))
-    }
-
-    private fun loadGridRowIntoFieldsForEdit(index: Int) {
-        if (index < 0 || index >= cartItems.length()) return
-        val row = cartItems.getJSONObject(index)
-        editingGridRowIndex = index
-
-        val itemName = row.getString("itemName")
-        val bDocId = row.optString("batchDocId", "")
-        val bags = row.optInt("bags", 0)
-        val bagRate = row.optDouble("bagRate", 10.0)
-        val netKgs = row.optDouble("netKgs", 0.0)
-        val rate = row.optDouble("ratePerKg", 0.0)
-
-        pendingBatchDocIdToSelect = bDocId
-        val itemIdx = itemNames.indexOfFirst { it.equals(itemName, ignoreCase = true) }
-        if (itemIdx >= 0) {
-            if (binding.spSalesItem.selectedItemPosition == itemIdx) {
-                loadBatchesForItem(itemName)
-            } else {
-                binding.spSalesItem.setSelection(itemIdx)
-            }
+    private fun showCustomerSearchDialog() {
+        if (customerList.isEmpty()) {
+            Toast.makeText(this, "Loading customers...", Toast.LENGTH_SHORT).show()
+            loadCustomers()
+            return
         }
 
-        binding.etSalesBags.setText(if (bags > 0) bags.toString() else "")
-        binding.etSalesBagRate.setText(bagRate.toString())
-        binding.etSalesNetKgs.setText(netKgs.toString())
-        binding.etSalesRatePerKg.setText(rate.toString())
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(32, 24, 32, 16)
 
-        binding.btnAddSalesItem.text = "UPDATE ITEM IN GRID (ROW ${index + 1})"
-        binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
-        refreshCartGrid()
-        binding.etSalesNetKgs.requestFocus()
-        Toast.makeText(this, "Editing Row ${index + 1} - Modify & tap UPDATE ITEM IN GRID", Toast.LENGTH_SHORT).show()
-    }
+        val searchInput = EditText(this)
+        searchInput.hint = "Type customer name..."
+        searchInput.setSingleLine(true)
+        container.addView(searchInput)
 
-    private fun switchToNewMode() {
-        isEditMode = false
-        editingSalesDocId = ""
-        clearJsonArray(oldCartItems)
-        binding.layoutEditSalesPanel.visibility = View.GONE
-        binding.btnModeNewSales.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
-        binding.btnModeEditSales.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
-        binding.tvSalesHeader.text = "SALES BILL ENTRY FORM"
-        binding.btnSaveSalesBill.text = "SUBMIT SALES BILL & UPDATE STOCK"
-        binding.btnSaveSalesBill.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
-        resetFormForFreshEntry()
-    }
+        val listView = ListView(this)
+        val filtered = ArrayList(customerList)
+        val names = arrayListOf<String>()
+        for (c in filtered) names.add(c.name)
 
-    private fun switchToEditMode() {
-        isEditMode = true
-        editingSalesDocId = ""
-        clearJsonArray(oldCartItems)
-        binding.layoutEditSalesPanel.visibility = View.VISIBLE
-        binding.btnModeEditSales.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
-        binding.btnModeNewSales.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
-        binding.tvSalesHeader.text = "EDIT / DELETE SALES BILL"
-        binding.btnSaveSalesBill.text = "UPDATE SALES BILL"
-        binding.btnSaveSalesBill.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
-        resetFormForFreshEntry()
-        loadBillsForEditFilter()
-    }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, names)
+        listView.adapter = adapter
+        container.addView(listView)
 
-    private fun loadBillsForEditFilter() {
-        val selectedFilterCust = binding.spEditFilterCustomer.selectedItem?.toString() ?: "All Customers"
-        binding.llMatchingBillsList.removeAllViews()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Select Customer")
+            .setView(container)
+            .setNegativeButton("Close", null)
+            .create()
 
-        val loadingTv = TextView(this)
-        loadingTv.text = "Loading bills..."
-        loadingTv.setTextColor(Color.DKGRAY)
-        loadingTv.setPadding(12, 12, 12, 12)
-        binding.llMatchingBillsList.addView(loadingTv)
-
-        db.collection("sales")
-            .whereEqualTo("date", editFilterDateStr)
-            .get()
-            .addOnSuccessListener { snap ->
-                binding.llMatchingBillsList.removeAllViews()
-                var matchCount = 0
-
-                for (doc in snap) {
-                    val custName = doc.getString("customerName") ?: ""
-                    if (selectedFilterCust != "All Customers" && !custName.equals(selectedFilterCust, ignoreCase = true)) {
-                        continue
-                    }
-
-                    matchCount++
-                    val billNo = doc.getString("billNo") ?: doc.id
-                    val total = doc.getDouble("grandTotal") ?: 0.0
-                    val pMode = doc.getString("payMode") ?: "Credit"
-
-                    val rowCard = LinearLayout(this)
-                    rowCard.orientation = LinearLayout.HORIZONTAL
-                    rowCard.gravity = Gravity.CENTER_VERTICAL
-                    rowCard.setBackgroundColor(Color.WHITE)
-                    rowCard.setPadding(16, 14, 16, 14)
-                    val cardLp = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                    cardLp.setMargins(0, 0, 0, 10)
-                    rowCard.layoutParams = cardLp
-
-                    val infoTv = TextView(this)
-                    infoTv.text = "$billNo | $custName\n$pMode | Rs. %.2f".format(total)
-                    infoTv.setTextColor(Color.parseColor("#1B5E20"))
-                    infoTv.setTypeface(null, Typeface.BOLD)
-                    infoTv.textSize = 13f
-                    val infoLp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    infoTv.layoutParams = infoLp
-
-                    val editBtn = TextView(this)
-                    editBtn.text = "EDIT"
-                    editBtn.setTextColor(Color.WHITE)
-                    editBtn.setBackgroundColor(Color.parseColor("#1565C0"))
-                    editBtn.setTypeface(null, Typeface.BOLD)
-                    editBtn.textSize = 12f
-                    editBtn.setPadding(24, 14, 24, 14)
-                    val editLp = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                    editLp.setMargins(8, 0, 8, 0)
-                    editBtn.layoutParams = editLp
-                    editBtn.setOnClickListener {
-                        populateFormFromBillDocument(doc.id, doc.data)
-                    }
-
-                    val delBtn = TextView(this)
-                    delBtn.text = "DEL"
-                    delBtn.setTextColor(Color.WHITE)
-                    delBtn.setBackgroundColor(Color.parseColor("#C62828"))
-                    delBtn.setTypeface(null, Typeface.BOLD)
-                    delBtn.textSize = 12f
-                    delBtn.setPadding(24, 14, 24, 14)
-                    delBtn.setOnClickListener {
-                        confirmAndDeleteSalesBill(doc.id, billNo, doc.data)
-                    }
-
-                    rowCard.addView(infoTv)
-                    rowCard.addView(editBtn)
-                    rowCard.addView(delBtn)
-                    binding.llMatchingBillsList.addView(rowCard)
-                }
-
-                if (matchCount == 0) {
-                    val noTv = TextView(this)
-                    noTv.text = "No sales bills found for $editFilterDateStr ($selectedFilterCust)."
-                    noTv.setTextColor(Color.RED)
-                    noTv.setPadding(12, 14, 12, 14)
-                    binding.llMatchingBillsList.addView(noTv)
-                }
-            }
-            .addOnFailureListener {
-                binding.llMatchingBillsList.removeAllViews()
-                Toast.makeText(this, "Error loading bills", Toast.LENGTH_SHORT).show()
-            }
-    }
-
-    private fun confirmAndDeleteSalesBill(docId: String, billNo: String, data: Map<String, Any>) {
-        AlertDialog.Builder(this)
-            .setTitle("Delete Sales Bill")
-            .setMessage("Are you sure you want to delete $billNo? Stock and Customer balance will be restored.")
-            .setPositiveButton("DELETE") { _, _ ->
-                deleteSalesBillAndRestore(docId, data)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun deleteSalesBillAndRestore(docId: String, data: Map<String, Any>) {
-        val custId = data["customerId"]?.toString() ?: ""
-        val pMode = data["payMode"]?.toString() ?: "Credit"
-        val totalAmt = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
-        val rawItems = data["items"] as? List<*>
-
-        db.collection("sales").document(docId).delete()
-            .addOnSuccessListener {
-                if (rawItems != null) {
-                    for (entry in rawItems) {
-                        val map = entry as? Map<*, *> ?: continue
-                        val bDocId = map["batchDocId"]?.toString() ?: ""
-                        val bags = (map["bags"] as? Number)?.toLong() ?: 0L
-                        val kgs = (map["netKgs"] as? Number)?.toDouble() ?: 0.0
-
-                        if (bDocId.isNotEmpty()) {
-                            val batchRef = db.collection("stock_batches").document(bDocId)
-                            db.runTransaction { tr ->
-                                val snap = tr.get(batchRef)
-                                if (snap.exists()) {
-                                    val currBags = snap.getLong("availableBags") ?: 0L
-                                    val currKgs = snap.getDouble("availableKgs") ?: 0.0
-                                    tr.update(batchRef, mapOf(
-                                        "availableBags" to (currBags + bags),
-                                        "availableKgs" to (currKgs + kgs)
-                                    ))
-                                }
-                            }
-                        }
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val q = s?.toString()?.trim()?.lowercase(Locale.getDefault()) ?: ""
+                filtered.clear()
+                names.clear()
+                for (c in customerList) {
+                    if (c.name.lowercase(Locale.getDefault()).contains(q)) {
+                        filtered.add(c)
+                        names.add(c.name)
                     }
                 }
-
-                if (pMode.equals("Credit", ignoreCase = true) && custId.isNotEmpty()) {
-                    val custRef = db.collection("customers").document(custId)
-                    db.runTransaction { tr ->
-                        val snap = tr.get(custRef)
-                        if (snap.exists()) {
-                            val curr = snap.getDouble("currentBalance") ?: 0.0
-                            tr.update(custRef, "currentBalance", (curr - totalAmt).coerceAtLeast(0.0))
-                        }
-                    }
-                }
-
-                if (editingSalesDocId == docId) {
-                    editingSalesDocId = ""
-                    clearJsonArray(oldCartItems)
-                    resetFormForFreshEntry()
-                }
-                Toast.makeText(this, "Sales Bill Deleted & Stock Restored!", Toast.LENGTH_SHORT).show()
-                loadBillsForEditFilter()
+                adapter.notifyDataSetChanged()
             }
-            .addOnFailureListener {
-                Toast.makeText(this, "Failed to delete sales bill", Toast.LENGTH_SHORT).show()
-            }
-    }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
-    private fun populateFormFromBillDocument(docId: String, data: Map<String, Any>) {
-        editingSalesDocId = docId
-        oldCustomerId = data["customerId"]?.toString() ?: ""
-        oldPayMode = data["payMode"]?.toString() ?: "Credit"
-        oldGrandTotal = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
-
-        val bNo = data["billNo"]?.toString() ?: ""
-        val cName = data["customerName"]?.toString() ?: ""
-        val bDate = data["date"]?.toString() ?: editFilterDateStr
-
-        selectedDateStr = bDate
-        binding.etSalesDate.setText(bDate)
-        binding.etSalesBillNo.setText(bNo)
-        binding.actvCustomer.setText(cName, false)
-
-        val payIdx = payModes.indexOfFirst { it.equals(oldPayMode, ignoreCase = true) }
-        if (payIdx >= 0) binding.spSalesPayMode.setSelection(payIdx)
-
-        resetItemEntryInputs()
-        clearJsonArray(cartItems)
-        clearJsonArray(oldCartItems)
-
-        val rawItems = data["items"] as? List<*>
-        if (rawItems != null) {
-            for (entry in rawItems) {
-                val map = entry as? Map<*, *> ?: continue
-                val obj = JSONObject()
-                obj.put("itemName", map["itemName"]?.toString() ?: "Onion")
-                obj.put("batchDocId", map["batchDocId"]?.toString() ?: "")
-                obj.put("batchCode", map["batchCode"]?.toString() ?: "")
-                obj.put("bags", (map["bags"] as? Number)?.toInt() ?: 0)
-                obj.put("bagRate", (map["bagRate"] as? Number)?.toDouble() ?: 0.0)
-                obj.put("netKgs", (map["netKgs"] as? Number)?.toDouble() ?: 0.0)
-                obj.put("ratePerKg", (map["ratePerKg"] as? Number)?.toDouble() ?: 0.0)
-                obj.put("lineTotal", (map["lineTotal"] as? Number)?.toDouble() ?: 0.0)
-                cartItems.put(obj)
-                oldCartItems.put(JSONObject(obj.toString()))
-            }
+        listView.setOnItemClickListener { _, _, pos, _ ->
+            val chosen = filtered[pos]
+            selectedCustomerId = chosen.id
+            selectedCustomerName = chosen.name
+            selectedCustomerBalance = chosen.balance
+            binding.etSalesCustomer.setText(chosen.name)
+            binding.tvSalesCustBalance.text = String.format(Locale.getDefault(), "Previous Balance: Rs. %.2f", chosen.balance)
+            dialog.dismiss()
         }
 
-        refreshCartGrid()
-        Toast.makeText(this, "Loaded $bNo for editing", Toast.LENGTH_SHORT).show()
+        dialog.show()
     }
 
-    private fun generateAutoSalesBillNo() {
+    private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false): TextView {
+        val tv = TextView(this)
+        tv.text = text
+        tv.setTextColor(Color.BLACK)
+        tv.textSize = 12f
+        tv.setPadding(14, 14, 14, 14)
+        tv.gravity = if (alignRight) Gravity.END else Gravity.START
+        if (bold) tv.setTypeface(null, Typeface.BOLD)
+        return tv
+    }
+
+    private fun refreshBillItemsGrid() {
+        val count = binding.tlSalesItemsGrid.childCount
+        if (count > 1) {
+            binding.tlSalesItemsGrid.removeViews(1, count - 1)
+        }
+
+        grandTotalBill = 0.0
+
+        if (billItemsArray.length() == 0) {
+            val emptyRow = TableRow(this)
+            emptyRow.setBackgroundColor(Color.WHITE)
+            val tv = TextView(this)
+            tv.text = "No items added to bill yet."
+            tv.setTextColor(Color.GRAY)
+            tv.setPadding(16, 16, 16, 16)
+            val lp = TableRow.LayoutParams()
+            lp.span = 7
+            tv.layoutParams = lp
+            emptyRow.addView(tv)
+            binding.tlSalesItemsGrid.addView(emptyRow)
+            binding.tvSalesGrandTotal.text = "Grand Total: Rs. 0.00"
+            return
+        }
+
+        for (i in 0 until billItemsArray.length()) {
+            val obj = billItemsArray.getJSONObject(i)
+            val iName = obj.getString("itemName")
+            val bgs = obj.getInt("bags")
+            val kgs = obj.getDouble("netKgs")
+            val rt = obj.getDouble("rate")
+            val bChg = obj.getDouble("bagCharge")
+            val rowTot = obj.getDouble("rowTotal")
+            grandTotalBill += rowTot
+
+            val tr = TableRow(this)
+            tr.setBackgroundColor(if (i % 2 == 0) Color.WHITE else Color.parseColor("#F1F8E9"))
+
+            tr.addView(makeCell(iName, bold = true))
+            tr.addView(makeCell("$bgs", alignRight = true))
+            tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", kgs), alignRight = true))
+            tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rt), alignRight = true))
+            tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", bChg), alignRight = true))
+            tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rowTot), alignRight = true, bold = true))
+
+            val delBtn = TextView(this)
+            delBtn.text = "X"
+            delBtn.setTextColor(Color.RED)
+            delBtn.setTypeface(null, Typeface.BOLD)
+            delBtn.gravity = Gravity.CENTER
+            delBtn.setPadding(16, 14, 16, 14)
+            delBtn.setOnClickListener {
+                billItemsArray.remove(i)
+                refreshBillItemsGrid()
+            }
+            tr.addView(delBtn)
+
+            binding.tlSalesItemsGrid.addView(tr)
+        }
+
+        binding.tvSalesGrandTotal.text = String.format(Locale.getDefault(), "Grand Total: Rs. %.2f", grandTotalBill)
+    }
+
+    private fun fetchNextBillNo() {
         db.collection("sales").get().addOnSuccessListener { snap ->
-            val nextNum = snap.size() + 1
-            binding.etSalesBillNo.setText(String.format("SAL-%03d", nextNum))
+            binding.etSalesBillNo.setText(String.format(Locale.getDefault(), "SAL-%03d", snap.size() + 1))
         }
     }
 
-    private fun loadItemsFromDb() {
-        db.collection("items").get().addOnSuccessListener { snap ->
+    private fun loadCustomers() {
+        db.collection("customers").get().addOnSuccessListener { snap ->
+            customerList.clear()
             for (doc in snap) {
-                val n = doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item")
-                if (!n.isNullOrBlank() && itemNames.none { it.equals(n, ignoreCase = true) }) {
+                val name = doc.getString("name") ?: continue
+                val bal = doc.getDouble("currentBalance") ?: 0.0
+                customerList.add(CustomerItem(doc.id, name, bal))
+            }
+            customerList.sortBy { c -> c.name.lowercase(Locale.getDefault()) }
+        }
+    }
+
+    private fun loadItems() {
+        db.collection("items").get().addOnSuccessListener { snap ->
+            if (!snap.isEmpty) {
+                itemNames.clear()
+                for (doc in snap) {
+                    val n = doc.getString("name") ?: continue
                     itemNames.add(n)
                 }
+                itemNames.sort()
             }
             val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -579,291 +555,21 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadCustomers() {
-        db.collection("customers").get().addOnSuccessListener { snap ->
-            customerMap.clear()
-            customerNames.clear()
-            editFilterCustomerList.clear()
-            editFilterCustomerList.add("All Customers")
-
-            for (doc in snap) {
-                val id = doc.id
-                val name = doc.getString("name") ?: continue
-                customerMap[name] = id
-                customerNames.add(name)
-                editFilterCustomerList.add(name)
-            }
-
-            val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, customerNames)
-            binding.actvCustomer.setAdapter(adapter)
-            binding.actvCustomer.setText("")
-
-            val filterAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, editFilterCustomerList)
-            filterAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            binding.spEditFilterCustomer.adapter = filterAdapter
-        }
-    }
-
-    private fun loadBatchesForItem(itemName: String) {
-        db.collection("stock_batches")
-            .get()
-            .addOnSuccessListener { snap ->
-                clearJsonArray(matchingBatches)
-                batchDisplayList.clear()
-                var matchSpinnerIndex = 0
-
-                for (doc in snap) {
-                    val docItem = doc.getString("itemName") ?: ""
-                    val availKgs = doc.getDouble("availableKgs") ?: 0.0
-                    if (docItem.equals(itemName, ignoreCase = true) && (availKgs > 0 || isEditMode || pendingBatchDocIdToSelect == doc.id)) {
-                        val bId = doc.getString("batchId") ?: doc.id
-                        val supName = doc.getString("supplierName") ?: ""
-                        val availBags = doc.getLong("availableBags") ?: 0L
-                        val obj = JSONObject()
-                        obj.put("docId", doc.id)
-                        obj.put("batchId", bId)
-                        obj.put("availableBags", availBags)
-                        obj.put("availableKgs", availKgs)
-                        if (pendingBatchDocIdToSelect == doc.id) {
-                            matchSpinnerIndex = matchingBatches.length()
-                        }
-                        matchingBatches.put(obj)
-                        batchDisplayList.add("$bId ($supName) - %.1f Kgs".format(availKgs))
-                    }
-                }
-                if (batchDisplayList.isEmpty()) {
-                    batchDisplayList.add("No Stock Available")
-                    binding.tvLiveStockBanner.text = "Available Stock: 0 Bags | 0.0 Kgs"
-                } else {
-                    val target = matchingBatches.getJSONObject(matchSpinnerIndex)
-                    binding.tvLiveStockBanner.text = "Available Stock: ${target.getLong("availableBags")} Bags | %.2f Kgs".format(target.getDouble("availableKgs"))
-                }
-                val batchAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
-                batchAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                binding.spSupplierBatch.adapter = batchAdapter
-                if (matchSpinnerIndex < batchDisplayList.size) {
-                    binding.spSupplierBatch.setSelection(matchSpinnerIndex)
-                }
-                pendingBatchDocIdToSelect = ""
-            }
-    }
-
-    private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false, colorHex: String = "#000000"): TextView {
-        val tv = TextView(this)
-        tv.text = text
-        tv.setTextColor(Color.parseColor(colorHex))
-        tv.textSize = 12f
-        tv.setPadding(16, 14, 16, 14)
-        tv.gravity = if (alignRight) Gravity.END else Gravity.START
-        if (bold) tv.setTypeface(null, Typeface.BOLD)
-        return tv
-    }
-
-    private fun refreshCartGrid() {
-        val childCount = binding.tlSalesGrid.childCount
-        if (childCount > 1) {
-            binding.tlSalesGrid.removeViews(1, childCount - 1)
-        }
-
-        grandTotal = 0.0
-
-        if (cartItems.length() == 0) {
-            val emptyRow = TableRow(this)
-            emptyRow.setBackgroundColor(Color.WHITE)
-            val emptyTv = TextView(this)
-            emptyTv.text = "No items added to bill yet."
-            emptyTv.setTextColor(Color.GRAY)
-            emptyTv.setPadding(20, 20, 20, 20)
-            val params = TableRow.LayoutParams()
-            params.span = 8
-            emptyTv.layoutParams = params
-            emptyRow.addView(emptyTv)
-            binding.tlSalesGrid.addView(emptyRow)
-            binding.tvSalesGrandTotal.text = "Grand Total: Rs. 0.00"
-            return
-        }
-
-        for (idx in 0 until cartItems.length()) {
-            val row = cartItems.getJSONObject(idx)
-            val name = row.getString("itemName")
-            val lotCode = row.optString("batchCode", "-")
-            val bags = row.getInt("bags")
-            val kgs = row.getDouble("netKgs")
-            val rate = row.getDouble("ratePerKg")
-            val total = row.getDouble("lineTotal")
-            grandTotal += total
-
-            val tableRow = TableRow(this)
-            val rowBg = when {
-                idx == editingGridRowIndex -> Color.parseColor("#FFF9C4")
-                idx % 2 == 0 -> Color.WHITE
-                else -> Color.parseColor("#F1F8E9")
-            }
-            tableRow.setBackgroundColor(rowBg)
-
-            tableRow.addView(makeCell(name, alignRight = false, bold = true))
-            tableRow.addView(makeCell(lotCode, alignRight = false))
-            tableRow.addView(makeCell(if (bags > 0) bags.toString() else "-", alignRight = true))
-            tableRow.addView(makeCell("%.2f".format(kgs), alignRight = true, bold = true))
-            tableRow.addView(makeCell("%.2f".format(rate), alignRight = true))
-            tableRow.addView(makeCell("%.2f".format(total), alignRight = true, bold = true, colorHex = "#1B5E20"))
-
-            val editCell = TextView(this)
-            editCell.text = "EDIT"
-            editCell.setTextColor(Color.parseColor("#1565C0"))
-            editCell.setTypeface(null, Typeface.BOLD)
-            editCell.textSize = 12f
-            editCell.gravity = Gravity.CENTER
-            editCell.setPadding(18, 14, 18, 14)
-            editCell.setOnClickListener {
-                loadGridRowIntoFieldsForEdit(idx)
-            }
-            tableRow.addView(editCell)
-
-            val delBtn = TextView(this)
-            delBtn.text = "X"
-            delBtn.setTextColor(Color.RED)
-            delBtn.setTypeface(null, Typeface.BOLD)
-            delBtn.gravity = Gravity.CENTER
-            delBtn.setPadding(18, 14, 18, 14)
-            delBtn.setOnClickListener {
-                if (editingGridRowIndex == idx) resetItemEntryInputs()
-                else if (editingGridRowIndex > idx) editingGridRowIndex--
-                cartItems.remove(idx)
-                refreshCartGrid()
-            }
-            tableRow.addView(delBtn)
-
-            binding.tlSalesGrid.addView(tableRow)
-        }
-
-        binding.tvSalesGrandTotal.text = "Grand Total: Rs. %.2f".format(grandTotal)
-    }
-
-    private fun clearJsonArray(arr: JSONArray) {
-        while (arr.length() > 0) arr.remove(0)
-    }
-
-    private fun resetFormForFreshEntry() {
-        clearJsonArray(cartItems)
-        grandTotal = 0.0
+    private fun resetForm() {
         selectedCustomerId = ""
         selectedCustomerName = ""
+        selectedCustomerBalance = 0.0
+        while (billItemsArray.length() > 0) billItemsArray.remove(0)
+        refreshBillItemsGrid()
 
-        binding.actvCustomer.setText("")
-        resetItemEntryInputs()
-        binding.spSalesPayMode.setSelection(0)
-        binding.spSalesItem.setSelection(0)
-
-        refreshCartGrid()
-        if (!isEditMode) generateAutoSalesBillNo() else binding.etSalesBillNo.setText("")
-        loadBatchesForItem(selectedItemName)
-
+        binding.etSalesCustomer.setText("")
+        binding.tvSalesCustBalance.text = "Previous Balance: Rs. 0.00"
+        binding.etSalesBags.setText("")
+        binding.etSalesKgs.setText("")
+        binding.etSalesRate.setText("")
+        binding.etSalesBagCharge.setText("")
         binding.btnSaveSalesBill.isEnabled = true
-        if (!isEditMode) binding.actvCustomer.requestFocus()
-    }
-
-    private fun deductStockAndUpdateCustomer(payMode: String) {
-        for (i in 0 until cartItems.length()) {
-            val row = cartItems.getJSONObject(i)
-            val docId = row.getString("batchDocId")
-            val soldBags = row.getInt("bags")
-            val soldKgs = row.getDouble("netKgs")
-
-            if (docId.isNotEmpty()) {
-                val batchRef = db.collection("stock_batches").document(docId)
-                db.runTransaction { tr ->
-                    val snap = tr.get(batchRef)
-                    val currBags = snap.getLong("availableBags") ?: 0L
-                    val currKgs = snap.getDouble("availableKgs") ?: 0.0
-                    tr.update(batchRef, mapOf(
-                        "availableBags" to (currBags - soldBags).coerceAtLeast(0L),
-                        "availableKgs" to (currKgs - soldKgs).coerceAtLeast(0.0)
-                    ))
-                }
-            }
-        }
-
-        if (payMode.equals("Credit", ignoreCase = true) && selectedCustomerId.isNotEmpty()) {
-            val custRef = db.collection("customers").document(selectedCustomerId)
-            db.runTransaction { tr ->
-                val snap = tr.get(custRef)
-                val curr = snap.getDouble("currentBalance") ?: 0.0
-                tr.update(custRef, "currentBalance", curr + grandTotal)
-            }
-        }
-
-        Toast.makeText(this, "Sales Bill Saved! Ready for next entry.", Toast.LENGTH_SHORT).show()
-        resetFormForFreshEntry()
-    }
-
-    private fun reconcileStockAndCustomerOnEdit(newPayMode: String) {
-        val bagDeltaMap = HashMap<String, Long>()
-        val kgDeltaMap = HashMap<String, Double>()
-
-        for (i in 0 until oldCartItems.length()) {
-            val oldRow = oldCartItems.getJSONObject(i)
-            val bId = oldRow.optString("batchDocId", "")
-            if (bId.isNotEmpty()) {
-                bagDeltaMap[bId] = (bagDeltaMap[bId] ?: 0L) + oldRow.optLong("bags", 0L)
-                kgDeltaMap[bId] = (kgDeltaMap[bId] ?: 0.0) + oldRow.optDouble("netKgs", 0.0)
-            }
-        }
-
-        for (i in 0 until cartItems.length()) {
-            val newRow = cartItems.getJSONObject(i)
-            val bId = newRow.optString("batchDocId", "")
-            if (bId.isNotEmpty()) {
-                bagDeltaMap[bId] = (bagDeltaMap[bId] ?: 0L) - newRow.optLong("bags", 0L)
-                kgDeltaMap[bId] = (kgDeltaMap[bId] ?: 0.0) - newRow.optDouble("netKgs", 0.0)
-            }
-        }
-
-        for ((bId, kgDelta) in kgDeltaMap) {
-            val bagDelta = bagDeltaMap[bId] ?: 0L
-            if (kgDelta != 0.0 || bagDelta != 0L) {
-                val batchRef = db.collection("stock_batches").document(bId)
-                db.runTransaction { tr ->
-                    val snap = tr.get(batchRef)
-                    val currBags = snap.getLong("availableBags") ?: 0L
-                    val currKgs = snap.getDouble("availableKgs") ?: 0.0
-                    tr.update(batchRef, mapOf(
-                        "availableBags" to (currBags + bagDelta).coerceAtLeast(0L),
-                        "availableKgs" to (currKgs + kgDelta).coerceAtLeast(0.0)
-                    ))
-                }
-            }
-        }
-
-        if (oldPayMode.equals("Credit", ignoreCase = true) && oldCustomerId.isNotEmpty()) {
-            val oldCustRef = db.collection("customers").document(oldCustomerId)
-            db.runTransaction { tr ->
-                val snap = tr.get(oldCustRef)
-                val curr = snap.getDouble("currentBalance") ?: 0.0
-                val afterReverse = (curr - oldGrandTotal).coerceAtLeast(0.0)
-                val finalBal = if (newPayMode.equals("Credit", ignoreCase = true) && selectedCustomerId == oldCustomerId) {
-                    afterReverse + grandTotal
-                } else {
-                    afterReverse
-                }
-                tr.update(oldCustRef, "currentBalance", finalBal)
-            }
-        }
-
-        if (newPayMode.equals("Credit", ignoreCase = true) && selectedCustomerId.isNotEmpty() &&
-            !(oldPayMode.equals("Credit", ignoreCase = true) && selectedCustomerId == oldCustomerId)) {
-            val newCustRef = db.collection("customers").document(selectedCustomerId)
-            db.runTransaction { tr ->
-                val snap = tr.get(newCustRef)
-                val curr = snap.getDouble("currentBalance") ?: 0.0
-                tr.update(newCustRef, "currentBalance", curr + grandTotal)
-            }
-        }
-
-        Toast.makeText(this, "Sales Bill Updated Successfully!", Toast.LENGTH_SHORT).show()
-        editingSalesDocId = ""
-        clearJsonArray(oldCartItems)
-        resetFormForFreshEntry()
-        loadBillsForEditFilter()
+        fetchNextBillNo()
+        loadCustomers()
     }
 }
