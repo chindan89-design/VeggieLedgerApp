@@ -63,7 +63,7 @@ class ReportsHubActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        reportType = intent.getStringExtra("REPORT_TYPE") ?: "SAL_CUSTOMER"
+        reportType = intent.getStringExtra("REPORT_TYPE") ?: "SAL_STATEMENT"
         supportActionBar?.title = getReportTitle(reportType)
 
         buildUiProgrammatically()
@@ -341,7 +341,7 @@ class ReportsHubActivity : AppCompatActivity() {
     private fun setupPartyDropdownIfNeeded() {
         val isPurchase = reportType.startsWith("PUR_")
         val isItemwise = reportType.endsWith("ITEMWISE")
-        val isStatement = reportType.endsWith("STATEMENT")
+        val isSupplierStatement = (reportType == "PUR_STATEMENT")
 
         if (isItemwise) {
             layoutPartyBox.visibility = View.GONE
@@ -357,7 +357,7 @@ class ReportsHubActivity : AppCompatActivity() {
             partyNames.clear()
             partyOpBalMap.clear()
             partyIdMap.clear()
-            if (!isStatement) {
+            if (!isSupplierStatement) {
                 partyNames.add(if (isPurchase) "ALL SUPPLIERS" else "ALL CUSTOMERS")
             }
 
@@ -492,20 +492,21 @@ class ReportsHubActivity : AppCompatActivity() {
         tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
 
         when (reportType) {
-            "SAL_CUSTOMER" -> loadGroupedCustomerSalesReport(selectedParty)
+            "SAL_CUSTOMER" -> loadGroupedCustomerSalesReport(selectedParty, "CUSTOMER SALES REPORT")
+            "SAL_STATEMENT" -> loadGroupedCustomerSalesReport(selectedParty, "CUSTOMER LEDGER STATEMENT")
             "PUR_SUPPLIER" -> loadPartySummaryReport("purchases", "supplierName", selectedParty, "#1565C0")
             "PUR_DETAILS" -> loadBillDetailsReport("purchases", "supplierName", selectedParty, "#1565C0")
             "PUR_ITEMWISE" -> loadItemwiseReport("purchases", "#1565C0")
             "PUR_STATEMENT" -> loadLedgerStatement("purchases", "payments", "supplierName", selectedParty, "#1565C0")
             "SAL_DETAILS" -> loadBillDetailsReport("sales", "customerName", selectedParty, "#1B5E20")
             "SAL_ITEMWISE" -> loadItemwiseReport("sales", "#1B5E20")
-            "SAL_STATEMENT" -> loadLedgerStatement("sales", "receipts", "customerName", selectedParty, "#1B5E20")
         }
     }
 
-    private fun loadGroupedCustomerSalesReport(selectedCust: String) {
+    private fun loadGroupedCustomerSalesReport(selectedCust: String, reportHeading: String) {
         val isAll = selectedCust.equals("ALL CUSTOMERS", ignoreCase = true) || selectedCust.startsWith("All")
         tvLeftMeta.text = "CUSTOMER NAME: $selectedCust"
+        tvSheetSubTitle.text = reportHeading
 
         val headers = listOf("DATE", "OP.BAL", "QTY", "RATE", "AMOUNT", "INCOME", "DISCOUNT", "CL.BAL")
         addHeaderRow(headers, "#1B5E20")
@@ -536,7 +537,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
                     var rowIdx = 0
                     val htmlSections = StringBuilder()
-                    val shareSb = StringBuilder("CUSTOMER SALES REPORT ($fromDateStr TO $toDateStr)\nFilter: $selectedCust\n\n")
+                    val shareSb = StringBuilder("$reportHeading ($fromDateStr TO $toDateStr)\nFilter: $selectedCust\n\n")
 
                     for ((custId, custName, masterOpBal) in targetCustomers) {
                         val custNameLower = custName.lowercase(Locale.getDefault())
@@ -753,7 +754,7 @@ class ReportsHubActivity : AppCompatActivity() {
                             <div class="center">
                                 <h1>THIRUVENI COCONUTS</h1>
                                 <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
-                                <h3>CUSTOMER SALES REPORT</h3>
+                                <h3>$reportHeading</h3>
                             </div>
                             <table class="meta">
                                 <tr>
@@ -1025,11 +1026,11 @@ class ReportsHubActivity : AppCompatActivity() {
         printWebView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Sales_Report_${fromDateStr}_to_${toDateStr}")
+                val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Ledger_${fromDateStr}_to_${toDateStr}")
                 val builder = PrintAttributes.Builder()
                 builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                 builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                printManager.print("Customer Sales Report A4", printAdapter, builder.build())
+                printManager.print("Customer Ledger A4", printAdapter, builder.build())
             }
         }
         printWebView.loadDataWithBaseURL(null, lastPrintableHtml, "text/HTML", "UTF-8", null)
