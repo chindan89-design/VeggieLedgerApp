@@ -29,6 +29,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 class CustomerOutstandingActivity : AppCompatActivity() {
 
@@ -57,6 +58,10 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         buildA4ScreenUi(cal)
         loadOutstandingData()
+    }
+
+    private fun fmtVal(value: Double): String {
+        return if (abs(value) < 0.005) "-" else String.format(Locale.getDefault(), "%.2f", value)
     }
 
     private fun buildA4ScreenUi(cal: Calendar) {
@@ -345,11 +350,11 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         val row = TableRow(this)
         row.setBackgroundColor(Color.BLACK)
         row.addView(makeBorderedCell(label, bold = true, bgColor = bgColor))
-        row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", op), alignRight = true, bold = true, bgColor = bgColor))
-        row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", sal), alignRight = true, bold = true, bgColor = bgColor))
-        row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", inc), alignRight = true, bold = true, bgColor = bgColor))
-        row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", disc), alignRight = true, bold = true, bgColor = bgColor))
-        row.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", cl), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(op), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(sal), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(inc), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(disc), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(cl), alignRight = true, bold = true, bgColor = bgColor))
         row.addView(makeBorderedCell("", bold = true, bgColor = bgColor))
         row.addView(makeBorderedCell("                    ", bold = true, bgColor = bgColor))
         tableLayout.addView(row)
@@ -428,11 +433,11 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             val tr = TableRow(this)
             tr.setBackgroundColor(Color.BLACK)
             tr.addView(makeBorderedCell(name, bold = true))
-            tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", op), alignRight = true))
-            tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", sal), alignRight = true))
-            tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", inc), alignRight = true))
-            tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", disc), alignRight = true))
-            tr.addView(makeBorderedCell(String.format(Locale.getDefault(), "%.2f", cl), alignRight = true, bold = true))
+            tr.addView(makeBorderedCell(fmtVal(op), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(sal), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(inc), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(disc), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(cl), alignRight = true, bold = true))
             tr.addView(makeBorderedCell(phone))
             tr.addView(makeBorderedCell("                    "))
             tableLayout.addView(tr)
@@ -527,8 +532,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 pageRowsHtml.append(
                     String.format(
                         Locale.getDefault(),
-                        "<tr><td class='namecol'>%s</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td style='font-weight:bold;'>%.2f</td><td style='text-align:center;'>%s</td><td></td></tr>",
-                        name, op, sal, inc, disc, cl, phone
+                        "<tr><td class='namecol'>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style='font-weight:bold;'>%s</td><td style='text-align:center;'>%s</td><td></td></tr>",
+                        name, fmtVal(op), fmtVal(sal), fmtVal(inc), fmtVal(disc), fmtVal(cl), phone
                     )
                 )
             }
@@ -537,8 +542,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             pageRowsHtml.append(
                 String.format(
                     Locale.getDefault(),
-                    "<tr class='pagetotal'><td class='namecol'>PAGE %d TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
-                    (pageIdx + 1), pageOp, pageSales, pageInc, pageDisc, pageCl
+                    "<tr class='pagetotal'><td class='namecol'>PAGE %d TOTAL</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td></td><td></td></tr>",
+                    (pageIdx + 1), fmtVal(pageOp), fmtVal(pageSales), fmtVal(pageInc), fmtVal(pageDisc), fmtVal(pageCl)
                 )
             )
 
@@ -547,8 +552,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 pageRowsHtml.append(
                     String.format(
                         Locale.getDefault(),
-                        "<tr class='grandtotal'><td class='namecol'>GRAND TOTAL</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td>%.2f</td><td></td><td></td></tr>",
-                        grandOp, grandSales, grandInc, grandDisc, grandCl
+                        "<tr class='grandtotal'><td class='namecol'>GRAND TOTAL</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td></td><td></td></tr>",
+                        fmtVal(grandOp), fmtVal(grandSales), fmtVal(grandInc), fmtVal(grandDisc), fmtVal(grandCl)
                     )
                 )
             }
@@ -641,6 +646,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
         }
         printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing Full-Page A4 Sheet (+2pt Font)...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing Full-Page A4 Sheet...", Toast.LENGTH_SHORT).show()
     }
 }
