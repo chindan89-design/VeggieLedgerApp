@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.shop.veggieledger">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
-        android:label="Veggie Mandi Ledger"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Veggie Mandi"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar">
+        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
 
         <activity
             android:name=".LoginActivity"
@@ -18,22 +21,21 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".DashboardActivity" />
-        <activity android:name=".CustomerMasterActivity" />
-        <activity android:name=".SupplierMasterActivity" />
-        <activity android:name=".ItemMasterActivity" />
-        <activity android:name=".PurchaseActivity" />
-        <activity android:name=".SalesActivity" />
-        <activity android:name=".SalesReceiptActivity" />
-        <activity android:name=".PurchasePaymentActivity" />
-        <activity android:name=".ExpenseIncomeActivity" />
-        <activity android:name=".CustomerOutstandingActivity" />
-        <activity android:name=".SupplierOutstandingActivity" />
-        <activity android:name=".ProfitLossActivity" />
-        <activity android:name=".TransactionHistoryActivity" />
-        <activity android:name=".ReceiptActivity" android:exported="false" />
-        <activity android:name=".PaymentActivity" android:exported="false" />
+        <activity android:name=".DashboardActivity" android:exported="false" />
+        <activity android:name=".CustomerMasterActivity" android:exported="false" />
+        <activity android:name=".SupplierMasterActivity" android:exported="false" />
+        <activity android:name=".ItemMasterActivity" android:exported="false" />
+        <activity android:name=".SalesActivity" android:exported="false" />
+        <activity android:name=".PurchaseActivity" android:exported="false" />
+        <activity android:name=".SalesReceiptActivity" android:exported="false" />
+        <activity android:name=".PurchasePaymentActivity" android:exported="false" />
+        <activity android:name=".ExpenseIncomeActivity" android:exported="false" />
+        <activity android:name=".CustomerOutstandingActivity" android:exported="false" />
+        <activity android:name=".SupplierOutstandingActivity" android:exported="false" />
+        <activity android:name=".ProfitLossActivity" android:exported="false" />
+        <activity android:name=".TransactionHistoryActivity" android:exported="false" />
         <activity android:name=".ReportsHubActivity" android:exported="false" />
-        
-     </application>
+
+    </application>
+
 </manifest>
