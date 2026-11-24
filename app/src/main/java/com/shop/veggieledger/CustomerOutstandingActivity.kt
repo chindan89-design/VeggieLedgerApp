@@ -46,8 +46,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    // Exact +1pt font (14.5px)-ஓட bottom space குறைய 30 rows per page
-    private val ROWS_PER_A4_PAGE = 30
+    // 34 rows per A4 portrait page fills the page down to the bottom margin cleanly
+    private val ROWS_PER_A4_PAGE = 34
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -219,29 +219,24 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         setContentView(rootScroll)
     }
 
+    /**
+     * Returns:
+     * -1 if dateStr is strictly BEFORE selectedDateStr (yesterday & earlier -> goes into OP.BAL)
+     *  0 if dateStr is EQUAL to selectedDateStr (today -> goes into SALES / INCOME / DISCOUNT)
+     *  1 if dateStr is AFTER selectedDateStr (future -> ignored)
+     */
     private fun compareWithSelectedDate(dateStr: String): Int {
         return try {
-            val cleanStr = dateStr.trim().replace("/", "-")
             val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+            val cleanStr = dateStr.trim()
+            if (cleanStr == selectedDateStr.trim()) return 0
             val d = sdf.parse(cleanStr) ?: return 0
-            val target = sdf.parse(selectedDateStr) ?: return 0
-
-            val c1 = Calendar.getInstance().apply {
-                time = d
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
+            val target = sdf.parse(selectedDateStr.trim()) ?: return 0
+            when {
+                d.before(target) -> -1
+                d.after(target) -> 1
+                else -> 0
             }
-            val c2 = Calendar.getInstance().apply {
-                time = target
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-
-            c1.time.compareTo(c2.time)
         } catch (e: Exception) {
             0
         }
@@ -254,57 +249,88 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             db.collection("sales").get().addOnSuccessListener { salesSnap ->
                 db.collection("receipts").get().addOnSuccessListener { recSnap ->
 
+                    // Before-date maps (to compute yesterday's closing balance = today's OP.BAL)
                     val prevSalesMap = HashMap<String, Double>()
-                    val todaySalesMap = HashMap<String, Double>()
-
                     val prevIncomeMap = HashMap<String, Double>()
                     val prevDiscMap = HashMap<String, Double>()
+
+                    // Selected-date maps (today's transactions only)
+                    val todaySalesMap = HashMap<String, Double>()
                     val todayIncomeMap = HashMap<String, Double>()
                     val todayDiscMap = HashMap<String, Double>()
 
-                    // 1. Sales கணக்கீடு (Credit + Cash இரண்டும்)
                     for (doc in salesSnap) {
                         val d = doc.getString("date") ?: ""
                         val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue
+                        if (cmp > 0) continue // Ignore future dates
 
                         val pMode = (doc.getString("payMode") ?: "Credit").trim()
+                        val isCredit = pMode.equals("Credit", ignoreCase = true)
+
                         val cId = doc.getString("customerId") ?: ""
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
                         val tot = doc.getDouble("grandTotal") ?: 0.0
 
-                        val targetSalesMap = if (cmp < 0) prevSalesMap else todaySalesMap
-                        if (cId.isNotEmpty()) targetSalesMap[cId] = (targetSalesMap[cId] ?: 0.0) + tot
-                        if (cName.isNotEmpty()) targetSalesMap["NAME_$cName"] = (targetSalesMap["NAME_$cName"] ?: 0.0) + tot
+                        // For Cash / GPay / UPI sales: add to BOTH Sales and Income immediately
+                        val instantPaid = if (!isCredit) tot else (doc.getDouble("paidAmount") ?: 0.0)
 
-                        if (pMode.equals("Cash", ignoreCase = true)) {
-                            val targetIncMap = if (cmp < 0) prevIncomeMap else todayIncomeMap
-                            if (cId.isNotEmpty()) targetIncMap[cId] = (targetIncMap[cId] ?: 0.0) + tot
-                            if (cName.isNotEmpty()) targetIncMap["NAME_$cName"] = (targetIncMap["NAME_$cName"] ?: 0.0) + tot
+                        if (cmp < 0) {
+                            if (cId.isNotEmpty()) {
+                                prevSalesMap[cId] = (prevSalesMap[cId] ?: 0.0) + tot
+                                if (instantPaid > 0.0) {
+                                    prevIncomeMap[cId] = (prevIncomeMap[cId] ?: 0.0) + instantPaid
+                                }
+                            }
+                            if (cName.isNotEmpty()) {
+                                prevSalesMap["NAME_$cName"] = (prevSalesMap["NAME_$cName"] ?: 0.0) + tot
+                                if (instantPaid > 0.0) {
+                                    prevIncomeMap["NAME_$cName"] = (prevIncomeMap["NAME_$cName"] ?: 0.0) + instantPaid
+                                }
+                            }
+                        } else {
+                            if (cId.isNotEmpty()) {
+                                todaySalesMap[cId] = (todaySalesMap[cId] ?: 0.0) + tot
+                                if (instantPaid > 0.0) {
+                                    todayIncomeMap[cId] = (todayIncomeMap[cId] ?: 0.0) + instantPaid
+                                }
+                            }
+                            if (cName.isNotEmpty()) {
+                                todaySalesMap["NAME_$cName"] = (todaySalesMap["NAME_$cName"] ?: 0.0) + tot
+                                if (instantPaid > 0.0) {
+                                    todayIncomeMap["NAME_$cName"] = (todayIncomeMap["NAME_$cName"] ?: 0.0) + instantPaid
+                                }
+                            }
                         }
                     }
 
-                    // 2. Receipts (Income & Discount) கணக்கீடு
                     for (doc in recSnap) {
                         val d = doc.getString("date") ?: ""
                         val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue
+                        if (cmp > 0) continue // Ignore future dates
 
                         val cId = doc.getString("customerId") ?: ""
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
                         val amt = doc.getDouble("amount") ?: 0.0
                         val disc = doc.getDouble("discount") ?: 0.0
 
-                        val targetIncMap = if (cmp < 0) prevIncomeMap else todayIncomeMap
-                        val targetDiscMap = if (cmp < 0) prevDiscMap else todayDiscMap
-
-                        if (cId.isNotEmpty()) {
-                            targetIncMap[cId] = (targetIncMap[cId] ?: 0.0) + amt
-                            targetDiscMap[cId] = (targetDiscMap[cId] ?: 0.0) + disc
-                        }
-                        if (cName.isNotEmpty()) {
-                            targetIncMap["NAME_$cName"] = (targetIncMap["NAME_$cName"] ?: 0.0) + amt
-                            targetDiscMap["NAME_$cName"] = (targetDiscMap["NAME_$cName"] ?: 0.0) + disc
+                        if (cmp < 0) {
+                            if (cId.isNotEmpty()) {
+                                prevIncomeMap[cId] = (prevIncomeMap[cId] ?: 0.0) + amt
+                                prevDiscMap[cId] = (prevDiscMap[cId] ?: 0.0) + disc
+                            }
+                            if (cName.isNotEmpty()) {
+                                prevIncomeMap["NAME_$cName"] = (prevIncomeMap["NAME_$cName"] ?: 0.0) + amt
+                                prevDiscMap["NAME_$cName"] = (prevDiscMap["NAME_$cName"] ?: 0.0) + disc
+                            }
+                        } else {
+                            if (cId.isNotEmpty()) {
+                                todayIncomeMap[cId] = (todayIncomeMap[cId] ?: 0.0) + amt
+                                todayDiscMap[cId] = (todayDiscMap[cId] ?: 0.0) + disc
+                            }
+                            if (cName.isNotEmpty()) {
+                                todayIncomeMap["NAME_$cName"] = (todayIncomeMap["NAME_$cName"] ?: 0.0) + amt
+                                todayDiscMap["NAME_$cName"] = (todayDiscMap["NAME_$cName"] ?: 0.0) + disc
+                            }
                         }
                     }
 
@@ -327,19 +353,21 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                         val cleanPhone = if (phone == "0" || phone == "-") "" else phone
 
                         val nameKey = "NAME_${name.lowercase(Locale.getDefault())}"
-                        val initialOpBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                        val masterOpBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
 
+                        // Yesterday's Closing Balance = Today's Opening Balance
                         val prevSales = prevSalesMap[doc.id] ?: prevSalesMap[nameKey] ?: 0.0
                         val prevInc = prevIncomeMap[doc.id] ?: prevIncomeMap[nameKey] ?: 0.0
                         val prevDisc = prevDiscMap[doc.id] ?: prevDiscMap[nameKey] ?: 0.0
+                        val todayOpBal = (masterOpBal + prevSales - prevInc - prevDisc).coerceAtLeast(0.0)
 
-                        val todayOpBal = (initialOpBal + prevSales - prevInc - prevDisc).coerceAtLeast(0.0)
+                        // Today's Sales, Income (Receipts + Cash/GPay Sales), Discount
+                        val todaySales = todaySalesMap[doc.id] ?: todaySalesMap[nameKey] ?: 0.0
+                        val todayInc = todayIncomeMap[doc.id] ?: todayIncomeMap[nameKey] ?: 0.0
+                        val todayDisc = todayDiscMap[doc.id] ?: todayDiscMap[nameKey] ?: 0.0
 
-                        val salesAmt = todaySalesMap[doc.id] ?: todaySalesMap[nameKey] ?: 0.0
-                        val incAmt = todayIncomeMap[doc.id] ?: todayIncomeMap[nameKey] ?: 0.0
-                        val discAmt = todayDiscMap[doc.id] ?: todayDiscMap[nameKey] ?: 0.0
-
-                        val clBal = (todayOpBal + salesAmt - incAmt - discAmt).coerceAtLeast(0.0)
+                        // Today's Closing Outstanding
+                        val todayClBal = (todayOpBal + todaySales - todayInc - todayDisc).coerceAtLeast(0.0)
 
                         customerNames.add(name)
 
@@ -347,10 +375,10 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                         obj.put("name", name)
                         obj.put("phone", cleanPhone)
                         obj.put("opBal", todayOpBal)
-                        obj.put("sales", salesAmt)
-                        obj.put("income", incAmt)
-                        obj.put("discount", discAmt)
-                        obj.put("clBal", clBal)
+                        obj.put("sales", todaySales)
+                        obj.put("income", todayInc)
+                        obj.put("discount", todayDisc)
+                        obj.put("clBal", todayClBal)
                         reportRows.put(obj)
                     }
 
@@ -432,8 +460,9 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             val op = obj.getDouble("opBal")
             val sal = obj.getDouble("sales")
             val inc = obj.getDouble("income")
+            val disc = obj.getDouble("discount")
             val cl = obj.getDouble("clBal")
-            if (chosenCust == "ALL CUSTOMERS" && op == 0.0 && sal == 0.0 && inc == 0.0 && cl == 0.0) continue
+            if (chosenCust == "ALL CUSTOMERS" && op == 0.0 && sal == 0.0 && inc == 0.0 && disc == 0.0 && cl == 0.0) continue
 
             filteredList.add(obj)
         }
@@ -522,8 +551,9 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             val op = obj.getDouble("opBal")
             val sal = obj.getDouble("sales")
             val inc = obj.getDouble("income")
+            val disc = obj.getDouble("discount")
             val cl = obj.getDouble("clBal")
-            if (chosenCust == "ALL CUSTOMERS" && op == 0.0 && sal == 0.0 && inc == 0.0 && cl == 0.0) continue
+            if (chosenCust == "ALL CUSTOMERS" && op == 0.0 && sal == 0.0 && inc == 0.0 && disc == 0.0 && cl == 0.0) continue
 
             filteredList.add(obj)
         }
@@ -654,21 +684,21 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             <head>
             <style>
                 * { box-sizing: border-box; }
-                @page { size: A4 portrait; margin: 4mm 4mm 1mm 4mm; }
+                @page { size: A4 portrait; margin: 4mm 4mm 4mm 4mm; }
                 html, body { width: 100%; font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
                 .page-box { width: 100%; }
                 .center { text-align: center; }
-                h1 { font-size: 23px; margin: 0; letter-spacing: 0.8px; }
-                h2 { font-size: 15.5px; margin: 2px 0 4px 0; font-weight: bold; }
-                h3 { font-size: 17.5px; margin: 3px 0 6px 0; text-decoration: underline; }
-                .meta { width: 100%; margin-bottom: 6px; font-size: 14.5px; font-weight: bold; }
+                h1 { font-size: 21px; margin: 0; letter-spacing: 0.8px; }
+                h2 { font-size: 14px; margin: 2px 0 3px 0; font-weight: bold; }
+                h3 { font-size: 16px; margin: 2px 0 5px 0; text-decoration: underline; }
+                .meta { width: 100%; margin-bottom: 4px; font-size: 13.5px; font-weight: bold; }
                 .meta td { border: none; padding: 1px 0; }
                 table.grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14.5px; }
-                table.grid th, table.grid td { border: 1px solid #000; padding: 7.5px 3px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 8px 2px; font-size: 13.5px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 5.5px 3px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 6px 2px; font-size: 13px; }
                 td.namecol { text-align: left !important; font-weight: bold; }
-                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; padding: 8px 3px; font-size: 14.5px; }
-                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 15px; padding: 8.5px 3px; }
+                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; padding: 6px 3px; font-size: 14.5px; }
+                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 15px; padding: 6.5px 3px; }
             </style>
             </head>
             <body>
@@ -689,6 +719,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             }
         }
         printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
-        Toast.makeText(this, "Preparing A4 Sheet (+1pt Font)...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Preparing Customer Outstanding A4...", Toast.LENGTH_SHORT).show()
     }
 }
