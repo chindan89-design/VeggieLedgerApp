@@ -230,8 +230,20 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             val d = sdf.parse(cleanStr) ?: return 0
             val target = sdf.parse(selectedDateStr) ?: return 0
 
-            val c1 = Calendar.getInstance().apply { time = d; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
-            val c2 = Calendar.getInstance().apply { time = target; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+            val c1 = Calendar.getInstance().apply {
+                time = d
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val c2 = Calendar.getInstance().apply {
+                time = target
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
 
             c1.time.compareTo(c2.time)
         } catch (e: Exception) {
@@ -249,28 +261,36 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                     val prevSalesMap = HashMap<String, Double>()
                     val todaySalesMap = HashMap<String, Double>()
 
-                    for (doc in salesSnap) {
-                        val d = doc.getString("date") ?: ""
-                        val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue // Future date என்றால் skip
-
-                        val pMode = doc.getString("payMode") ?: "Credit"
-                        if (!pMode.equals("Credit", ignoreCase = true)) continue
-
-                        val cId = doc.getString("customerId") ?: ""
-                        val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
-                        val tot = doc.getDouble("grandTotal") ?: 0.0
-
-                        val targetMap = if (cmp < 0) prevSalesMap else todaySalesMap
-                        if (cId.isNotEmpty()) targetMap[cId] = (targetMap[cId] ?: 0.0) + tot
-                        if (cName.isNotEmpty()) targetMap["NAME_$cName"] = (targetMap["NAME_$cName"] ?: 0.0) + tot
-                    }
-
                     val prevIncomeMap = HashMap<String, Double>()
                     val prevDiscMap = HashMap<String, Double>()
                     val todayIncomeMap = HashMap<String, Double>()
                     val todayDiscMap = HashMap<String, Double>()
 
+                    // 1. Sales கணக்கீடு (Credit + Cash இரண்டும் எடுக்கும்)
+                    for (doc in salesSnap) {
+                        val d = doc.getString("date") ?: ""
+                        val cmp = compareWithSelectedDate(d)
+                        if (cmp > 0) continue // Future date என்றால் skip
+
+                        val pMode = (doc.getString("payMode") ?: "Credit").trim()
+                        val cId = doc.getString("customerId") ?: ""
+                        val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
+                        val tot = doc.getDouble("grandTotal") ?: 0.0
+
+                        // மொத்த Sales-ல் (Credit & Cash இரண்டும்) சேர்த்தல்
+                        val targetSalesMap = if (cmp < 0) prevSalesMap else todaySalesMap
+                        if (cId.isNotEmpty()) targetSalesMap[cId] = (targetSalesMap[cId] ?: 0.0) + tot
+                        if (cName.isNotEmpty()) targetSalesMap["NAME_$cName"] = (targetSalesMap["NAME_$cName"] ?: 0.0) + tot
+
+                        // Cash Sale-ஆ இருந்தால் உடனே பணம் வந்ததால் Income-லயும் வரவு வைத்தல்
+                        if (pMode.equals("Cash", ignoreCase = true)) {
+                            val targetIncMap = if (cmp < 0) prevIncomeMap else todayIncomeMap
+                            if (cId.isNotEmpty()) targetIncMap[cId] = (targetIncMap[cId] ?: 0.0) + tot
+                            if (cName.isNotEmpty()) targetIncMap["NAME_$cName"] = (targetIncMap["NAME_$cName"] ?: 0.0) + tot
+                        }
+                    }
+
+                    // 2. Receipts (Income & Discount) கணக்கீடு
                     for (doc in recSnap) {
                         val d = doc.getString("date") ?: ""
                         val cmp = compareWithSelectedDate(d)
