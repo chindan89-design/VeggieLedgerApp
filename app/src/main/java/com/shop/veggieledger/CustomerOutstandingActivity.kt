@@ -1,5 +1,6 @@
 package com.shop.veggieledger
 
+import android.app.DatePickerDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -7,281 +8,677 @@ import android.os.Bundle
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.view.Gravity
+import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
-
-data class CustomerOutstandingRow(
-    val customerName: String,
-    val group: String,
-    val openingBalance: Double,
-    val todaySales: Double,
-    val todayIncome: Double,
-    val todayDiscount: Double,
-    val closingBalance: Double
-)
+import kotlin.math.abs
 
 class CustomerOutstandingActivity : AppCompatActivity() {
 
     private val db = FirebaseFirestore.getInstance()
+
+    private lateinit var etAsOnDate: EditText
+    private lateinit var spCustomerFilter: Spinner
+    private lateinit var tvLeftCustName: TextView
+    private lateinit var tvRightDate: TextView
+    private lateinit var tableLayout: TableLayout
+    private lateinit var printWebView: WebView
+
     private var selectedDateStr: String = ""
-    private var reportList = mutableListOf<CustomerOutstandingRow>()
-    private var webViewForPrint: WebView? = null
-    private lateinit var tvStatus: TextView
+    private val customerNames = arrayListOf("ALL CUSTOMERS")
+    private val reportRows = JSONArray()
+
+    // 26 rows per A4 portrait page so +1pt larger font (14.5px) fits cleanly without page overflow
+    private val ROWS_PER_A4_PAGE = 26
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportActionBar?.title = "Customer Outstanding (A4)"
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        selectedDateStr = intent.getStringExtra("SELECTED_DATE") ?: sdf.format(Date())
+        val cal = Calendar.getInstance()
+        selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
 
-        // XML இல்லாமல் நேரடியாக UI உருவாக்குதல்
-        val mainLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(40, 40, 40, 40)
-            setBackgroundColor(Color.WHITE)
+        buildA4ScreenUi(cal)
+        loadOutstandingData()
+    }
+
+    private fun fmtVal(value: Double): String {
+        return if (abs(value) < 0.005) "-" else String.format(Locale.getDefault(), "%.2f", value)
+    }
+
+    private fun buildA4ScreenUi(cal: Calendar) {
+        val rootScroll = ScrollView(this)
+        rootScroll.setBackgroundColor(Color.parseColor("#ECEFF1"))
+        rootScroll.setPadding(16, 16, 16, 16)
+
+        val mainCol = LinearLayout(this)
+        mainCol.orientation = LinearLayout.VERTICAL
+        rootScroll.addView(mainCol)
+
+        // Filter & Print Control Bar
+        val controlCard = LinearLayout(this)
+        controlCard.orientation = LinearLayout.VERTICAL
+        controlCard.setBackgroundColor(Color.WHITE)
+        controlCard.setPadding(20, 20, 20, 20)
+        val ctrlLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        ctrlLp.setMargins(0, 0, 0, 16)
+        controlCard.layoutParams = ctrlLp
+
+        val filterRow = LinearLayout(this)
+        filterRow.orientation = LinearLayout.HORIZONTAL
+        filterRow.weightSum = 2f
+
+        // Date Picker
+        val dateCol = LinearLayout(this)
+        dateCol.orientation = LinearLayout.VERTICAL
+        dateCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lblDate = TextView(this)
+        lblDate.text = "As On Date"
+        lblDate.textSize = 12f
+        lblDate.setTypeface(null, Typeface.BOLD)
+        etAsOnDate = EditText(this)
+        etAsOnDate.setText(selectedDateStr)
+        etAsOnDate.isFocusable = false
+        etAsOnDate.isClickable = true
+        etAsOnDate.setBackgroundResource(android.R.drawable.edit_text)
+        etAsOnDate.setOnClickListener {
+            DatePickerDialog(this, { _, y, m, d ->
+                cal.set(y, m, d)
+                selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
+                etAsOnDate.setText(selectedDateStr)
+                loadOutstandingData()
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
+        dateCol.addView(lblDate)
+        dateCol.addView(etAsOnDate)
 
-        val tvTitle = TextView(this).apply {
-            text = "THIRUVENI COCONUTS\nCustomer Outstanding"
-            textSize = 20f
-            setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setTextColor(Color.BLACK)
-        }
+        // Customer Filter Spinner
+        val custCol = LinearLayout(this)
+        custCol.orientation = LinearLayout.VERTICAL
+        custCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lblCust = TextView(this)
+        lblCust.text = "Filter Customer"
+        lblCust.textSize = 12f
+        lblCust.setTypeface(null, Typeface.BOLD)
+        spCustomerFilter = Spinner(this)
+        spCustomerFilter.setBackgroundResource(android.R.drawable.btn_dropdown)
+        custCol.addView(lblCust)
+        custCol.addView(spCustomerFilter)
 
-        val tvDate = TextView(this).apply {
-            text = "Report Date: $selectedDateStr"
-            textSize = 16f
-            setPadding(0, 24, 0, 24)
-            gravity = Gravity.CENTER
-            setTextColor(Color.DKGRAY)
-        }
+        filterRow.addView(dateCol)
+        filterRow.addView(custCol)
+        controlCard.addView(filterRow)
 
-        tvStatus = TextView(this).apply {
-            text = "Loading customer records..."
-            textSize = 14f
-            setPadding(0, 16, 0, 32)
-            gravity = Gravity.CENTER
-            setTextColor(Color.BLUE)
-        }
+        val btnPrintA4 = Button(this)
+        btnPrintA4.text = "PRINT / SAVE A4 PDF SHEET"
+        btnPrintA4.setBackgroundColor(Color.parseColor("#1B5E20"))
+        btnPrintA4.setTextColor(Color.WHITE)
+        btnPrintA4.setTypeface(null, Typeface.BOLD)
+        val btnLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        btnLp.setMargins(0, 12, 0, 0)
+        btnPrintA4.layoutParams = btnLp
+        btnPrintA4.setOnClickListener { generateAndPrintA4Pdf() }
+        controlCard.addView(btnPrintA4)
 
-        val btnPrint = Button(this).apply {
-            text = "PRINT A4 OUTSTANDING REPORT"
-            textSize = 15f
-            setPadding(32, 24, 32, 24)
-        }
+        mainCol.addView(controlCard)
 
-        mainLayout.addView(tvTitle)
-        mainLayout.addView(tvDate)
-        mainLayout.addView(tvStatus)
-        mainLayout.addView(btnPrint)
-        setContentView(mainLayout)
+        // A4 SHEET PREVIEW CONTAINER
+        val a4Sheet = LinearLayout(this)
+        a4Sheet.orientation = LinearLayout.VERTICAL
+        a4Sheet.setBackgroundColor(Color.WHITE)
+        a4Sheet.setPadding(24, 28, 24, 28)
 
-        fetchAndCalculateOutstanding(selectedDateStr)
+        // Center Heading 1: THIRUVENI COCONUTS
+        val tvShopName = TextView(this)
+        tvShopName.text = "THIRUVENI COCONUTS"
+        tvShopName.textSize = 24f
+        tvShopName.setTypeface(null, Typeface.BOLD)
+        tvShopName.setTextColor(Color.BLACK)
+        tvShopName.gravity = Gravity.CENTER
+        a4Sheet.addView(tvShopName)
 
-        btnPrint.setOnClickListener {
-            if (reportList.isNotEmpty()) {
-                printA4Report(reportList, selectedDateStr)
-            } else {
-                Toast.makeText(this, "No records to print!", Toast.LENGTH_SHORT).show()
-            }
+        // Center Heading 2: Address
+        val tvShopAddr = TextView(this)
+        tvShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
+        tvShopAddr.textSize = 16f
+        tvShopAddr.setTypeface(null, Typeface.BOLD)
+        tvShopAddr.setTextColor(Color.DKGRAY)
+        tvShopAddr.gravity = Gravity.CENTER
+        tvShopAddr.setPadding(0, 4, 0, 10)
+        a4Sheet.addView(tvShopAddr)
+
+        // Center Heading 3: CUSTOMER OUTSTANDING
+        val tvSheetTitle = TextView(this)
+        tvSheetTitle.text = "CUSTOMER OUTSTANDING"
+        tvSheetTitle.textSize = 19f
+        tvSheetTitle.setTypeface(null, Typeface.BOLD)
+        tvSheetTitle.setTextColor(Color.BLACK)
+        tvSheetTitle.gravity = Gravity.CENTER
+        tvSheetTitle.setPadding(0, 4, 0, 16)
+        a4Sheet.addView(tvSheetTitle)
+
+        // Left: Customer Name | Right: Date
+        val infoRow = LinearLayout(this)
+        infoRow.orientation = LinearLayout.HORIZONTAL
+        infoRow.weightSum = 2f
+        infoRow.setPadding(4, 8, 4, 12)
+
+        tvLeftCustName = TextView(this)
+        tvLeftCustName.text = "CUSTOMER NAME: ALL CUSTOMERS"
+        tvLeftCustName.textSize = 16f
+        tvLeftCustName.setTypeface(null, Typeface.BOLD)
+        tvLeftCustName.setTextColor(Color.BLACK)
+        tvLeftCustName.gravity = Gravity.START
+        tvLeftCustName.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.3f)
+
+        tvRightDate = TextView(this)
+        tvRightDate.text = "DATE: $selectedDateStr"
+        tvRightDate.textSize = 16f
+        tvRightDate.setTypeface(null, Typeface.BOLD)
+        tvRightDate.setTextColor(Color.BLACK)
+        tvRightDate.gravity = Gravity.END
+        tvRightDate.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
+
+        infoRow.addView(tvLeftCustName)
+        infoRow.addView(tvRightDate)
+        a4Sheet.addView(infoRow)
+
+        // Table Container
+        val hScroll = HorizontalScrollView(this)
+        tableLayout = TableLayout(this)
+        tableLayout.setBackgroundColor(Color.BLACK)
+        tableLayout.setPadding(1, 1, 1, 1)
+        hScroll.addView(tableLayout)
+        a4Sheet.addView(hScroll)
+
+        mainCol.addView(a4Sheet)
+        setContentView(rootScroll)
+    }
+
+    // தேதியை ஒப்பிடும் function:
+    // -1 = நேத்து மற்றும் அதுக்கு முன்னாடி (Before Selected Date)
+    //  0 = சரியா இன்னைக்கு (Exact Selected Date)
+    //  1 = நாளை / Future Date (Ignore)
+    private fun compareWithSelectedDate(dateStr: String): Int {
+        return try {
+            val cleanStr = dateStr.trim().replace("/", "-")
+            val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+            val d = sdf.parse(cleanStr) ?: return 0
+            val target = sdf.parse(selectedDateStr) ?: return 0
+
+            val c1 = Calendar.getInstance().apply { time = d; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+            val c2 = Calendar.getInstance().apply { time = target; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+
+            c1.time.compareTo(c2.time)
+        } catch (e: Exception) {
+            0
         }
     }
 
-    private fun fetchAndCalculateOutstanding(targetDate: String) {
-        db.collection("customers").get().addOnSuccessListener { customerDocs ->
-            db.collection("sales").get().addOnSuccessListener { salesDocs ->
-                db.collection("receipts").get().addOnSuccessListener { receiptDocs ->
+    private fun loadOutstandingData() {
+        tvRightDate.text = "DATE: $selectedDateStr"
 
-                    reportList.clear()
+        db.collection("customers").get().addOnSuccessListener { custSnap ->
+            db.collection("sales").get().addOnSuccessListener { salesSnap ->
+                db.collection("receipts").get().addOnSuccessListener { recSnap ->
 
-                    for (custDoc in customerDocs) {
-                        val custName = custDoc.getString("name") ?: ""
-                        val group = custDoc.getString("group") ?: ""
-                        val initialOpBal = custDoc.getDouble("opbal") ?: 0.0
+                    val prevSalesMap = HashMap<String, Double>()
+                    val todaySalesMap = HashMap<String, Double>()
 
-                        var prevSales = 0.0
-                        var todaySales = 0.0
+                    for (doc in salesSnap) {
+                        val d = doc.getString("date") ?: ""
+                        val cmp = compareWithSelectedDate(d)
+                        if (cmp > 0) continue // Future date என்றால் skip
 
-                        var prevIncome = 0.0
-                        var prevDiscount = 0.0
-                        var todayIncome = 0.0
-                        var todayDiscount = 0.0
+                        val pMode = doc.getString("payMode") ?: "Credit"
+                        if (!pMode.equals("Credit", ignoreCase = true)) continue
 
-                        // 1. Sales கணக்கீடு (நேத்து வரை vs இன்னைக்கு)
-                        for (saleDoc in salesDocs) {
-                            val sCustName = saleDoc.getString("customerName") ?: ""
-                            val sDate = normalizeDate(saleDoc.getString("date") ?: "")
-                            val sAmount = saleDoc.getDouble("amount") ?: 0.0
+                        val cId = doc.getString("customerId") ?: ""
+                        val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
+                        val tot = doc.getDouble("grandTotal") ?: 0.0
 
-                            if (sCustName.equals(custName, ignoreCase = true)) {
-                                if (sDate < targetDate) {
-                                    prevSales += sAmount
-                                } else if (sDate == targetDate) {
-                                    todaySales += sAmount
-                                }
-                            }
+                        val targetMap = if (cmp < 0) prevSalesMap else todaySalesMap
+                        if (cId.isNotEmpty()) targetMap[cId] = (targetMap[cId] ?: 0.0) + tot
+                        if (cName.isNotEmpty()) targetMap["NAME_$cName"] = (targetMap["NAME_$cName"] ?: 0.0) + tot
+                    }
+
+                    val prevIncomeMap = HashMap<String, Double>()
+                    val prevDiscMap = HashMap<String, Double>()
+                    val todayIncomeMap = HashMap<String, Double>()
+                    val todayDiscMap = HashMap<String, Double>()
+
+                    for (doc in recSnap) {
+                        val d = doc.getString("date") ?: ""
+                        val cmp = compareWithSelectedDate(d)
+                        if (cmp > 0) continue // Future date என்றால் skip
+
+                        val cId = doc.getString("customerId") ?: ""
+                        val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
+                        val amt = doc.getDouble("amount") ?: 0.0
+                        val disc = doc.getDouble("discount") ?: 0.0
+
+                        val targetIncMap = if (cmp < 0) prevIncomeMap else todayIncomeMap
+                        val targetDiscMap = if (cmp < 0) prevDiscMap else todayDiscMap
+
+                        if (cId.isNotEmpty()) {
+                            targetIncMap[cId] = (targetIncMap[cId] ?: 0.0) + amt
+                            targetDiscMap[cId] = (targetDiscMap[cId] ?: 0.0) + disc
                         }
-
-                        // 2. Income & Discount கணக்கீடு (நேத்து வரை vs இன்னைக்கு)
-                        for (recDoc in receiptDocs) {
-                            val rCustName = recDoc.getString("customerName") ?: ""
-                            val rDate = normalizeDate(recDoc.getString("date") ?: "")
-                            val rAmount = recDoc.getDouble("amount") ?: 0.0
-                            val rDiscount = recDoc.getDouble("discount") ?: 0.0
-
-                            if (rCustName.equals(custName, ignoreCase = true)) {
-                                if (rDate < targetDate) {
-                                    prevIncome += rAmount
-                                    prevDiscount += rDiscount
-                                } else if (rDate == targetDate) {
-                                    todayIncome += rAmount
-                                    todayDiscount += rDiscount
-                                }
-                            }
-                        }
-
-                        // 3. Opening & Closing கணக்கீடு
-                        val todayOpening = initialOpBal + prevSales - (prevIncome + prevDiscount)
-                        val todayClosing = todayOpening + todaySales - (todayIncome + todayDiscount)
-
-                        if (todayOpening != 0.0 || todaySales != 0.0 || todayIncome != 0.0 || todayClosing != 0.0) {
-                            reportList.add(
-                                CustomerOutstandingRow(
-                                    customerName = custName,
-                                    group = group,
-                                    openingBalance = todayOpening,
-                                    todaySales = todaySales,
-                                    todayIncome = todayIncome,
-                                    todayDiscount = todayDiscount,
-                                    closingBalance = todayClosing
-                                )
-                            )
+                        if (cName.isNotEmpty()) {
+                            targetIncMap["NAME_$cName"] = (targetIncMap["NAME_$cName"] ?: 0.0) + amt
+                            targetDiscMap["NAME_$cName"] = (targetDiscMap["NAME_$cName"] ?: 0.0) + disc
                         }
                     }
 
-                    reportList.sortBy { it.customerName }
-                    tvStatus.text = "Ready! ${reportList.size} customers loaded."
-                    tvStatus.setTextColor(Color.parseColor("#006400"))
+                    while (reportRows.length() > 0) reportRows.remove(0)
+                    val prevSelection = spCustomerFilter.selectedItem?.toString() ?: "ALL CUSTOMERS"
+                    customerNames.clear()
+                    customerNames.add("ALL CUSTOMERS")
+
+                    val sortedCusts = custSnap.documents.sortedBy { doc ->
+                        (doc.getString("name") ?: "").lowercase(Locale.getDefault())
+                    }
+
+                    for (doc in sortedCusts) {
+                        val name = doc.getString("name")?.trim() ?: continue
+                        val phone = (doc.getString("contact")
+                            ?: doc.getString("phone")
+                            ?: doc.getString("mobile")
+                            ?: doc.getString("contactNo")
+                            ?: "").trim()
+                        val cleanPhone = if (phone == "0" || phone == "-") "" else phone
+
+                        val nameKey = "NAME_${name.lowercase(Locale.getDefault())}"
+                        val initialOpBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+
+                        // நேத்து வரைக்கும் உள்ள Sales, Income, Discount
+                        val prevSales = prevSalesMap[doc.id] ?: prevSalesMap[nameKey] ?: 0.0
+                        val prevInc = prevIncomeMap[doc.id] ?: prevIncomeMap[nameKey] ?: 0.0
+                        val prevDisc = prevDiscMap[doc.id] ?: prevDiscMap[nameKey] ?: 0.0
+
+                        // இன்னைக்கு OP.BAL = ஆரம்ப இருப்பு + நேத்து வரை Sales - நேத்து வரை Income - நேத்து வரை Discount
+                        val todayOpBal = (initialOpBal + prevSales - prevInc - prevDisc).coerceAtLeast(0.0)
+
+                        // இன்னைக்கு நடந்த Sales, Income, Discount மட்டும்
+                        val salesAmt = todaySalesMap[doc.id] ?: todaySalesMap[nameKey] ?: 0.0
+                        val incAmt = todayIncomeMap[doc.id] ?: todayIncomeMap[nameKey] ?: 0.0
+                        val discAmt = todayDiscMap[doc.id] ?: todayDiscMap[nameKey] ?: 0.0
+
+                        // இன்னைக்கு Closing Balance
+                        val clBal = (todayOpBal + salesAmt - incAmt - discAmt).coerceAtLeast(0.0)
+
+                        customerNames.add(name)
+
+                        val obj = JSONObject()
+                        obj.put("name", name)
+                        obj.put("phone", cleanPhone)
+                        obj.put("opBal", todayOpBal)
+                        obj.put("sales", salesAmt)
+                        obj.put("income", incAmt)
+                        obj.put("discount", discAmt)
+                        obj.put("clBal", clBal)
+                        reportRows.put(obj)
+                    }
+
+                    val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, customerNames)
+                    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                    spCustomerFilter.adapter = adapter
+
+                    val selIdx = customerNames.indexOf(prevSelection)
+                    if (selIdx >= 0) spCustomerFilter.setSelection(selIdx)
+
+                    spCustomerFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                        override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                            renderTableForSelection()
+                        }
+                        override fun onNothingSelected(parent: AdapterView<*>?) {}
+                    }
+
+                    renderTableForSelection()
                 }
             }
-        }.addOnFailureListener {
-            tvStatus.text = "Error: ${it.message}"
-            tvStatus.setTextColor(Color.RED)
         }
     }
 
-    private fun normalizeDate(dateStr: String): String {
-        if (dateStr.isEmpty()) return ""
-        return try {
-            if (dateStr.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                dateStr
-            } else {
-                val cleanStr = dateStr.replace("/", "-")
-                val inputFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                val outputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val date = inputFormat.parse(cleanStr)
-                if (date != null) outputFormat.format(date) else dateStr
-            }
-        } catch (e: Exception) {
-            dateStr
-        }
+    private fun makeBorderedCell(text: String, alignRight: Boolean = false, bold: Boolean = false, bgColor: Int = Color.WHITE, textColor: Int = Color.BLACK): TextView {
+        val tv = TextView(this)
+        tv.text = text
+        tv.setTextColor(textColor)
+        tv.setBackgroundColor(bgColor)
+        tv.textSize = 17f
+        tv.setPadding(16, 18, 16, 18)
+        tv.gravity = if (alignRight) Gravity.END else Gravity.START
+        if (bold) tv.setTypeface(null, Typeface.BOLD)
+        val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT)
+        lp.setMargins(1, 1, 1, 1)
+        tv.layoutParams = lp
+        return tv
     }
 
-    private fun printA4Report(rows: List<CustomerOutstandingRow>, reportDate: String) {
-        val webView = WebView(this)
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val jobName = "Thiruveni_Outstanding_$reportDate"
-                val printAdapter = webView.createPrintDocumentAdapter(jobName)
-                val builder = PrintAttributes.Builder()
-                builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-                printManager.print(jobName, printAdapter, builder.build())
+    private fun addSummaryRowToScreen(label: String, op: Double, sal: Double, inc: Double, disc: Double, cl: Double, bgColor: Int) {
+        val row = TableRow(this)
+        row.setBackgroundColor(Color.BLACK)
+        row.addView(makeBorderedCell(label, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(op), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(sal), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(inc), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(disc), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell(fmtVal(cl), alignRight = true, bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell("", bold = true, bgColor = bgColor))
+        row.addView(makeBorderedCell("                    ", bold = true, bgColor = bgColor))
+        tableLayout.addView(row)
+    }
+
+    private fun renderTableForSelection() {
+        val chosenCust = spCustomerFilter.selectedItem?.toString() ?: "ALL CUSTOMERS"
+        tvLeftCustName.text = "CUSTOMER NAME: $chosenCust"
+
+        tableLayout.removeAllViews()
+
+        val headerRow = TableRow(this)
+        headerRow.setBackgroundColor(Color.BLACK)
+        val hdrBg = Color.parseColor("#E0E0E0")
+
+        headerRow.addView(makeBorderedCell("NAME", bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("OP.BAL", alignRight = true, bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("SALES", alignRight = true, bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("INCOME", alignRight = true, bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("DISCOUNT", alignRight = true, bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("CL.BAL", alignRight = true, bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("PH.NO", bold = true, bgColor = hdrBg))
+        headerRow.addView(makeBorderedCell("PAYMENT", bold = true, bgColor = hdrBg))
+        tableLayout.addView(headerRow)
+
+        val filteredList = arrayListOf<JSONObject>()
+        for (i in 0 until reportRows.length()) {
+            val obj = reportRows.getJSONObject(i)
+            val name = obj.getString("name")
+            if (chosenCust != "ALL CUSTOMERS" && !name.equals(chosenCust, ignoreCase = true)) continue
+
+            val op = obj.getDouble("opBal")
+            val sal = obj.getDouble("sales")
+            val inc = obj.getDouble("income")
+            val cl = obj.getDouble("clBal")
+            if (chosenCust == "ALL CUSTOMERS" && op == 0.0 && sal == 0.0 && inc == 0.0 && cl == 0.0) continue
+
+            filteredList.add(obj)
+        }
+
+        var grandOp = 0.0
+        var grandSales = 0.0
+        var grandInc = 0.0
+        var grandDisc = 0.0
+        var grandCl = 0.0
+
+        var pageOp = 0.0
+        var pageSales = 0.0
+        var pageInc = 0.0
+        var pageDisc = 0.0
+        var pageCl = 0.0
+        var pageNo = 1
+
+        for (idx in filteredList.indices) {
+            val obj = filteredList[idx]
+            val name = obj.getString("name")
+            val phone = obj.optString("phone", "")
+            val op = obj.getDouble("opBal")
+            val sal = obj.getDouble("sales")
+            val inc = obj.getDouble("income")
+            val disc = obj.getDouble("discount")
+            val cl = obj.getDouble("clBal")
+
+            pageOp += op
+            pageSales += sal
+            pageInc += inc
+            pageDisc += disc
+            pageCl += cl
+
+            grandOp += op
+            grandSales += sal
+            grandInc += inc
+            grandDisc += disc
+            grandCl += cl
+
+            val tr = TableRow(this)
+            tr.setBackgroundColor(Color.BLACK)
+            tr.addView(makeBorderedCell(name, bold = true))
+            tr.addView(makeBorderedCell(fmtVal(op), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(sal), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(inc), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(disc), alignRight = true))
+            tr.addView(makeBorderedCell(fmtVal(cl), alignRight = true, bold = true))
+            tr.addView(makeBorderedCell(phone))
+            tr.addView(makeBorderedCell("                    "))
+            tableLayout.addView(tr)
+
+            val isEndOfPage = ((idx + 1) % ROWS_PER_A4_PAGE == 0)
+            val isLastItem = (idx == filteredList.size - 1)
+
+            if (isEndOfPage || isLastItem) {
+                addSummaryRowToScreen(
+                    "PAGE $pageNo TOTAL",
+                    pageOp, pageSales, pageInc, pageDisc, pageCl,
+                    Color.parseColor("#FFF9C4")
+                )
+                pageOp = 0.0
+                pageSales = 0.0
+                pageInc = 0.0
+                pageDisc = 0.0
+                pageCl = 0.0
+                pageNo++
             }
         }
 
-        var totOp = 0.0
-        var totSales = 0.0
-        var totInc = 0.0
-        var totDisc = 0.0
-        var totClose = 0.0
+        addSummaryRowToScreen(
+            "GRAND TOTAL",
+            grandOp, grandSales, grandInc, grandDisc, grandCl,
+            Color.parseColor("#C8E6C9")
+        )
+    }
 
-        val tableRowsHtml = StringBuilder()
-        rows.forEachIndexed { index, row ->
-            totOp += row.openingBalance
-            totSales += row.todaySales
-            totInc += row.todayIncome
-            totDisc += row.todayDiscount
-            totClose += row.closingBalance
+    private fun generateAndPrintA4Pdf() {
+        val chosenCust = spCustomerFilter.selectedItem?.toString() ?: "ALL CUSTOMERS"
 
-            tableRowsHtml.append("""
-                <tr>
-                    <td style="text-align:center;">${index + 1}</td>
-                    <td>${row.customerName}</td>
-                    <td style="text-align:right;">${String.format("%.2f", row.openingBalance)}</td>
-                    <td style="text-align:right;">${String.format("%.2f", row.todaySales)}</td>
-                    <td style="text-align:right;">${String.format("%.2f", row.todayIncome)}</td>
-                    <td style="text-align:right;">${String.format("%.2f", row.todayDiscount)}</td>
-                    <td style="text-align:right; font-weight:bold;">${String.format("%.2f", row.closingBalance)}</td>
-                </tr>
-            """.trimIndent())
+        val filteredList = arrayListOf<JSONObject>()
+        for (i in 0 until reportRows.length()) {
+            val obj = reportRows.getJSONObject(i)
+            val name = obj.getString("name")
+            if (chosenCust != "ALL CUSTOMERS" && !name.equals(chosenCust, ignoreCase = true)) continue
+
+            val op = obj.getDouble("opBal")
+            val sal = obj.getDouble("sales")
+            val inc = obj.getDouble("income")
+            val cl = obj.getDouble("clBal")
+            if (chosenCust == "ALL CUSTOMERS" && op == 0.0 && sal == 0.0 && inc == 0.0 && cl == 0.0) continue
+
+            filteredList.add(obj)
         }
 
-        val htmlContent = """
+        val pagesHtml = StringBuilder()
+
+        var grandOp = 0.0
+        var grandSales = 0.0
+        var grandInc = 0.0
+        var grandDisc = 0.0
+        var grandCl = 0.0
+
+        val totalPages = if (filteredList.isEmpty()) 1 else ((filteredList.size + ROWS_PER_A4_PAGE - 1) / ROWS_PER_A4_PAGE)
+
+        for (pageIdx in 0 until totalPages) {
+            val startIdx = pageIdx * ROWS_PER_A4_PAGE
+            val endIdx = minOf(startIdx + ROWS_PER_A4_PAGE, filteredList.size)
+
+            var pageOp = 0.0
+            var pageSales = 0.0
+            var pageInc = 0.0
+            var pageDisc = 0.0
+            var pageCl = 0.0
+
+            val pageRowsHtml = StringBuilder()
+
+            for (i in startIdx until endIdx) {
+                val obj = filteredList[i]
+                val name = obj.getString("name")
+                val phone = obj.optString("phone", "")
+                val op = obj.getDouble("opBal")
+                val sal = obj.getDouble("sales")
+                val inc = obj.getDouble("income")
+                val disc = obj.getDouble("discount")
+                val cl = obj.getDouble("clBal")
+
+                pageOp += op
+                pageSales += sal
+                pageInc += inc
+                pageDisc += disc
+                pageCl += cl
+
+                grandOp += op
+                grandSales += sal
+                grandInc += inc
+                grandDisc += disc
+                grandCl += cl
+
+                pageRowsHtml.append(
+                    String.format(
+                        Locale.getDefault(),
+                        "<tr><td class='namecol'>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style='font-weight:bold;'>%s</td><td style='text-align:center;'>%s</td><td></td></tr>",
+                        name, fmtVal(op), fmtVal(sal), fmtVal(inc), fmtVal(disc), fmtVal(cl), phone
+                    )
+                )
+            }
+
+            // Page Total Row at the bottom of EVERY page
+            pageRowsHtml.append(
+                String.format(
+                    Locale.getDefault(),
+                    "<tr class='pagetotal'><td class='namecol'>PAGE %d TOTAL</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td></td><td></td></tr>",
+                    (pageIdx + 1), fmtVal(pageOp), fmtVal(pageSales), fmtVal(pageInc), fmtVal(pageDisc), fmtVal(pageCl)
+                )
+            )
+
+            // Grand Total Row at the bottom of the LAST page
+            if (pageIdx == totalPages - 1) {
+                pageRowsHtml.append(
+                    String.format(
+                        Locale.getDefault(),
+                        "<tr class='grandtotal'><td class='namecol'>GRAND TOTAL</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td></td><td></td></tr>",
+                        fmtVal(grandOp), fmtVal(grandSales), fmtVal(grandInc), fmtVal(grandDisc), fmtVal(grandCl)
+                    )
+                )
+            }
+
+            val pageBreakStyle = if (pageIdx < totalPages - 1) "page-break-after: always;" else ""
+
+            pagesHtml.append(
+                """
+                <div class="page-box" style="$pageBreakStyle">
+                    <div class="center">
+                        <h1>THIRUVENI COCONUTS</h1>
+                        <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
+                        <h3>CUSTOMER OUTSTANDING</h3>
+                    </div>
+                    <table class="meta">
+                        <tr>
+                            <td style="text-align:left;">CUSTOMER NAME: $chosenCust</td>
+                            <td style="text-align:right;">DATE: $selectedDateStr  |  Page ${pageIdx + 1} of $totalPages</td>
+                        </tr>
+                    </table>
+                    <table class="grid">
+                        <colgroup>
+                            <col style="width: 24%;">
+                            <col style="width: 12%;">
+                            <col style="width: 10%;">
+                            <col style="width: 10%;">
+                            <col style="width: 8.5%;">
+                            <col style="width: 12.5%;">
+                            <col style="width: 12.5%;">
+                            <col style="width: 10.5%;">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>NAME</th>
+                                <th>OP.BAL</th>
+                                <th>SALES</th>
+                                <th>INCOME</th>
+                                <th>DISCOUNT</th>
+                                <th>CL.BAL</th>
+                                <th>PH.NO</th>
+                                <th>PAYMENT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            $pageRowsHtml
+                        </tbody>
+                    </table>
+                </div>
+                """.trimIndent()
+            )
+        }
+
+        val htmlDoc = """
             <html>
             <head>
-                <style>
-                    body { font-family: sans-serif; font-size: 11px; margin: 15px; }
-                    h2, p { text-align: center; margin: 2px 0; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                    th, td { border: 1px solid #000; padding: 5px; }
-                    th { background-color: #f2f2f2; }
-                    .total-row { background-color: #e6e6e6; font-weight: bold; }
-                </style>
+            <style>
+                * { box-sizing: border-box; }
+                @page { size: A4 portrait; margin: 4mm 4mm 4mm 4mm; }
+                html, body { width: 100%; font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+                .page-box { width: 100%; }
+                .center { text-align: center; }
+                h1 { font-size: 23px; margin: 0; letter-spacing: 0.8px; }
+                h2 { font-size: 15.5px; margin: 2px 0 4px 0; font-weight: bold; }
+                h3 { font-size: 17.5px; margin: 3px 0 6px 0; text-decoration: underline; }
+                .meta { width: 100%; margin-bottom: 6px; font-size: 14.5px; font-weight: bold; }
+                .meta td { border: none; padding: 1px 0; }
+                table.grid { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14.5px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 7.5px 3px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; padding: 8px 2px; font-size: 13.5px; }
+                td.namecol { text-align: left !important; font-weight: bold; }
+                tr.pagetotal td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; padding: 8px 3px; font-size: 14.5px; }
+                tr.grandtotal td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 15px; padding: 8.5px 3px; }
+            </style>
             </head>
             <body>
-                <h2>THIRUVENI COCONUTS</h2>
-                <p>Shop No B98, Periyar Vegetable Market, Koyambedu, Chennai</p>
-                <p><strong>CUSTOMER OUTSTANDING REPORT - DATE: $reportDate</strong></p>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>S.No</th>
-                            <th>Customer Name</th>
-                            <th>Op. Bal</th>
-                            <th>Today Sales</th>
-                            <th>Income</th>
-                            <th>Discount</th>
-                            <th>Closing Bal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        $tableRowsHtml
-                        <tr class="total-row">
-                            <td colspan="2" style="text-align:right;">TOTAL</td>
-                            <td style="text-align:right;">${String.format("%.2f", totOp)}</td>
-                            <td style="text-align:right;">${String.format("%.2f", totSales)}</td>
-                            <td style="text-align:right;">${String.format("%.2f", totInc)}</td>
-                            <td style="text-align:right;">${String.format("%.2f", totDisc)}</td>
-                            <td style="text-align:right;">${String.format("%.2f", totClose)}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                $pagesHtml
             </body>
             </html>
         """.trimIndent()
 
-        webView.loadDataWithBaseURL(null, htmlContent, "text/HTML", "UTF-8", null)
-        webViewForPrint = webView
+        printWebView = WebView(this)
+        printWebView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+                val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Outstanding_$selectedDateStr")
+                val builder = PrintAttributes.Builder()
+                builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                printManager.print("Customer Outstanding A4", printAdapter, builder.build())
+            }
+        }
+        printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
+        Toast.makeText(this, "Preparing A4 Sheet (+1pt Font)...", Toast.LENGTH_SHORT).show()
     }
 }
