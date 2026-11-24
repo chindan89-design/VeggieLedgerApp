@@ -1,12 +1,16 @@
 package com.shop.veggieledger
 
 import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.print.PrintAttributes
 import android.print.PrintManager
+import android.view.Gravity
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -30,18 +34,57 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private var selectedDateStr: String = ""
     private var reportList = mutableListOf<CustomerOutstandingRow>()
     private var webViewForPrint: WebView? = null
+    private lateinit var tvStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_customer_outstanding)
 
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         selectedDateStr = intent.getStringExtra("SELECTED_DATE") ?: sdf.format(Date())
 
-        val tvDate = findViewById<TextView>(R.id.tvReportDate)
-        val btnPrint = findViewById<Button>(R.id.btnPrintOutstanding)
+        // XML இல்லாமல் நேரடியாக UI உருவாக்குதல்
+        val mainLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(40, 40, 40, 40)
+            setBackgroundColor(Color.WHITE)
+        }
 
-        tvDate.text = "Date: $selectedDateStr"
+        val tvTitle = TextView(this).apply {
+            text = "THIRUVENI COCONUTS\nCustomer Outstanding"
+            textSize = 20f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setTextColor(Color.BLACK)
+        }
+
+        val tvDate = TextView(this).apply {
+            text = "Report Date: $selectedDateStr"
+            textSize = 16f
+            setPadding(0, 24, 0, 24)
+            gravity = Gravity.CENTER
+            setTextColor(Color.DKGRAY)
+        }
+
+        tvStatus = TextView(this).apply {
+            text = "Loading customer records..."
+            textSize = 14f
+            setPadding(0, 16, 0, 32)
+            gravity = Gravity.CENTER
+            setTextColor(Color.BLUE)
+        }
+
+        val btnPrint = Button(this).apply {
+            text = "PRINT A4 OUTSTANDING REPORT"
+            textSize = 15f
+            setPadding(32, 24, 32, 24)
+        }
+
+        mainLayout.addView(tvTitle)
+        mainLayout.addView(tvDate)
+        mainLayout.addView(tvStatus)
+        mainLayout.addView(btnPrint)
+        setContentView(mainLayout)
 
         fetchAndCalculateOutstanding(selectedDateStr)
 
@@ -127,11 +170,13 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                     }
 
                     reportList.sortBy { it.customerName }
-                    Toast.makeText(this, "Loaded ${reportList.size} customers", Toast.LENGTH_SHORT).show()
+                    tvStatus.text = "Ready! ${reportList.size} customers loaded."
+                    tvStatus.setTextColor(Color.parseColor("#006400"))
                 }
             }
         }.addOnFailureListener {
-            Toast.makeText(this, "Error: ${it.message}", Toast.LENGTH_SHORT).show()
+            tvStatus.text = "Error: ${it.message}"
+            tvStatus.setTextColor(Color.RED)
         }
     }
 
