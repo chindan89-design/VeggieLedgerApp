@@ -1,4 +1,4 @@
-package com.thiruvenicoconuts.dailyledgerapp // உங்க package name-ஐ இங்க போடுங்க
+package com.shop.veggieledger
 
 import android.content.Context
 import android.os.Bundle
@@ -14,7 +14,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
 
-// 1. Report-க்கான Data Model
 data class CustomerOutstandingRow(
     val customerName: String,
     val group: String,
@@ -25,19 +24,17 @@ data class CustomerOutstandingRow(
     val closingBalance: Double
 )
 
-class CustomerOutstandingReportActivity : AppCompatActivity() {
+class CustomerOutstandingActivity : AppCompatActivity() {
 
     private val db = FirebaseFirestore.getInstance()
-    private var selectedDateStr: String = "" // Format: "yyyy-MM-dd"
+    private var selectedDateStr: String = ""
     private var reportList = mutableListOf<CustomerOutstandingRow>()
     private var webViewForPrint: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // உங்க XML layout name-ஐ இங்க குடுங்க
         setContentView(R.layout.activity_customer_outstanding)
 
-        // Default-ஆ இன்னைக்கு தேதியை எடுத்தல்
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         selectedDateStr = intent.getStringExtra("SELECTED_DATE") ?: sdf.format(Date())
 
@@ -46,7 +43,6 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
 
         tvDate.text = "Date: $selectedDateStr"
 
-        // Data-வை load பண்ணி calculate செய்தல்
         fetchAndCalculateOutstanding(selectedDateStr)
 
         btnPrint.setOnClickListener {
@@ -59,20 +55,15 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
     }
 
     private fun fetchAndCalculateOutstanding(targetDate: String) {
-        // 1. முதலில் எல்லா Customers-ஐயும் எடுக்கிறோம்
         db.collection("customers").get().addOnSuccessListener { customerDocs ->
-            // 2. அடுத்து எல்லா Sales-ஐயும் எடுக்கிறோம்
             db.collection("sales").get().addOnSuccessListener { salesDocs ->
-                // 3. அடுத்து எல்லா Receipts (Income & Discount)-ஐயும் எடுக்கிறோம்
                 db.collection("receipts").get().addOnSuccessListener { receiptDocs ->
 
                     reportList.clear()
 
                     for (custDoc in customerDocs) {
-                        val custId = custDoc.id
                         val custName = custDoc.getString("name") ?: ""
                         val group = custDoc.getString("group") ?: ""
-                        // கஸ்டமர் ஆரம்ப கணக்கு (Initial OpBal)
                         val initialOpBal = custDoc.getDouble("opbal") ?: 0.0
 
                         var prevSales = 0.0
@@ -83,7 +74,7 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
                         var todayIncome = 0.0
                         var todayDiscount = 0.0
 
-                        // --- SALES கணக்கீடு (நேத்து வரை vs இன்னைக்கு) ---
+                        // 1. Sales கணக்கீடு (நேத்து வரை vs இன்னைக்கு)
                         for (saleDoc in salesDocs) {
                             val sCustName = saleDoc.getString("customerName") ?: ""
                             val sDate = normalizeDate(saleDoc.getString("date") ?: "")
@@ -91,41 +82,35 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
 
                             if (sCustName.equals(custName, ignoreCase = true)) {
                                 if (sDate < targetDate) {
-                                    // நேத்து மற்றும் அதுக்கு முன்னாடி நடந்த Sales
                                     prevSales += sAmount
                                 } else if (sDate == targetDate) {
-                                    // சரியா இன்னைக்கு நடந்த Sales மட்டும்
                                     todaySales += sAmount
                                 }
                             }
                         }
 
-                        // --- INCOME & DISCOUNT கணக்கீடு (நேத்து வரை vs இன்னைக்கு) ---
+                        // 2. Income & Discount கணக்கீடு (நேத்து வரை vs இன்னைக்கு)
                         for (recDoc in receiptDocs) {
                             val rCustName = recDoc.getString("customerName") ?: ""
                             val rDate = normalizeDate(recDoc.getString("date") ?: "")
-                            val rAmount = recDoc.getDouble("amount") ?: 0.0 // வரவு (Income)
-                            val rDiscount = recDoc.getDouble("discount") ?: 0.0 // தள்ளுபடி (Discount)
+                            val rAmount = recDoc.getDouble("amount") ?: 0.0
+                            val rDiscount = recDoc.getDouble("discount") ?: 0.0
 
                             if (rCustName.equals(custName, ignoreCase = true)) {
                                 if (rDate < targetDate) {
-                                    // நேத்து வரைக்கும் வந்த வரவு & தள்ளுபடி
                                     prevIncome += rAmount
                                     prevDiscount += rDiscount
                                 } else if (rDate == targetDate) {
-                                    // சரியா இன்னைக்கு வந்த வரவு & தள்ளுபடி மட்டும்
                                     todayIncome += rAmount
                                     todayDiscount += rDiscount
                                 }
                             }
                         }
 
-                        // --- சரியான OPENING மற்றும் CLOSING கணக்கீடு ---
-                        // நேத்து closing-தான் இன்னைக்கு opening!
+                        // 3. Opening & Closing கணக்கீடு
                         val todayOpening = initialOpBal + prevSales - (prevIncome + prevDiscount)
                         val todayClosing = todayOpening + todaySales - (todayIncome + todayDiscount)
 
-                        // Balance அல்லது இன்னைக்கு transaction இருந்தால் மட்டும் list-ல் சேர்க்கவும்
                         if (todayOpening != 0.0 || todaySales != 0.0 || todayIncome != 0.0 || todayClosing != 0.0) {
                             reportList.add(
                                 CustomerOutstandingRow(
@@ -141,11 +126,7 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
                         }
                     }
 
-                    // பெயர் வாரியாக வரிசைப்படுத்துதல் (Alphabetical Sort)
                     reportList.sortBy { it.customerName }
-
-                    // இங்க உங்க RecyclerView adapter-ஐ update பண்ணிக்கோங்க:
-                    // adapter.notifyDataSetChanged()
                     Toast.makeText(this, "Loaded ${reportList.size} customers", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -154,15 +135,11 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Database-ல் தேதி "dd-MM-yyyy" அல்லது "dd/MM/yyyy" என்று இருந்தாலும்,
-     * அதை "yyyy-MM-dd" ஆக மாற்றும் helper function (அப்போதுதான் < மற்றும் == சரியாக வேலை செய்யும்).
-     */
     private fun normalizeDate(dateStr: String): String {
         if (dateStr.isEmpty()) return ""
         return try {
             if (dateStr.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                dateStr // ஏற்கனவே yyyy-MM-dd format-ல் உள்ளது
+                dateStr
             } else {
                 val cleanStr = dateStr.replace("/", "-")
                 val inputFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
@@ -175,9 +152,6 @@ class CustomerOutstandingReportActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * A4 Portrait Print / PDF Export Function
-     */
     private fun printA4Report(rows: List<CustomerOutstandingRow>, reportDate: String) {
         val webView = WebView(this)
         webView.webViewClient = object : WebViewClient() {
