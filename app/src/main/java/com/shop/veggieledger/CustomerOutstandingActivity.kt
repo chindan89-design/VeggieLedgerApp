@@ -46,8 +46,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    // 26 rows per A4 portrait page so +1pt larger font (14.5px) fits cleanly without page overflow
-    private val ROWS_PER_A4_PAGE = 26
+    // Exact +1pt font (14.5px)-ஓட bottom space குறைய 30 rows per page
+    private val ROWS_PER_A4_PAGE = 30
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -219,10 +219,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         setContentView(rootScroll)
     }
 
-    // தேதியை ஒப்பிடும் function:
-    // -1 = நேத்து மற்றும் அதுக்கு முன்னாடி (Before Selected Date)
-    //  0 = சரியா இன்னைக்கு (Exact Selected Date)
-    //  1 = நாளை / Future Date (Ignore)
     private fun compareWithSelectedDate(dateStr: String): Int {
         return try {
             val cleanStr = dateStr.trim().replace("/", "-")
@@ -266,23 +262,21 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                     val todayIncomeMap = HashMap<String, Double>()
                     val todayDiscMap = HashMap<String, Double>()
 
-                    // 1. Sales கணக்கீடு (Credit + Cash இரண்டும் எடுக்கும்)
+                    // 1. Sales கணக்கீடு (Credit + Cash இரண்டும்)
                     for (doc in salesSnap) {
                         val d = doc.getString("date") ?: ""
                         val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue // Future date என்றால் skip
+                        if (cmp > 0) continue
 
                         val pMode = (doc.getString("payMode") ?: "Credit").trim()
                         val cId = doc.getString("customerId") ?: ""
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
                         val tot = doc.getDouble("grandTotal") ?: 0.0
 
-                        // மொத்த Sales-ல் (Credit & Cash இரண்டும்) சேர்த்தல்
                         val targetSalesMap = if (cmp < 0) prevSalesMap else todaySalesMap
                         if (cId.isNotEmpty()) targetSalesMap[cId] = (targetSalesMap[cId] ?: 0.0) + tot
                         if (cName.isNotEmpty()) targetSalesMap["NAME_$cName"] = (targetSalesMap["NAME_$cName"] ?: 0.0) + tot
 
-                        // Cash Sale-ஆ இருந்தால் உடனே பணம் வந்ததால் Income-லயும் வரவு வைத்தல்
                         if (pMode.equals("Cash", ignoreCase = true)) {
                             val targetIncMap = if (cmp < 0) prevIncomeMap else todayIncomeMap
                             if (cId.isNotEmpty()) targetIncMap[cId] = (targetIncMap[cId] ?: 0.0) + tot
@@ -294,7 +288,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                     for (doc in recSnap) {
                         val d = doc.getString("date") ?: ""
                         val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue // Future date என்றால் skip
+                        if (cmp > 0) continue
 
                         val cId = doc.getString("customerId") ?: ""
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
@@ -335,20 +329,16 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                         val nameKey = "NAME_${name.lowercase(Locale.getDefault())}"
                         val initialOpBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
 
-                        // நேத்து வரைக்கும் உள்ள Sales, Income, Discount
                         val prevSales = prevSalesMap[doc.id] ?: prevSalesMap[nameKey] ?: 0.0
                         val prevInc = prevIncomeMap[doc.id] ?: prevIncomeMap[nameKey] ?: 0.0
                         val prevDisc = prevDiscMap[doc.id] ?: prevDiscMap[nameKey] ?: 0.0
 
-                        // இன்னைக்கு OP.BAL = ஆரம்ப இருப்பு + நேத்து வரை Sales - நேத்து வரை Income - நேத்து வரை Discount
                         val todayOpBal = (initialOpBal + prevSales - prevInc - prevDisc).coerceAtLeast(0.0)
 
-                        // இன்னைக்கு நடந்த Sales, Income, Discount மட்டும்
                         val salesAmt = todaySalesMap[doc.id] ?: todaySalesMap[nameKey] ?: 0.0
                         val incAmt = todayIncomeMap[doc.id] ?: todayIncomeMap[nameKey] ?: 0.0
                         val discAmt = todayDiscMap[doc.id] ?: todayDiscMap[nameKey] ?: 0.0
 
-                        // இன்னைக்கு Closing Balance
                         val clBal = (todayOpBal + salesAmt - incAmt - discAmt).coerceAtLeast(0.0)
 
                         customerNames.add(name)
@@ -664,7 +654,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
             <head>
             <style>
                 * { box-sizing: border-box; }
-                @page { size: A4 portrait; margin: 4mm 4mm 4mm 4mm; }
+                @page { size: A4 portrait; margin: 4mm 4mm 1mm 4mm; }
                 html, body { width: 100%; font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
                 .page-box { width: 100%; }
                 .center { text-align: center; }
