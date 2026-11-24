@@ -46,7 +46,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     private val customerNames = arrayListOf("ALL CUSTOMERS")
     private val reportRows = JSONArray()
 
-    // 34 rows per A4 portrait page fills the page down to the bottom margin cleanly
     private val ROWS_PER_A4_PAGE = 34
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,7 +72,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         mainCol.orientation = LinearLayout.VERTICAL
         rootScroll.addView(mainCol)
 
-        // Filter & Print Control Bar
         val controlCard = LinearLayout(this)
         controlCard.orientation = LinearLayout.VERTICAL
         controlCard.setBackgroundColor(Color.WHITE)
@@ -89,7 +87,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         filterRow.orientation = LinearLayout.HORIZONTAL
         filterRow.weightSum = 2f
 
-        // Date Picker
         val dateCol = LinearLayout(this)
         dateCol.orientation = LinearLayout.VERTICAL
         dateCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -113,7 +110,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         dateCol.addView(lblDate)
         dateCol.addView(etAsOnDate)
 
-        // Customer Filter Spinner
         val custCol = LinearLayout(this)
         custCol.orientation = LinearLayout.VERTICAL
         custCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -146,13 +142,11 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
         mainCol.addView(controlCard)
 
-        // A4 SHEET PREVIEW CONTAINER
         val a4Sheet = LinearLayout(this)
         a4Sheet.orientation = LinearLayout.VERTICAL
         a4Sheet.setBackgroundColor(Color.WHITE)
         a4Sheet.setPadding(24, 28, 24, 28)
 
-        // Center Heading 1: THIRUVENI COCONUTS
         val tvShopName = TextView(this)
         tvShopName.text = "THIRUVENI COCONUTS"
         tvShopName.textSize = 24f
@@ -161,7 +155,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         tvShopName.gravity = Gravity.CENTER
         a4Sheet.addView(tvShopName)
 
-        // Center Heading 2: Address
         val tvShopAddr = TextView(this)
         tvShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
         tvShopAddr.textSize = 16f
@@ -171,7 +164,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         tvShopAddr.setPadding(0, 4, 0, 10)
         a4Sheet.addView(tvShopAddr)
 
-        // Center Heading 3: CUSTOMER OUTSTANDING
         val tvSheetTitle = TextView(this)
         tvSheetTitle.text = "CUSTOMER OUTSTANDING"
         tvSheetTitle.textSize = 19f
@@ -181,7 +173,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         tvSheetTitle.setPadding(0, 4, 0, 16)
         a4Sheet.addView(tvSheetTitle)
 
-        // Left: Customer Name | Right: Date
         val infoRow = LinearLayout(this)
         infoRow.orientation = LinearLayout.HORIZONTAL
         infoRow.weightSum = 2f
@@ -207,7 +198,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         infoRow.addView(tvRightDate)
         a4Sheet.addView(infoRow)
 
-        // Table Container
         val hScroll = HorizontalScrollView(this)
         tableLayout = TableLayout(this)
         tableLayout.setBackgroundColor(Color.BLACK)
@@ -220,49 +210,48 @@ class CustomerOutstandingActivity : AppCompatActivity() {
     }
 
     /**
-     * Returns:
-     * -1 if dateStr is strictly BEFORE selectedDateStr (yesterday & earlier -> goes into OP.BAL)
-     *  0 if dateStr is EQUAL to selectedDateStr (today -> goes into SALES / INCOME / DISCOUNT)
-     *  1 if dateStr is AFTER selectedDateStr (future -> ignored)
+     * Converts any date format ("dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "d-M-yyyy")
+     * into a clean YYYYMMDD integer (e.g., 20261124) for 100% exact date comparison.
      */
-    private fun compareWithSelectedDate(dateStr: String): Int {
-        return try {
-            val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-            val cleanStr = dateStr.trim()
-            if (cleanStr == selectedDateStr.trim()) return 0
-            val d = sdf.parse(cleanStr) ?: return 0
-            val target = sdf.parse(selectedDateStr.trim()) ?: return 0
-            when {
-                d.before(target) -> -1
-                d.after(target) -> 1
-                else -> 0
-            }
-        } catch (e: Exception) {
-            0
+    private fun dateToYmdInt(dateStr: String): Int {
+        val clean = dateStr.trim().substringBefore(" ")
+        if (clean.isEmpty()) return -1
+        val parts = clean.split("-", "/", ".")
+        if (parts.size != 3) return -1
+        val p0 = parts[0].trim().toIntOrNull() ?: return -1
+        val p1 = parts[1].trim().toIntOrNull() ?: return -1
+        val p2 = parts[2].trim().toIntOrNull() ?: return -1
+
+        return if (p0 > 1000) {
+            // yyyy-MM-dd
+            (p0 * 10000) + (p1 * 100) + p2
+        } else {
+            // dd-MM-yyyy
+            val year = if (p2 < 100) 2000 + p2 else p2
+            (year * 10000) + (p1 * 100) + p0
         }
     }
 
     private fun loadOutstandingData() {
         tvRightDate.text = "DATE: $selectedDateStr"
+        val targetYmd = dateToYmdInt(selectedDateStr)
 
         db.collection("customers").get().addOnSuccessListener { custSnap ->
             db.collection("sales").get().addOnSuccessListener { salesSnap ->
                 db.collection("receipts").get().addOnSuccessListener { recSnap ->
 
-                    // Before-date maps (to compute yesterday's closing balance = today's OP.BAL)
                     val prevSalesMap = HashMap<String, Double>()
                     val prevIncomeMap = HashMap<String, Double>()
                     val prevDiscMap = HashMap<String, Double>()
 
-                    // Selected-date maps (today's transactions only)
                     val todaySalesMap = HashMap<String, Double>()
                     val todayIncomeMap = HashMap<String, Double>()
                     val todayDiscMap = HashMap<String, Double>()
 
                     for (doc in salesSnap) {
                         val d = doc.getString("date") ?: ""
-                        val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue // Ignore future dates
+                        val docYmd = dateToYmdInt(d)
+                        if (docYmd <= 0 || docYmd > targetYmd) continue
 
                         val pMode = (doc.getString("payMode") ?: "Credit").trim()
                         val isCredit = pMode.equals("Credit", ignoreCase = true)
@@ -271,10 +260,10 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
                         val tot = doc.getDouble("grandTotal") ?: 0.0
 
-                        // For Cash / GPay / UPI sales: add to BOTH Sales and Income immediately
+                        // Cash / GPay / UPI sales count in both Sales and Income immediately
                         val instantPaid = if (!isCredit) tot else (doc.getDouble("paidAmount") ?: 0.0)
 
-                        if (cmp < 0) {
+                        if (docYmd < targetYmd) {
                             if (cId.isNotEmpty()) {
                                 prevSalesMap[cId] = (prevSalesMap[cId] ?: 0.0) + tot
                                 if (instantPaid > 0.0) {
@@ -288,6 +277,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                                 }
                             }
                         } else {
+                            // Exact selected date only
                             if (cId.isNotEmpty()) {
                                 todaySalesMap[cId] = (todaySalesMap[cId] ?: 0.0) + tot
                                 if (instantPaid > 0.0) {
@@ -305,15 +295,15 @@ class CustomerOutstandingActivity : AppCompatActivity() {
 
                     for (doc in recSnap) {
                         val d = doc.getString("date") ?: ""
-                        val cmp = compareWithSelectedDate(d)
-                        if (cmp > 0) continue // Ignore future dates
+                        val docYmd = dateToYmdInt(d)
+                        if (docYmd <= 0 || docYmd > targetYmd) continue
 
                         val cId = doc.getString("customerId") ?: ""
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
                         val amt = doc.getDouble("amount") ?: 0.0
                         val disc = doc.getDouble("discount") ?: 0.0
 
-                        if (cmp < 0) {
+                        if (docYmd < targetYmd) {
                             if (cId.isNotEmpty()) {
                                 prevIncomeMap[cId] = (prevIncomeMap[cId] ?: 0.0) + amt
                                 prevDiscMap[cId] = (prevDiscMap[cId] ?: 0.0) + disc
@@ -323,6 +313,7 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                                 prevDiscMap["NAME_$cName"] = (prevDiscMap["NAME_$cName"] ?: 0.0) + disc
                             }
                         } else {
+                            // Exact selected date only
                             if (cId.isNotEmpty()) {
                                 todayIncomeMap[cId] = (todayIncomeMap[cId] ?: 0.0) + amt
                                 todayDiscMap[cId] = (todayDiscMap[cId] ?: 0.0) + disc
@@ -355,18 +346,15 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                         val nameKey = "NAME_${name.lowercase(Locale.getDefault())}"
                         val masterOpBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
 
-                        // Yesterday's Closing Balance = Today's Opening Balance
                         val prevSales = prevSalesMap[doc.id] ?: prevSalesMap[nameKey] ?: 0.0
                         val prevInc = prevIncomeMap[doc.id] ?: prevIncomeMap[nameKey] ?: 0.0
                         val prevDisc = prevDiscMap[doc.id] ?: prevDiscMap[nameKey] ?: 0.0
                         val todayOpBal = (masterOpBal + prevSales - prevInc - prevDisc).coerceAtLeast(0.0)
 
-                        // Today's Sales, Income (Receipts + Cash/GPay Sales), Discount
                         val todaySales = todaySalesMap[doc.id] ?: todaySalesMap[nameKey] ?: 0.0
                         val todayInc = todayIncomeMap[doc.id] ?: todayIncomeMap[nameKey] ?: 0.0
                         val todayDisc = todayDiscMap[doc.id] ?: todayDiscMap[nameKey] ?: 0.0
 
-                        // Today's Closing Outstanding
                         val todayClBal = (todayOpBal + todaySales - todayInc - todayDisc).coerceAtLeast(0.0)
 
                         customerNames.add(name)
@@ -611,7 +599,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 )
             }
 
-            // Page Total Row at the bottom of EVERY page
             pageRowsHtml.append(
                 String.format(
                     Locale.getDefault(),
@@ -620,7 +607,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                 )
             )
 
-            // Grand Total Row at the bottom of the LAST page
             if (pageIdx == totalPages - 1) {
                 pageRowsHtml.append(
                     String.format(
