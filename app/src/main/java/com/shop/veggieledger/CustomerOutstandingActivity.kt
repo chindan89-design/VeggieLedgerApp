@@ -209,10 +209,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         setContentView(rootScroll)
     }
 
-    /**
-     * Converts any date format ("dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "d-M-yyyy")
-     * into a clean YYYYMMDD integer (e.g., 20261124) for 100% exact date comparison.
-     */
     private fun dateToYmdInt(dateStr: String): Int {
         val clean = dateStr.trim().substringBefore(" ")
         if (clean.isEmpty()) return -1
@@ -223,10 +219,8 @@ class CustomerOutstandingActivity : AppCompatActivity() {
         val p2 = parts[2].trim().toIntOrNull() ?: return -1
 
         return if (p0 > 1000) {
-            // yyyy-MM-dd
             (p0 * 10000) + (p1 * 100) + p2
         } else {
-            // dd-MM-yyyy
             val year = if (p2 < 100) 2000 + p2 else p2
             (year * 10000) + (p1 * 100) + p0
         }
@@ -248,55 +242,19 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                     val todayIncomeMap = HashMap<String, Double>()
                     val todayDiscMap = HashMap<String, Double>()
 
-                    for (doc in salesSnap) {
-                        val d = doc.getString("date") ?: ""
-                        val docYmd = dateToYmdInt(d)
-                        if (docYmd <= 0 || docYmd > targetYmd) continue
+                    // Track linked billNos/saleIds already recorded in receipts to prevent double counting
+                    val receiptLinkedRefs = HashSet<String>()
 
-                        val pMode = (doc.getString("payMode") ?: "Credit").trim()
-                        val isCredit = pMode.equals("Credit", ignoreCase = true)
-
-                        val cId = doc.getString("customerId") ?: ""
-                        val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
-                        val tot = doc.getDouble("grandTotal") ?: 0.0
-
-                        // Cash / GPay / UPI sales count in both Sales and Income immediately
-                        val instantPaid = if (!isCredit) tot else (doc.getDouble("paidAmount") ?: 0.0)
-
-                        if (docYmd < targetYmd) {
-                            if (cId.isNotEmpty()) {
-                                prevSalesMap[cId] = (prevSalesMap[cId] ?: 0.0) + tot
-                                if (instantPaid > 0.0) {
-                                    prevIncomeMap[cId] = (prevIncomeMap[cId] ?: 0.0) + instantPaid
-                                }
-                            }
-                            if (cName.isNotEmpty()) {
-                                prevSalesMap["NAME_$cName"] = (prevSalesMap["NAME_$cName"] ?: 0.0) + tot
-                                if (instantPaid > 0.0) {
-                                    prevIncomeMap["NAME_$cName"] = (prevIncomeMap["NAME_$cName"] ?: 0.0) + instantPaid
-                                }
-                            }
-                        } else {
-                            // Exact selected date only
-                            if (cId.isNotEmpty()) {
-                                todaySalesMap[cId] = (todaySalesMap[cId] ?: 0.0) + tot
-                                if (instantPaid > 0.0) {
-                                    todayIncomeMap[cId] = (todayIncomeMap[cId] ?: 0.0) + instantPaid
-                                }
-                            }
-                            if (cName.isNotEmpty()) {
-                                todaySalesMap["NAME_$cName"] = (todaySalesMap["NAME_$cName"] ?: 0.0) + tot
-                                if (instantPaid > 0.0) {
-                                    todayIncomeMap["NAME_$cName"] = (todayIncomeMap["NAME_$cName"] ?: 0.0) + instantPaid
-                                }
-                            }
-                        }
-                    }
-
+                    // 1. Process Receipts FIRST so we know every receipt already entered
                     for (doc in recSnap) {
                         val d = doc.getString("date") ?: ""
                         val docYmd = dateToYmdInt(d)
                         if (docYmd <= 0 || docYmd > targetYmd) continue
+
+                        val linkedBill = (doc.getString("billNo") ?: doc.getString("saleId") ?: "").trim().lowercase(Locale.getDefault())
+                        if (linkedBill.isNotEmpty()) {
+                            receiptLinkedRefs.add(linkedBill)
+                        }
 
                         val cId = doc.getString("customerId") ?: ""
                         val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
@@ -313,7 +271,6 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                                 prevDiscMap["NAME_$cName"] = (prevDiscMap["NAME_$cName"] ?: 0.0) + disc
                             }
                         } else {
-                            // Exact selected date only
                             if (cId.isNotEmpty()) {
                                 todayIncomeMap[cId] = (todayIncomeMap[cId] ?: 0.0) + amt
                                 todayDiscMap[cId] = (todayDiscMap[cId] ?: 0.0) + disc
@@ -321,6 +278,54 @@ class CustomerOutstandingActivity : AppCompatActivity() {
                             if (cName.isNotEmpty()) {
                                 todayIncomeMap["NAME_$cName"] = (todayIncomeMap["NAME_$cName"] ?: 0.0) + amt
                                 todayDiscMap["NAME_$cName"] = (todayDiscMap["NAME_$cName"] ?: 0.0) + disc
+                            }
+                        }
+                    }
+
+                    // 2. Process Sales (Add Cash/GPay to Income ONLY if not already counted via receipts)
+                    for (doc in salesSnap) {
+                        val d = doc.getString("date") ?: ""
+                        val docYmd = dateToYmdInt(d)
+                        if (docYmd <= 0 || docYmd > targetYmd) continue
+
+                        val pMode = (doc.getString("payMode") ?: "Credit").trim()
+                        val isCredit = pMode.equals("Credit", ignoreCase = true)
+                        val billNo = (doc.getString("billNo") ?: "").trim().lowercase(Locale.getDefault())
+
+                        val cId = doc.getString("customerId") ?: ""
+                        val cName = (doc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
+                        val tot = doc.getDouble("grandTotal") ?: 0.0
+
+                        val alreadyInReceipts = (billNo.isNotEmpty() && receiptLinkedRefs.contains(billNo)) ||
+                                receiptLinkedRefs.contains(doc.id.lowercase(Locale.getDefault()))
+
+                        val unlinkedCashPaid = if (!isCredit && !alreadyInReceipts) tot else 0.0
+
+                        if (docYmd < targetYmd) {
+                            if (cId.isNotEmpty()) {
+                                prevSalesMap[cId] = (prevSalesMap[cId] ?: 0.0) + tot
+                                if (unlinkedCashPaid > 0.0) {
+                                    prevIncomeMap[cId] = (prevIncomeMap[cId] ?: 0.0) + unlinkedCashPaid
+                                }
+                            }
+                            if (cName.isNotEmpty()) {
+                                prevSalesMap["NAME_$cName"] = (prevSalesMap["NAME_$cName"] ?: 0.0) + tot
+                                if (unlinkedCashPaid > 0.0) {
+                                    prevIncomeMap["NAME_$cName"] = (prevIncomeMap["NAME_$cName"] ?: 0.0) + unlinkedCashPaid
+                                }
+                            }
+                        } else {
+                            if (cId.isNotEmpty()) {
+                                todaySalesMap[cId] = (todaySalesMap[cId] ?: 0.0) + tot
+                                if (unlinkedCashPaid > 0.0) {
+                                    todayIncomeMap[cId] = (todayIncomeMap[cId] ?: 0.0) + unlinkedCashPaid
+                                }
+                            }
+                            if (cName.isNotEmpty()) {
+                                todaySalesMap["NAME_$cName"] = (todaySalesMap["NAME_$cName"] ?: 0.0) + tot
+                                if (unlinkedCashPaid > 0.0) {
+                                    todayIncomeMap["NAME_$cName"] = (todayIncomeMap["NAME_$cName"] ?: 0.0) + unlinkedCashPaid
+                                }
                             }
                         }
                     }
