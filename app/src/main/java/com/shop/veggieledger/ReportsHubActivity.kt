@@ -46,10 +46,14 @@ class ReportsHubActivity : AppCompatActivity() {
     private lateinit var tvSummary: TextView
     private lateinit var etFromDate: EditText
     private lateinit var etToDate: EditText
+    private lateinit var toCol: LinearLayout
+    private lateinit var lblFrom: TextView
     private lateinit var spPartyFilter: Spinner
     private lateinit var layoutPartyBox: LinearLayout
     private lateinit var tvPartyLabel: TextView
     private lateinit var tableLayout: TableLayout
+    private lateinit var closingCardsContainer: LinearLayout
+    private lateinit var hScrollTable: HorizontalScrollView
     private lateinit var printWebView: WebView
 
     private var fromDateStr: String = ""
@@ -64,13 +68,6 @@ class ReportsHubActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         reportType = intent.getStringExtra("REPORT_TYPE") ?: "SAL_CUSTOMER"
-
-        if (reportType == "DAILY_CLOSING") {
-            startActivity(Intent(this, DailyClosingActivity::class.java))
-            finish()
-            return
-        }
-
         supportActionBar?.title = getReportTitle(reportType)
 
         buildUiProgrammatically()
@@ -91,8 +88,20 @@ class ReportsHubActivity : AppCompatActivity() {
         }
     }
 
+    private fun dateToYmd(dateStr: String): Int {
+        val clean = dateStr.trim().substringBefore(" ")
+        val parts = clean.split("-", "/", ".")
+        if (parts.size != 3) return -1
+        val p0 = parts[0].trim().toIntOrNull() ?: return -1
+        val p1 = parts[1].trim().toIntOrNull() ?: return -1
+        val p2 = parts[2].trim().toIntOrNull() ?: return -1
+        return if (p0 > 1000) (p0 * 10000) + (p1 * 100) + p2
+        else ((if (p2 < 100) 2000 + p2 else p2) * 10000) + (p1 * 100) + p0
+    }
+
     private fun getReportTitle(type: String): String {
         return when (type) {
+            "DAILY_CLOSING" -> "Daily Account Closing (11 Steps)"
             "PUR_SUPPLIER" -> "Supplier-wise Purchase Report"
             "PUR_DETAILS" -> "Purchase Bill Details"
             "PUR_ITEMWISE" -> "Itemwise Purchase Report"
@@ -108,15 +117,15 @@ class ReportsHubActivity : AppCompatActivity() {
     private fun buildUiProgrammatically() {
         val rootScroll = ScrollView(this)
         rootScroll.setBackgroundColor(Color.parseColor("#ECEFF1"))
-        rootScroll.setPadding(16, 16, 16, 16)
+        rootScroll.setPadding(14, 14, 14, 14)
 
         val mainCol = LinearLayout(this)
         mainCol.orientation = LinearLayout.VERTICAL
         rootScroll.addView(mainCol)
 
-        // Direct Shortcut Button to 11-Step Daily Account Closing Report
+        // Direct 11-Step Daily Closing Switch Button right on top
         val btnDailyClosing = Button(this)
-        btnDailyClosing.text = "DAILY ACCOUNT CLOSING REPORT (11 STEPS)"
+        btnDailyClosing.text = "📊 DAILY ACCOUNT CLOSING REPORT (11 STEPS)"
         btnDailyClosing.setBackgroundColor(Color.parseColor("#E65100"))
         btnDailyClosing.setTextColor(Color.WHITE)
         btnDailyClosing.setTypeface(null, Typeface.BOLD)
@@ -127,33 +136,41 @@ class ReportsHubActivity : AppCompatActivity() {
         dcLp.setMargins(0, 0, 0, 12)
         btnDailyClosing.layoutParams = dcLp
         btnDailyClosing.setOnClickListener {
-            startActivity(Intent(this, DailyClosingActivity::class.java))
+            reportType = "DAILY_CLOSING"
+            supportActionBar?.title = getReportTitle(reportType)
+            tvTitle.text = "DAILY ACCOUNT CLOSING (11 STEPS)"
+            layoutPartyBox.visibility = View.GONE
+            toCol.visibility = View.GONE
+            lblFrom.text = "Closing Date"
+            etFromDate.setText(toDateStr)
+            fromDateStr = toDateStr
+            runReport()
         }
         mainCol.addView(btnDailyClosing)
 
         val filterCard = LinearLayout(this)
         filterCard.orientation = LinearLayout.VERTICAL
         filterCard.setBackgroundColor(Color.WHITE)
-        filterCard.setPadding(18, 18, 18, 18)
+        filterCard.setPadding(16, 16, 16, 16)
         val fcLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        fcLp.setMargins(0, 0, 0, 14)
+        fcLp.setMargins(0, 0, 0, 12)
         filterCard.layoutParams = fcLp
 
         tvTitle = TextView(this)
         tvTitle.text = getReportTitle(reportType).uppercase(Locale.getDefault())
-        tvTitle.textSize = 16f
+        tvTitle.textSize = 15.5f
         tvTitle.setTypeface(null, Typeface.BOLD)
         tvTitle.setTextColor(Color.parseColor("#1B5E20"))
         tvTitle.gravity = Gravity.CENTER
-        tvTitle.setPadding(0, 0, 0, 12)
+        tvTitle.setPadding(0, 0, 0, 10)
         filterCard.addView(tvTitle)
 
         layoutPartyBox = LinearLayout(this)
         layoutPartyBox.orientation = LinearLayout.VERTICAL
-        layoutPartyBox.setPadding(0, 0, 0, 10)
+        layoutPartyBox.setPadding(0, 0, 0, 8)
         tvPartyLabel = TextView(this)
         tvPartyLabel.text = "1. Customer Name"
         tvPartyLabel.textSize = 12f
@@ -173,7 +190,7 @@ class ReportsHubActivity : AppCompatActivity() {
         val fromCol = LinearLayout(this)
         fromCol.orientation = LinearLayout.VERTICAL
         fromCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        val lblFrom = TextView(this)
+        lblFrom = TextView(this)
         lblFrom.text = "2. From Date"
         lblFrom.textSize = 12f
         lblFrom.setTypeface(null, Typeface.BOLD)
@@ -184,7 +201,7 @@ class ReportsHubActivity : AppCompatActivity() {
         fromCol.addView(lblFrom)
         fromCol.addView(etFromDate)
 
-        val toCol = LinearLayout(this)
+        toCol = LinearLayout(this)
         toCol.orientation = LinearLayout.VERTICAL
         toCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         val lblTo = TextView(this)
@@ -254,7 +271,7 @@ class ReportsHubActivity : AppCompatActivity() {
         tvSummary.setTextColor(Color.parseColor("#D84315"))
         tvSummary.setTypeface(null, Typeface.BOLD)
         tvSummary.textSize = 14f
-        tvSummary.setPadding(18, 14, 18, 14)
+        tvSummary.setPadding(16, 12, 16, 12)
         val sumLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -263,14 +280,21 @@ class ReportsHubActivity : AppCompatActivity() {
         tvSummary.layoutParams = sumLp
         mainCol.addView(tvSummary)
 
+        // Container for 11-Step Daily Closing Cards
+        closingCardsContainer = LinearLayout(this)
+        closingCardsContainer.orientation = LinearLayout.VERTICAL
+        closingCardsContainer.visibility = View.GONE
+        mainCol.addView(closingCardsContainer)
+
+        // A4 Sheet Preview for Standard Tabular Reports
         val sheetBox = LinearLayout(this)
         sheetBox.orientation = LinearLayout.VERTICAL
         sheetBox.setBackgroundColor(Color.WHITE)
-        sheetBox.setPadding(20, 24, 20, 24)
+        sheetBox.setPadding(18, 20, 18, 20)
 
         tvSheetShopName = TextView(this)
         tvSheetShopName.text = "THIRUVENI COCONUTS"
-        tvSheetShopName.textSize = 21f
+        tvSheetShopName.textSize = 20f
         tvSheetShopName.setTypeface(null, Typeface.BOLD)
         tvSheetShopName.setTextColor(Color.BLACK)
         tvSheetShopName.gravity = Gravity.CENTER
@@ -278,30 +302,30 @@ class ReportsHubActivity : AppCompatActivity() {
 
         tvSheetShopAddr = TextView(this)
         tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
-        tvSheetShopAddr.textSize = 13f
+        tvSheetShopAddr.textSize = 12.5f
         tvSheetShopAddr.setTypeface(null, Typeface.BOLD)
         tvSheetShopAddr.setTextColor(Color.DKGRAY)
         tvSheetShopAddr.gravity = Gravity.CENTER
-        tvSheetShopAddr.setPadding(0, 2, 0, 8)
+        tvSheetShopAddr.setPadding(0, 2, 0, 6)
         sheetBox.addView(tvSheetShopAddr)
 
         tvSheetSubTitle = TextView(this)
         tvSheetSubTitle.text = getReportTitle(reportType).uppercase(Locale.getDefault())
-        tvSheetSubTitle.textSize = 16f
+        tvSheetSubTitle.textSize = 15.5f
         tvSheetSubTitle.setTypeface(null, Typeface.BOLD)
         tvSheetSubTitle.setTextColor(Color.BLACK)
         tvSheetSubTitle.gravity = Gravity.CENTER
-        tvSheetSubTitle.setPadding(0, 2, 0, 12)
+        tvSheetSubTitle.setPadding(0, 2, 0, 10)
         sheetBox.addView(tvSheetSubTitle)
 
         val metaRow = LinearLayout(this)
         metaRow.orientation = LinearLayout.HORIZONTAL
         metaRow.weightSum = 2f
-        metaRow.setPadding(4, 6, 4, 10)
+        metaRow.setPadding(4, 4, 4, 8)
 
         tvLeftMeta = TextView(this)
         tvLeftMeta.text = "CUSTOMER NAME: ALL CUSTOMERS"
-        tvLeftMeta.textSize = 13f
+        tvLeftMeta.textSize = 12.5f
         tvLeftMeta.setTypeface(null, Typeface.BOLD)
         tvLeftMeta.setTextColor(Color.BLACK)
         tvLeftMeta.gravity = Gravity.START
@@ -309,7 +333,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
         tvRightMeta = TextView(this)
         tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
-        tvRightMeta.textSize = 13f
+        tvRightMeta.textSize = 12.5f
         tvRightMeta.setTypeface(null, Typeface.BOLD)
         tvRightMeta.setTextColor(Color.BLACK)
         tvRightMeta.gravity = Gravity.END
@@ -319,13 +343,13 @@ class ReportsHubActivity : AppCompatActivity() {
         metaRow.addView(tvRightMeta)
         sheetBox.addView(metaRow)
 
-        val hScroll = HorizontalScrollView(this)
-        hScroll.setBackgroundColor(Color.WHITE)
+        hScrollTable = HorizontalScrollView(this)
+        hScrollTable.setBackgroundColor(Color.WHITE)
         tableLayout = TableLayout(this)
         tableLayout.setBackgroundColor(Color.BLACK)
         tableLayout.setPadding(1, 1, 1, 1)
-        hScroll.addView(tableLayout)
-        sheetBox.addView(hScroll)
+        hScrollTable.addView(tableLayout)
+        sheetBox.addView(hScrollTable)
 
         mainCol.addView(sheetBox)
         setContentView(rootScroll)
@@ -337,8 +361,12 @@ class ReportsHubActivity : AppCompatActivity() {
         toDateStr = sdf.format(calTo.time)
 
         val calFrom = Calendar.getInstance()
-        calFrom.set(Calendar.DAY_OF_MONTH, 1)
-        fromDateStr = sdf.format(calFrom.time)
+        if (reportType == "DAILY_CLOSING") {
+            fromDateStr = toDateStr
+        } else {
+            calFrom.set(Calendar.DAY_OF_MONTH, 1)
+            fromDateStr = sdf.format(calFrom.time)
+        }
 
         etFromDate.setText(fromDateStr)
         etToDate.setText(toDateStr)
@@ -363,6 +391,14 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     private fun setupPartyDropdownIfNeeded() {
+        if (reportType == "DAILY_CLOSING") {
+            layoutPartyBox.visibility = View.GONE
+            toCol.visibility = View.GONE
+            lblFrom.text = "Closing Date"
+            runReport()
+            return
+        }
+
         val isPurchase = reportType.startsWith("PUR_")
         val isItemwise = reportType.endsWith("ITEMWISE")
         val isSupplierStatement = (reportType == "PUR_STATEMENT")
@@ -515,6 +551,16 @@ class ReportsHubActivity : AppCompatActivity() {
         val selectedParty = spPartyFilter.selectedItem?.toString() ?: "ALL CUSTOMERS"
         tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
 
+        if (reportType == "DAILY_CLOSING") {
+            closingCardsContainer.visibility = View.VISIBLE
+            (hScrollTable.parent as View).visibility = View.GONE
+            loadDailyClosing11Steps(fromDateStr)
+            return
+        } else {
+            closingCardsContainer.visibility = View.GONE
+            (hScrollTable.parent as View).visibility = View.VISIBLE
+        }
+
         when (reportType) {
             "SAL_CUSTOMER" -> loadGroupedCustomerSalesReport(selectedParty, "CUSTOMER SALES REPORT")
             "SAL_STATEMENT" -> loadGroupedCustomerSalesReport(selectedParty, "CUSTOMER LEDGER STATEMENT")
@@ -524,6 +570,494 @@ class ReportsHubActivity : AppCompatActivity() {
             "PUR_STATEMENT" -> loadLedgerStatement("purchases", "payments", "supplierName", selectedParty, "#1565C0")
             "SAL_DETAILS" -> loadBillDetailsReport("sales", "customerName", selectedParty, "#1B5E20")
             "SAL_ITEMWISE" -> loadItemwiseReport("sales", "#1B5E20")
+        }
+    }
+
+    // =========================================================================
+    // 11-STEP DAILY ACCOUNT CLOSING REPORT (BUILT RIGHT INSIDE REPORTS HUB)
+    // =========================================================================
+    private fun addClosingTwoColCard(title: String, rows: List<Pair<String, String>>, highlightLast: Boolean = false) {
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.setBackgroundColor(Color.WHITE)
+        card.setPadding(14, 12, 14, 12)
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 0, 0, 10)
+        card.layoutParams = lp
+
+        val tvSec = TextView(this)
+        tvSec.text = title
+        tvSec.textSize = 13.5f
+        tvSec.setTypeface(null, Typeface.BOLD)
+        tvSec.setTextColor(Color.WHITE)
+        tvSec.setBackgroundColor(Color.parseColor("#1B5E20"))
+        tvSec.setPadding(12, 9, 12, 9)
+        card.addView(tvSec)
+
+        val tbl = TableLayout(this)
+        tbl.setBackgroundColor(Color.BLACK)
+        tbl.setPadding(1, 1, 1, 1)
+        tbl.isStretchAllColumns = true
+
+        for (i in rows.indices) {
+            val isLast = (i == rows.size - 1) && highlightLast
+            val bg = if (isLast) Color.parseColor("#FFF9C4") else if (i % 2 == 0) Color.WHITE else Color.parseColor("#F9FBE7")
+
+            val tr = TableRow(this)
+            tr.setBackgroundColor(Color.BLACK)
+
+            val tvL = TextView(this)
+            tvL.text = rows[i].first
+            tvL.setTextColor(Color.BLACK)
+            tvL.setBackgroundColor(bg)
+            tvL.textSize = 13.5f
+            tvL.setPadding(12, 10, 12, 10)
+            if (isLast) tvL.setTypeface(null, Typeface.BOLD)
+            val lp1 = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 1.3f)
+            lp1.setMargins(1, 1, 1, 1)
+            tvL.layoutParams = lp1
+
+            val tvR = TextView(this)
+            tvR.text = rows[i].second
+            tvR.setTextColor(if (isLast) Color.parseColor("#D84315") else Color.BLACK)
+            tvR.setBackgroundColor(bg)
+            tvR.textSize = 13.5f
+            tvR.gravity = Gravity.END
+            tvR.setPadding(12, 10, 12, 10)
+            tvR.setTypeface(null, Typeface.BOLD)
+            val lp2 = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 0.7f)
+            lp2.setMargins(1, 1, 1, 1)
+            tvR.layoutParams = lp2
+
+            tr.addView(tvL)
+            tr.addView(tvR)
+            tbl.addView(tr)
+        }
+
+        card.addView(tbl)
+        closingCardsContainer.addView(card)
+    }
+
+    private fun addClosingThreeColCreditRec(cashAmt: Double, gpayAmt: Double) {
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.setBackgroundColor(Color.WHITE)
+        card.setPadding(14, 12, 14, 12)
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 0, 0, 10)
+        card.layoutParams = lp
+
+        val tvSec = TextView(this)
+        tvSec.text = "3. CREDIT BILL RECEIVED (CASH & GPAY)"
+        tvSec.textSize = 13.5f
+        tvSec.setTypeface(null, Typeface.BOLD)
+        tvSec.setTextColor(Color.WHITE)
+        tvSec.setBackgroundColor(Color.parseColor("#1B5E20"))
+        tvSec.setPadding(12, 9, 12, 9)
+        card.addView(tvSec)
+
+        val tbl = TableLayout(this)
+        tbl.setBackgroundColor(Color.BLACK)
+        tbl.setPadding(1, 1, 1, 1)
+        tbl.isStretchAllColumns = true
+
+        val hdr = TableRow(this)
+        hdr.setBackgroundColor(Color.BLACK)
+        hdr.addView(makeGridCell("PARTICULARS", false, true, Color.parseColor("#E0E0E0"), 1.2f))
+        hdr.addView(makeGridCell("CASH", true, true, Color.parseColor("#E0E0E0"), 0.9f))
+        hdr.addView(makeGridCell("GPAY", true, true, Color.parseColor("#E0E0E0"), 0.9f))
+        tbl.addView(hdr)
+
+        val valRow = TableRow(this)
+        valRow.setBackgroundColor(Color.BLACK)
+        valRow.addView(makeGridCell("Credit Bill Received", false, true, Color.parseColor("#FFF9C4"), 1.2f))
+        valRow.addView(makeGridCell(fmtVal(cashAmt), true, true, Color.parseColor("#FFF9C4"), 0.9f))
+        valRow.addView(makeGridCell(fmtVal(gpayAmt), true, true, Color.parseColor("#FFF9C4"), 0.9f))
+        tbl.addView(valRow)
+
+        card.addView(tbl)
+        closingCardsContainer.addView(card)
+    }
+
+    private fun makeGridCell(text: String, right: Boolean, bold: Boolean, bg: Int, weight: Float): TextView {
+        val tv = TextView(this)
+        tv.text = text
+        tv.setTextColor(Color.BLACK)
+        tv.setBackgroundColor(bg)
+        tv.textSize = 13.5f
+        tv.setPadding(10, 10, 10, 10)
+        tv.gravity = if (right) Gravity.END else Gravity.START
+        if (bold) tv.setTypeface(null, Typeface.BOLD)
+        val lp = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, weight)
+        lp.setMargins(1, 1, 1, 1)
+        tv.layoutParams = lp
+        return tv
+    }
+
+    private fun loadDailyClosing11Steps(targetDateStr: String) {
+        closingCardsContainer.removeAllViews()
+        tvSummary.text = "Calculating 11-Step Closing Report for $targetDateStr..."
+        val targetYmd = dateToYmd(targetDateStr)
+
+        db.collection("purchases").get().addOnSuccessListener { purSnap ->
+            db.collection("suppliers").get().addOnSuccessListener { supSnap ->
+                db.collection("payments").get().addOnSuccessListener { paySnap ->
+                    db.collection("sales").get().addOnSuccessListener { salSnap ->
+                        db.collection("receipts").get().addOnSuccessListener { recSnap ->
+                            db.collection("expenses").get().addOnSuccessListener { expSnap ->
+                                db.collection("customers").get().addOnSuccessListener { custSnap ->
+                                    db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
+
+                                        // 1. Purchase Details
+                                        var purCash = 0.0
+                                        var purCredit = 0.0
+                                        var totalPurAll = 0.0
+                                        for (doc in purSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            val tot = doc.getDouble("grandTotal") ?: 0.0
+                                            if (dYmd in 1..targetYmd) totalPurAll += tot
+                                            if (dYmd == targetYmd) {
+                                                val mode = (doc.getString("payMode") ?: "Credit").trim()
+                                                if (mode.equals("Cash", ignoreCase = true)) purCash += tot else purCredit += tot
+                                            }
+                                        }
+                                        val todayPurchaseTot = purCash + purCredit
+
+                                        // 2. Supplier Outstanding
+                                        var supMasterOp = 0.0
+                                        for (doc in supSnap) {
+                                            supMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
+                                        }
+                                        var totalSupPaid = 0.0
+                                        for (doc in paySnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            if (dYmd in 1..targetYmd) {
+                                                totalSupPaid += (doc.getDouble("amount") ?: 0.0) + (doc.getDouble("discount") ?: 0.0)
+                                            }
+                                        }
+                                        for (doc in purSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            if (dYmd in 1..targetYmd && (doc.getString("payMode") ?: "").equals("Cash", ignoreCase = true)) {
+                                                totalSupPaid += (doc.getDouble("grandTotal") ?: 0.0)
+                                            }
+                                        }
+                                        val supplierClosingOut = (supMasterOp + totalPurAll - totalSupPaid).coerceAtLeast(0.0)
+
+                                        // 3. Credit Bill Received (Cash & GPay)
+                                        var creditRecCash = 0.0
+                                        var creditRecGpay = 0.0
+                                        var todayCustDiscount = 0.0
+                                        val receiptLinkedBills = HashSet<String>()
+
+                                        for (doc in recSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            val linked = (doc.getString("billNo") ?: doc.getString("saleId") ?: "").trim().lowercase(Locale.getDefault())
+                                            if (linked.isNotEmpty()) receiptLinkedBills.add(linked)
+
+                                            if (dYmd == targetYmd) {
+                                                val mode = (doc.getString("payMode") ?: "Cash").trim()
+                                                val amt = doc.getDouble("amount") ?: 0.0
+                                                val disc = doc.getDouble("discount") ?: 0.0
+                                                todayCustDiscount += disc
+                                                if (mode.equals("Cash", ignoreCase = true)) creditRecCash += amt
+                                                else creditRecGpay += amt
+                                            }
+                                        }
+
+                                        // 4. Today Sales (Cash, GPay, Credit)
+                                        var cashSales = 0.0
+                                        var gpaySales = 0.0
+                                        var creditSales = 0.0
+                                        for (doc in salSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            if (dYmd == targetYmd) {
+                                                val mode = (doc.getString("payMode") ?: "Credit").trim()
+                                                val tot = doc.getDouble("grandTotal") ?: 0.0
+                                                when {
+                                                    mode.equals("Cash", ignoreCase = true) -> cashSales += tot
+                                                    mode.contains("GPay", ignoreCase = true) || mode.contains("UPI", ignoreCase = true) || mode.contains("Bank", ignoreCase = true) -> gpaySales += tot
+                                                    else -> creditSales += tot
+                                                }
+                                            }
+                                        }
+                                        val todaySalesTotal = cashSales + gpaySales + creditSales
+
+                                        // 5. Cash Received
+                                        val cashReceivedTotal = cashSales + creditRecCash
+
+                                        // 6. Expenses (A. Other, B. Shop, C. Vehicle) & Other Income
+                                        var otherExp = 0.0
+                                        var shopExp = 0.0
+                                        var vehicleExp = 0.0
+                                        var otherCashIncome = 0.0
+
+                                        for (doc in expSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            if (dYmd != targetYmd) continue
+                                            val type = doc.getString("type") ?: "Expense"
+                                            val cat = (doc.getString("category") ?: "Other Expenses").trim()
+                                            val amt = doc.getDouble("amount") ?: 0.0
+                                            val mode = (doc.getString("payMode") ?: "Cash").trim()
+
+                                            if (type.equals("Income", ignoreCase = true)) {
+                                                if (!mode.equals("Bank", ignoreCase = true)) otherCashIncome += amt
+                                            } else {
+                                                when {
+                                                    cat.equals("Shop Expenses", ignoreCase = true) -> shopExp += amt
+                                                    cat.equals("Vehicle Expenses", ignoreCase = true) -> vehicleExp += amt
+                                                    else -> otherExp += amt
+                                                }
+                                            }
+                                        }
+                                        val totalExpenses = otherExp + shopExp + vehicleExp
+
+                                        // 7. Collection & Today Closing Balance
+                                        val collectionTotal = cashSales + creditRecCash + otherCashIncome
+                                        val todayClosingBalance = collectionTotal - totalExpenses
+
+                                        // 8. Stock Inquiry
+                                        val stockMap = HashMap<String, Pair<Int, Double>>()
+                                        for (doc in stockSnap) {
+                                            val iName = doc.getString("itemName") ?: continue
+                                            val bgs = (doc.getLong("availableBags") ?: 0L).toInt()
+                                            val kgs = doc.getDouble("availableKgs") ?: 0.0
+                                            val curr = stockMap[iName] ?: Pair(0, 0.0)
+                                            stockMap[iName] = Pair(curr.first + bgs, curr.second + kgs)
+                                        }
+
+                                        // 9. Income Details
+                                        val incomeDetailsTotal = cashSales + gpaySales + creditRecCash + creditRecGpay
+
+                                        // 10. Customer Outstanding (Vertical)
+                                        var custMasterOp = 0.0
+                                        for (doc in custSnap) {
+                                            custMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
+                                        }
+                                        var prevSalesAll = 0.0
+                                        var prevIncAll = 0.0
+                                        var prevDiscAll = 0.0
+
+                                        for (doc in salSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            val tot = doc.getDouble("grandTotal") ?: 0.0
+                                            val isCred = (doc.getString("payMode") ?: "Credit").equals("Credit", ignoreCase = true)
+                                            val bNo = (doc.getString("billNo") ?: "").trim().lowercase(Locale.getDefault())
+                                            val linked = (bNo.isNotEmpty() && receiptLinkedBills.contains(bNo)) || receiptLinkedBills.contains(doc.id.lowercase(Locale.getDefault()))
+                                            val unlinkedCash = if (!isCred && !linked) tot else 0.0
+
+                                            if (dYmd in 1 until targetYmd) {
+                                                prevSalesAll += tot
+                                                prevIncAll += unlinkedCash
+                                            }
+                                        }
+                                        for (doc in recSnap) {
+                                            val dYmd = dateToYmd(doc.getString("date") ?: "")
+                                            if (dYmd in 1 until targetYmd) {
+                                                prevIncAll += (doc.getDouble("amount") ?: 0.0)
+                                                prevDiscAll += (doc.getDouble("discount") ?: 0.0)
+                                            }
+                                        }
+                                        val vertOpOut = (custMasterOp + prevSalesAll - prevIncAll - prevDiscAll).coerceAtLeast(0.0)
+                                        val vertClosingOut = (vertOpOut + todaySalesTotal - incomeDetailsTotal - todayCustDiscount).coerceAtLeast(0.0)
+
+                                        // 11. Profit & Loss
+                                        val netProfitLoss = todaySalesTotal - todayPurchaseTot - totalExpenses - todayCustDiscount
+
+                                        tvSummary.text = String.format(
+                                            Locale.getDefault(),
+                                            "Collection: Rs. %s  |  Expenses: Rs. %s  |  Closing Bal: Rs. %s",
+                                            fmtVal(collectionTotal), fmtVal(totalExpenses), fmtVal(todayClosingBalance)
+                                        )
+
+                                        closingCardsContainer.removeAllViews()
+
+                                        addClosingTwoColCard(
+                                            "1. PURCHASE DETAILS & 2. SUPPLIER OUTSTANDING",
+                                            listOf(
+                                                "Cash Purchase" to fmtVal(purCash),
+                                                "Credit Purchase" to fmtVal(purCredit),
+                                                "Today Total Purchase" to fmtVal(todayPurchaseTot),
+                                                "2. Supplier Closing Outstanding" to fmtVal(supplierClosingOut)
+                                            ),
+                                            highlightLast = true
+                                        )
+
+                                        addClosingThreeColCreditRec(creditRecCash, creditRecGpay)
+
+                                        addClosingTwoColCard(
+                                            "4. TODAY SALES & 5. CASH RECEIVED",
+                                            listOf(
+                                                "Cash Sales" to fmtVal(cashSales),
+                                                "GPay Sales" to fmtVal(gpaySales),
+                                                "Credit Sales" to fmtVal(creditSales),
+                                                "4. Today Total Sales" to fmtVal(todaySalesTotal),
+                                                "5. Cash Received (Cash Sales + Credit Bill via Cash)" to fmtVal(cashReceivedTotal)
+                                            ),
+                                            highlightLast = true
+                                        )
+
+                                        addClosingTwoColCard(
+                                            "6. EXPENSES & 7. COLLECTION CLOSING BALANCE",
+                                            listOf(
+                                                "6A. Other Expenses" to fmtVal(otherExp),
+                                                "6B. Shop Expenses" to fmtVal(shopExp),
+                                                "6C. Vehicle Expenses" to fmtVal(vehicleExp),
+                                                "Total Expenses" to fmtVal(totalExpenses),
+                                                "7. Collection Total (Cash Sales + Credit Cash + Other Inc)" to fmtVal(collectionTotal),
+                                                "TODAY CLOSING BALANCE (Collection - Expenses)" to fmtVal(todayClosingBalance)
+                                            ),
+                                            highlightLast = true
+                                        )
+
+                                        val stockRows = arrayListOf<Pair<String, String>>()
+                                        for ((item, pair) in stockMap.toSortedMap()) {
+                                            stockRows.add(item to "${pair.first} Bags  |  ${fmtVal(pair.second)} Kgs")
+                                        }
+                                        if (stockRows.isEmpty()) stockRows.add("Stock" to "No active batches")
+                                        addClosingTwoColCard("8. STOCK INQUIRY", stockRows)
+
+                                        addClosingTwoColCard(
+                                            "9. INCOME DETAILS",
+                                            listOf(
+                                                "Cash Sales" to fmtVal(cashSales),
+                                                "GPay Sales" to fmtVal(gpaySales),
+                                                "Credit Bill Received via Cash" to fmtVal(creditRecCash),
+                                                "Credit Bill Received via GPay" to fmtVal(creditRecGpay),
+                                                "Total Income Details" to fmtVal(incomeDetailsTotal)
+                                            ),
+                                            highlightLast = true
+                                        )
+
+                                        addClosingTwoColCard(
+                                            "10. CUSTOMER OUTSTANDING (VERTICAL)",
+                                            listOf(
+                                                "Opening Outstanding" to fmtVal(vertOpOut),
+                                                "(+) Today Sales" to fmtVal(todaySalesTotal),
+                                                "(-) Today Income" to fmtVal(incomeDetailsTotal),
+                                                "(-) Today Discount" to fmtVal(todayCustDiscount),
+                                                "Closing Outstanding" to fmtVal(vertClosingOut)
+                                            ),
+                                            highlightLast = true
+                                        )
+
+                                        addClosingTwoColCard(
+                                            "11. PROFIT AND LOSS",
+                                            listOf(
+                                                "Today Sales" to fmtVal(todaySalesTotal),
+                                                "(-) Today Purchase" to fmtVal(todayPurchaseTot),
+                                                "(-) Total Expenses & Discount" to fmtVal(totalExpenses + todayCustDiscount),
+                                                "Net Profit / (Loss)" to fmtVal(netProfitLoss)
+                                            ),
+                                            highlightLast = true
+                                        )
+
+                                        val stockHtml = StringBuilder()
+                                        for (s in stockRows) stockHtml.append("<tr><td>${s.first}</td><td class='r'>${s.second}</td></tr>")
+
+                                        lastPrintableHtml = """
+                                            <html>
+                                            <head>
+                                            <style>
+                                                * { box-sizing: border-box; }
+                                                @page { size: A4 portrait; margin: 4mm; }
+                                                body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; font-size: 11px; }
+                                                .center { text-align: center; }
+                                                h1 { font-size: 18px; margin: 0; }
+                                                h2 { font-size: 11.5px; margin: 1px 0 3px 0; }
+                                                h3 { font-size: 13.5px; margin: 2px 0 5px 0; text-decoration: underline; }
+                                                .cols { display: flex; justify-content: space-between; gap: 8px; }
+                                                .col { width: 49.5%; }
+                                                table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+                                                th, td { border: 1px solid #000; padding: 3.5px 5px; }
+                                                th { background: #E0E0E0; text-align: left; font-size: 11px; }
+                                                td.r { text-align: right; font-weight: bold; }
+                                                tr.hi td { background: #FFF9C4; font-weight: bold; }
+                                            </style>
+                                            </head>
+                                            <body>
+                                                <div class="center">
+                                                    <h1>THIRUVENI COCONUTS</h1>
+                                                    <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
+                                                    <h3>DAILY ACCOUNT CLOSING REPORT  |  DATE: $targetDateStr</h3>
+                                                </div>
+                                                <div class="cols">
+                                                    <div class="col">
+                                                        <table>
+                                                            <tr><th colspan="2">1. PURCHASE &amp; 2. SUPPLIER OUTSTANDING</th></tr>
+                                                            <tr><td>Cash Purchase</td><td class="r">${fmtVal(purCash)}</td></tr>
+                                                            <tr><td>Credit Purchase</td><td class="r">${fmtVal(purCredit)}</td></tr>
+                                                            <tr><td>Today Total Purchase</td><td class="r">${fmtVal(todayPurchaseTot)}</td></tr>
+                                                            <tr class="hi"><td>2. Supplier Closing Outstanding</td><td class="r">${fmtVal(supplierClosingOut)}</td></tr>
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="3">3. CREDIT BILL RECEIVED</th></tr>
+                                                            <tr><th>Particulars</th><th style="text-align:right;">CASH</th><th style="text-align:right;">GPAY</th></tr>
+                                                            <tr class="hi"><td>Credit Bill Received</td><td class="r">${fmtVal(creditRecCash)}</td><td class="r">${fmtVal(creditRecGpay)}</td></tr>
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="2">4. TODAY SALES &amp; 5. CASH RECEIVED</th></tr>
+                                                            <tr><td>Cash Sales</td><td class="r">${fmtVal(cashSales)}</td></tr>
+                                                            <tr><td>GPay Sales</td><td class="r">${fmtVal(gpaySales)}</td></tr>
+                                                            <tr><td>Credit Sales</td><td class="r">${fmtVal(creditSales)}</td></tr>
+                                                            <tr class="hi"><td>4. Today Total Sales</td><td class="r">${fmtVal(todaySalesTotal)}</td></tr>
+                                                            <tr class="hi"><td>5. Cash Received (Cash Sales + Credit Cash)</td><td class="r">${fmtVal(cashReceivedTotal)}</td></tr>
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="2">6. EXPENSES &amp; 7. COLLECTION CLOSING</th></tr>
+                                                            <tr><td>6A. Other Expenses</td><td class="r">${fmtVal(otherExp)}</td></tr>
+                                                            <tr><td>6B. Shop Expenses</td><td class="r">${fmtVal(shopExp)}</td></tr>
+                                                            <tr><td>6C. Vehicle Expenses</td><td class="r">${fmtVal(vehicleExp)}</td></tr>
+                                                            <tr class="hi"><td>Total Expenses</td><td class="r">${fmtVal(totalExpenses)}</td></tr>
+                                                            <tr><td>7. Collection Total</td><td class="r">${fmtVal(collectionTotal)}</td></tr>
+                                                            <tr class="hi"><td>TODAY CLOSING BALANCE</td><td class="r">${fmtVal(todayClosingBalance)}</td></tr>
+                                                        </table>
+                                                    </div>
+                                                    <div class="col">
+                                                        <table>
+                                                            <tr><th colspan="2">8. STOCK INQUIRY</th></tr>
+                                                            $stockHtml
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="2">9. INCOME DETAILS</th></tr>
+                                                            <tr><td>Cash Sales</td><td class="r">${fmtVal(cashSales)}</td></tr>
+                                                            <tr><td>GPay Sales</td><td class="r">${fmtVal(gpaySales)}</td></tr>
+                                                            <tr><td>Credit Bill Received via Cash</td><td class="r">${fmtVal(creditRecCash)}</td></tr>
+                                                            <tr><td>Credit Bill Received via GPay</td><td class="r">${fmtVal(creditRecGpay)}</td></tr>
+                                                            <tr class="hi"><td>Total Income Details</td><td class="r">${fmtVal(incomeDetailsTotal)}</td></tr>
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="2">10. CUSTOMER OUTSTANDING (VERTICAL)</th></tr>
+                                                            <tr><td>Opening Outstanding</td><td class="r">${fmtVal(vertOpOut)}</td></tr>
+                                                            <tr><td>(+) Today Sales</td><td class="r">${fmtVal(todaySalesTotal)}</td></tr>
+                                                            <tr><td>(-) Today Income</td><td class="r">${fmtVal(incomeDetailsTotal)}</td></tr>
+                                                            <tr><td>(-) Today Discount</td><td class="r">${fmtVal(todayCustDiscount)}</td></tr>
+                                                            <tr class="hi"><td>Closing Outstanding</td><td class="r">${fmtVal(vertClosingOut)}</td></tr>
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="2">11. PROFIT AND LOSS</th></tr>
+                                                            <tr><td>Today Sales</td><td class="r">${fmtVal(todaySalesTotal)}</td></tr>
+                                                            <tr><td>(-) Today Purchase</td><td class="r">${fmtVal(todayPurchaseTot)}</td></tr>
+                                                            <tr><td>(-) Expenses &amp; Discount</td><td class="r">${fmtVal(totalExpenses + todayCustDiscount)}</td></tr>
+                                                            <tr class="hi"><td>Net Profit / (Loss)</td><td class="r">${fmtVal(netProfitLoss)}</td></tr>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </body>
+                                            </html>
+                                        """.trimIndent()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1043,18 +1577,18 @@ class ReportsHubActivity : AppCompatActivity() {
 
     private fun printCurrentReportA4() {
         if (lastPrintableHtml.isEmpty()) {
-            Toast.makeText(this, "A4 PDF print is ready for Customer Report", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "A4 PDF print is ready for this report", Toast.LENGTH_SHORT).show()
             return
         }
         printWebView = WebView(this)
         printWebView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val printAdapter = printWebView.createPrintDocumentAdapter("Customer_Ledger_${fromDateStr}_to_${toDateStr}")
+                val printAdapter = printWebView.createPrintDocumentAdapter("Report_${fromDateStr}_to_${toDateStr}")
                 val builder = PrintAttributes.Builder()
                 builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                 builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                printManager.print("Customer Ledger A4", printAdapter, builder.build())
+                printManager.print("Veggie Ledger A4", printAdapter, builder.build())
             }
         }
         printWebView.loadDataWithBaseURL(null, lastPrintableHtml, "text/HTML", "UTF-8", null)
