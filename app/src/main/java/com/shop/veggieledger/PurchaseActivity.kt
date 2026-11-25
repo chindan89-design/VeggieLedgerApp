@@ -33,6 +33,7 @@ class PurchaseActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPurchaseBinding
     private val db = FirebaseFirestore.getInstance()
 
+    private lateinit var nosContainerLayout: LinearLayout
     private lateinit var etTotalNos: EditText
 
     private val allSuppliers = JSONArray()
@@ -57,7 +58,6 @@ class PurchaseActivity : AppCompatActivity() {
     private var oldPayMode: String = ""
     private var oldGrandTotal: Double = 0.0
 
-    // Prevent auto-3% overwrite while loading a row into fields for editing
     private var suppressKudumiAutoCalc: Boolean = false
 
     private val payModes = arrayListOf("Credit", "Cash", "GPay / UPI", "Bank Transfer")
@@ -161,13 +161,13 @@ class PurchaseActivity : AppCompatActivity() {
         refreshCartGrid()
 
         binding.btnAddItem.setOnClickListener {
-            val totalNos = etTotalNos.text.toString().toIntOrNull() ?: 0
             val purchaseKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
             val isOnion = selectedItemName.equals("Onion", ignoreCase = true)
             val isCoconut = selectedItemName.equals("Coconut", ignoreCase = true)
 
+            val totalNos = if (isCoconut) (etTotalNos.text.toString().toIntOrNull() ?: 0) else 0
             val bags = if (isOnion) (binding.etBags.text.toString().toIntOrNull() ?: 0) else 0
             val bagRate = if (isOnion) (binding.etBagRate.text.toString().toDoubleOrNull() ?: 10.0) else 0.0
 
@@ -297,8 +297,8 @@ class PurchaseActivity : AppCompatActivity() {
     }
 
     /**
-     * Dynamically places "Total Nos" right before "Total Kgs" (binding.etNetKgs)
-     * without requiring any XML layout file edits.
+     * Places integer "Total Nos" field right before Total Kgs (etNetKgs),
+     * visible ONLY when item is Coconut.
      */
     private fun injectTotalNosFieldBeforeTotalKgs() {
         val parent = binding.etNetKgs.parent as? ViewGroup ?: return
@@ -307,20 +307,21 @@ class PurchaseActivity : AppCompatActivity() {
             insertIndex -= 1
         }
 
-        val nosBox = LinearLayout(this)
-        nosBox.orientation = LinearLayout.VERTICAL
+        nosContainerLayout = LinearLayout(this)
+        nosContainerLayout.orientation = LinearLayout.VERTICAL
+        nosContainerLayout.visibility = View.GONE
         val boxLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
         boxLp.setMargins(0, 0, 0, 8)
-        nosBox.layoutParams = boxLp
+        nosContainerLayout.layoutParams = boxLp
 
         val lblNos = TextView(this)
-        lblNos.text = "Total Nos"
+        lblNos.text = "Total Nos (Coconut)"
         lblNos.textSize = 12f
         lblNos.setTypeface(null, Typeface.BOLD)
-        lblNos.setTextColor(Color.parseColor("#1565C0"))
+        lblNos.setTextColor(Color.parseColor("#1B5E20"))
 
         etTotalNos = EditText(this)
         etTotalNos.hint = "Enter Total Nos"
@@ -331,9 +332,9 @@ class PurchaseActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
 
-        nosBox.addView(lblNos)
-        nosBox.addView(etTotalNos)
-        parent.addView(nosBox, insertIndex)
+        nosContainerLayout.addView(lblNos)
+        nosContainerLayout.addView(etTotalNos)
+        parent.addView(nosContainerLayout, insertIndex)
     }
 
     private fun switchToNewMode() {
@@ -592,8 +593,13 @@ class PurchaseActivity : AppCompatActivity() {
 
         binding.layoutOnionFields.visibility = if (isOnion) View.VISIBLE else View.GONE
         binding.layoutCoconutFields.visibility = if (isCoconut) View.VISIBLE else View.GONE
+        nosContainerLayout.visibility = if (isCoconut) View.VISIBLE else View.GONE
 
-        etTotalNos.setText(if (nos > 0) nos.toString() else "")
+        if (isCoconut) {
+            etTotalNos.setText(if (nos > 0) nos.toString() else "")
+        } else {
+            etTotalNos.setText("")
+        }
 
         if (isOnion) {
             binding.etBags.setText(if (bags > 0) bags.toString() else "")
@@ -630,6 +636,7 @@ class PurchaseActivity : AppCompatActivity() {
         val isCoconut = itemName.equals("Coconut", ignoreCase = true)
 
         binding.layoutOnionFields.visibility = if (isOnion) View.VISIBLE else View.GONE
+        nosContainerLayout.visibility = if (isCoconut) View.VISIBLE else View.GONE
 
         if (isCoconut) {
             binding.layoutCoconutFields.visibility = View.VISIBLE
@@ -640,6 +647,7 @@ class PurchaseActivity : AppCompatActivity() {
         } else {
             binding.layoutCoconutFields.visibility = View.GONE
             if (!suppressKudumiAutoCalc) {
+                etTotalNos.setText("")
                 binding.etKudumi.setText("")
                 binding.etThadukki.setText("")
                 binding.tvCoconutNetWeight.text = "Net Weight: 0.00 Kgs"
@@ -709,22 +717,22 @@ class PurchaseActivity : AppCompatActivity() {
             else -> "SUP"
         }
 
-        var totalBagsOrNos = 0
+        var totalCount = 0
         for (i in 0 until cartItems.length()) {
             val itemObj = cartItems.getJSONObject(i)
             val b = itemObj.getInt("bags")
             val n = itemObj.optInt("nos", 0)
-            totalBagsOrNos += if (b > 0) b else n
+            totalCount += if (b > 0) b else n
         }
         val currentTypingBags = if (selectedItemName.equals("Onion", ignoreCase = true)) {
             (binding.etBags.text.toString().toIntOrNull() ?: 0)
         } else 0
-        val currentTypingNos = if (currentTypingBags == 0) {
+        val currentTypingNos = if (selectedItemName.equals("Coconut", ignoreCase = true)) {
             (etTotalNos.text.toString().toIntOrNull() ?: 0)
         } else 0
-        totalBagsOrNos += (currentTypingBags + currentTypingNos)
+        totalCount += (currentTypingBags + currentTypingNos)
 
-        binding.tvGeneratedBatchId.text = "$prefix-$selectedDayStr-$totalBagsOrNos"
+        binding.tvGeneratedBatchId.text = "$prefix-$selectedDayStr-$totalCount"
     }
 
     private fun loadItemsFromDb() {
@@ -821,14 +829,14 @@ class PurchaseActivity : AppCompatActivity() {
             } else "-"
 
             val countText = when {
-                bags > 0 && nos > 0 -> "$nos / $bags"
-                nos > 0 -> nos.toString()
-                bags > 0 -> bags.toString()
+                name.equals("Coconut", ignoreCase = true) && nos > 0 -> "$nos Nos"
+                bags > 0 -> "$bags Bags"
+                nos > 0 -> "$nos Nos"
                 else -> "-"
             }
 
             tableRow.addView(makeCell(name, alignRight = false, bold = true))
-            tableRow.addView(makeCell(countText, alignRight = true))
+            tableRow.addView(makeCell(countText, alignRight = true, bold = (nos > 0)))
             tableRow.addView(makeCell("%.1f".format(purKgs), alignRight = true))
             tableRow.addView(makeCell(dedText, alignRight = true))
             tableRow.addView(makeCell("%.2f".format(netKgs), alignRight = true, bold = true, colorHex = "#1B5E20"))
