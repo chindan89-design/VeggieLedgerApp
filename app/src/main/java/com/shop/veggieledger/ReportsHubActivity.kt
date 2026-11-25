@@ -99,6 +99,17 @@ class ReportsHubActivity : AppCompatActivity() {
         else ((if (p2 < 100) 2000 + p2 else p2) * 10000) + (p1 * 100) + p0
     }
 
+    private fun ordinalLabel(index: Int): String {
+        val n = index + 1
+        return when {
+            n % 100 in 11..13 -> "${n}th"
+            n % 10 == 1 -> "${n}st"
+            n % 10 == 2 -> "${n}nd"
+            n % 10 == 3 -> "${n}rd"
+            else -> "${n}th"
+        }
+    }
+
     private fun getReportTitle(type: String): String {
         return when (type) {
             "DAILY_CLOSING" -> "Daily Account Closing (11 Steps)"
@@ -123,9 +134,8 @@ class ReportsHubActivity : AppCompatActivity() {
         mainCol.orientation = LinearLayout.VERTICAL
         rootScroll.addView(mainCol)
 
-        // Direct 11-Step Daily Closing Switch Button right on top
         val btnDailyClosing = Button(this)
-        btnDailyClosing.text = "📊 DAILY ACCOUNT CLOSING REPORT (11 STEPS)"
+        btnDailyClosing.text = "DAILY ACCOUNT CLOSING REPORT (11 STEPS)"
         btnDailyClosing.setBackgroundColor(Color.parseColor("#E65100"))
         btnDailyClosing.setTextColor(Color.WHITE)
         btnDailyClosing.setTypeface(null, Typeface.BOLD)
@@ -280,13 +290,11 @@ class ReportsHubActivity : AppCompatActivity() {
         tvSummary.layoutParams = sumLp
         mainCol.addView(tvSummary)
 
-        // Container for 11-Step Daily Closing Cards
         closingCardsContainer = LinearLayout(this)
         closingCardsContainer.orientation = LinearLayout.VERTICAL
         closingCardsContainer.visibility = View.GONE
         mainCol.addView(closingCardsContainer)
 
-        // A4 Sheet Preview for Standard Tabular Reports
         val sheetBox = LinearLayout(this)
         sheetBox.orientation = LinearLayout.VERTICAL
         sheetBox.setBackgroundColor(Color.WHITE)
@@ -574,7 +582,7 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // 11-STEP DAILY ACCOUNT CLOSING REPORT (BUILT RIGHT INSIDE REPORTS HUB)
+    // 11-STEP DAILY ACCOUNT CLOSING REPORT
     // =========================================================================
     private fun addClosingTwoColCard(title: String, rows: List<Pair<String, String>>, highlightLast: Boolean = false) {
         val card = LinearLayout(this)
@@ -604,36 +612,57 @@ class ReportsHubActivity : AppCompatActivity() {
 
         for (i in rows.indices) {
             val isLast = (i == rows.size - 1) && highlightLast
-            val bg = if (isLast) Color.parseColor("#FFF9C4") else if (i % 2 == 0) Color.WHITE else Color.parseColor("#F9FBE7")
+            val isSubHeader = rows[i].second == "SECTION_HEADER"
+            val bg = when {
+                isSubHeader -> Color.parseColor("#E3F2FD")
+                isLast -> Color.parseColor("#FFF9C4")
+                i % 2 == 0 -> Color.WHITE
+                else -> Color.parseColor("#F9FBE7")
+            }
 
             val tr = TableRow(this)
             tr.setBackgroundColor(Color.BLACK)
 
-            val tvL = TextView(this)
-            tvL.text = rows[i].first
-            tvL.setTextColor(Color.BLACK)
-            tvL.setBackgroundColor(bg)
-            tvL.textSize = 13.5f
-            tvL.setPadding(12, 10, 12, 10)
-            if (isLast) tvL.setTypeface(null, Typeface.BOLD)
-            val lp1 = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 1.3f)
-            lp1.setMargins(1, 1, 1, 1)
-            tvL.layoutParams = lp1
+            if (isSubHeader) {
+                val tvHdr = TextView(this)
+                tvHdr.text = rows[i].first
+                tvHdr.setTextColor(Color.parseColor("#0D47A1"))
+                tvHdr.setBackgroundColor(bg)
+                tvHdr.textSize = 13.5f
+                tvHdr.setTypeface(null, Typeface.BOLD)
+                tvHdr.setPadding(12, 10, 12, 10)
+                val lpSpan = TableRow.LayoutParams(TableRow.LayoutParams.MATCH_PARENT, TableRow.LayoutParams.WRAP_CONTENT)
+                lpSpan.span = 2
+                lpSpan.setMargins(1, 1, 1, 1)
+                tvHdr.layoutParams = lpSpan
+                tr.addView(tvHdr)
+            } else {
+                val tvL = TextView(this)
+                tvL.text = rows[i].first
+                tvL.setTextColor(Color.BLACK)
+                tvL.setBackgroundColor(bg)
+                tvL.textSize = 13.5f
+                tvL.setPadding(12, 10, 12, 10)
+                if (isLast) tvL.setTypeface(null, Typeface.BOLD)
+                val lp1 = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 1.3f)
+                lp1.setMargins(1, 1, 1, 1)
+                tvL.layoutParams = lp1
 
-            val tvR = TextView(this)
-            tvR.text = rows[i].second
-            tvR.setTextColor(if (isLast) Color.parseColor("#D84315") else Color.BLACK)
-            tvR.setBackgroundColor(bg)
-            tvR.textSize = 13.5f
-            tvR.gravity = Gravity.END
-            tvR.setPadding(12, 10, 12, 10)
-            tvR.setTypeface(null, Typeface.BOLD)
-            val lp2 = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 0.7f)
-            lp2.setMargins(1, 1, 1, 1)
-            tvR.layoutParams = lp2
+                val tvR = TextView(this)
+                tvR.text = rows[i].second
+                tvR.setTextColor(if (isLast) Color.parseColor("#D84315") else Color.BLACK)
+                tvR.setBackgroundColor(bg)
+                tvR.textSize = 13.5f
+                tvR.gravity = Gravity.END
+                tvR.setPadding(12, 10, 12, 10)
+                tvR.setTypeface(null, Typeface.BOLD)
+                val lp2 = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 0.7f)
+                lp2.setMargins(1, 1, 1, 1)
+                tvR.layoutParams = lp2
 
-            tr.addView(tvL)
-            tr.addView(tvR)
+                tr.addView(tvL)
+                tr.addView(tvR)
+            }
             tbl.addView(tr)
         }
 
@@ -714,22 +743,98 @@ class ReportsHubActivity : AppCompatActivity() {
                                 db.collection("customers").get().addOnSuccessListener { custSnap ->
                                     db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
 
-                                        // 1. Purchase Details
-                                        var purCash = 0.0
-                                        var purCredit = 0.0
+                                        // 1. PURCHASE DETAILS (Line by line: 1st Purchase, 2nd Purchase...)
+                                        val purchaseLineRows = arrayListOf<Pair<String, String>>()
+                                        val purHtmlRows = StringBuilder()
+
                                         var totalPurAll = 0.0
-                                        for (doc in purSnap) {
+                                        var todayPurchaseTot = 0.0
+                                        var purCounter = 0
+
+                                        val sortedPurDocs = purSnap.documents.sortedBy { it.getLong("timestamp") ?: 0L }
+                                        for (doc in sortedPurDocs) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
                                             val tot = doc.getDouble("grandTotal") ?: 0.0
                                             if (dYmd in 1..targetYmd) totalPurAll += tot
-                                            if (dYmd == targetYmd) {
-                                                val mode = (doc.getString("payMode") ?: "Credit").trim()
-                                                if (mode.equals("Cash", ignoreCase = true)) purCash += tot else purCredit += tot
+                                            if (dYmd != targetYmd) continue
+
+                                            val supName = doc.getString("supplierName") ?: "Unknown Supplier"
+                                            val itemsList = doc.get("items") as? List<*>
+
+                                            if (itemsList != null && itemsList.isNotEmpty()) {
+                                                for (rawItem in itemsList) {
+                                                    val m = rawItem as? Map<*, *> ?: continue
+                                                    val nos = (m["nos"] as? Number)?.toDouble()
+                                                        ?: (m["bags"] as? Number)?.toDouble()
+                                                        ?: (m["qtyNos"] as? Number)?.toDouble()
+                                                        ?: 0.0
+                                                    val totalKgs = (m["grossKgs"] as? Number)?.toDouble()
+                                                        ?: (m["totalKgs"] as? Number)?.toDouble()
+                                                        ?: (m["kgs"] as? Number)?.toDouble()
+                                                        ?: (m["netKgs"] as? Number)?.toDouble()
+                                                        ?: 0.0
+                                                    val suit3Pct = (m["suit"] as? Number)?.toDouble()
+                                                        ?: (m["suitKgs"] as? Number)?.toDouble()
+                                                        ?: (totalKgs * 0.03)
+                                                    val kudumi = (m["kudumi"] as? Number)?.toDouble()
+                                                        ?: (m["kudumiKgs"] as? Number)?.toDouble()
+                                                        ?: 0.0
+                                                    val netKgs = (m["netKgs"] as? Number)?.toDouble()
+                                                        ?: (totalKgs - suit3Pct - kudumi).coerceAtLeast(0.0)
+                                                    val rate = (m["rate"] as? Number)?.toDouble() ?: 0.0
+                                                    val lineAmt = (m["amount"] as? Number)?.toDouble() ?: (netKgs * rate)
+
+                                                    val label = "${ordinalLabel(purCounter)} Purchase - $supName"
+                                                    purchaseLineRows.add(label to "SECTION_HEADER")
+                                                    purchaseLineRows.add("Today Purchase Nos & Kgs" to "${fmtQty(nos)} Nos  |  ${fmtVal(totalKgs)} Kgs")
+                                                    purchaseLineRows.add("Suit (3%) + Kudumi" to "${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs")
+                                                    purchaseLineRows.add("Net Purchase Kgs (Total - Suit - Kudumi)" to "${fmtVal(netKgs)} Kgs")
+                                                    purchaseLineRows.add("Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})" to fmtVal(lineAmt))
+
+                                                    purHtmlRows.append("<tr class='subhdr'><td colspan='2'>$label</td></tr>")
+                                                    purHtmlRows.append("<tr><td>Today Purchase Nos &amp; Kgs</td><td class='r'>${fmtQty(nos)} Nos | ${fmtVal(totalKgs)} Kgs</td></tr>")
+                                                    purHtmlRows.append("<tr><td>Suit (3%) + Kudumi</td><td class='r'>${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs</td></tr>")
+                                                    purHtmlRows.append("<tr><td>Net Purchase Kgs (Total - Suit - Kudumi)</td><td class='r'>${fmtVal(netKgs)} Kgs</td></tr>")
+                                                    purHtmlRows.append("<tr><td>Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})</td><td class='r'>${fmtVal(lineAmt)}</td></tr>")
+
+                                                    todayPurchaseTot += lineAmt
+                                                    purCounter++
+                                                }
+                                            } else {
+                                                val nos = (doc.getLong("bags") ?: doc.getLong("nos") ?: 0L).toDouble()
+                                                val totalKgs = doc.getDouble("grossKgs") ?: doc.getDouble("kgs") ?: doc.getDouble("netKgs") ?: 0.0
+                                                val suit3Pct = doc.getDouble("suit") ?: (totalKgs * 0.03)
+                                                val kudumi = doc.getDouble("kudumi") ?: 0.0
+                                                val netKgs = doc.getDouble("netKgs") ?: (totalKgs - suit3Pct - kudumi).coerceAtLeast(0.0)
+                                                val rate = doc.getDouble("rate") ?: (if (netKgs > 0.0) tot / netKgs else 0.0)
+                                                val lineAmt = if (tot > 0.0) tot else (netKgs * rate)
+
+                                                val label = "${ordinalLabel(purCounter)} Purchase - $supName"
+                                                purchaseLineRows.add(label to "SECTION_HEADER")
+                                                purchaseLineRows.add("Today Purchase Nos & Kgs" to "${fmtQty(nos)} Nos  |  ${fmtVal(totalKgs)} Kgs")
+                                                purchaseLineRows.add("Suit (3%) + Kudumi" to "${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs")
+                                                purchaseLineRows.add("Net Purchase Kgs (Total - Suit - Kudumi)" to "${fmtVal(netKgs)} Kgs")
+                                                purchaseLineRows.add("Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})" to fmtVal(lineAmt))
+
+                                                purHtmlRows.append("<tr class='subhdr'><td colspan='2'>$label</td></tr>")
+                                                purHtmlRows.append("<tr><td>Today Purchase Nos &amp; Kgs</td><td class='r'>${fmtQty(nos)} Nos | ${fmtVal(totalKgs)} Kgs</td></tr>")
+                                                purHtmlRows.append("<tr><td>Suit (3%) + Kudumi</td><td class='r'>${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs</td></tr>")
+                                                purHtmlRows.append("<tr><td>Net Purchase Kgs (Total - Suit - Kudumi)</td><td class='r'>${fmtVal(netKgs)} Kgs</td></tr>")
+                                                purHtmlRows.append("<tr><td>Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})</td><td class='r'>${fmtVal(lineAmt)}</td></tr>")
+
+                                                todayPurchaseTot += lineAmt
+                                                purCounter++
                                             }
                                         }
-                                        val todayPurchaseTot = purCash + purCredit
 
-                                        // 2. Supplier Outstanding
+                                        if (purchaseLineRows.isEmpty()) {
+                                            purchaseLineRows.add("Today Purchase" to "No purchase entries")
+                                            purHtmlRows.append("<tr><td>Today Purchase</td><td class='r'>-</td></tr>")
+                                        }
+                                        purchaseLineRows.add("Today Total Purchase Amount" to fmtVal(todayPurchaseTot))
+                                        purHtmlRows.append("<tr class='hi'><td>Today Total Purchase Amount</td><td class='r'>${fmtVal(todayPurchaseTot)}</td></tr>")
+
+                                        // 2. SUPPLIER OUTSTANDING
                                         var supMasterOp = 0.0
                                         for (doc in supSnap) {
                                             supMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
@@ -749,7 +854,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                         }
                                         val supplierClosingOut = (supMasterOp + totalPurAll - totalSupPaid).coerceAtLeast(0.0)
 
-                                        // 3. Credit Bill Received (Cash & GPay)
+                                        // 3. CREDIT BILL RECEIVED (Cash & GPay)
                                         var creditRecCash = 0.0
                                         var creditRecGpay = 0.0
                                         var todayCustDiscount = 0.0
@@ -770,7 +875,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
 
-                                        // 4. Today Sales (Cash, GPay, Credit)
+                                        // 4. TODAY SALES (Cash, GPay, Credit)
                                         var cashSales = 0.0
                                         var gpaySales = 0.0
                                         var creditSales = 0.0
@@ -788,10 +893,10 @@ class ReportsHubActivity : AppCompatActivity() {
                                         }
                                         val todaySalesTotal = cashSales + gpaySales + creditSales
 
-                                        // 5. Cash Received
+                                        // 5. CASH RECEIVED
                                         val cashReceivedTotal = cashSales + creditRecCash
 
-                                        // 6. Expenses (A. Other, B. Shop, C. Vehicle) & Other Income
+                                        // 6. EXPENSES (A. Other, B. Shop, C. Vehicle) & Other Income
                                         var otherExp = 0.0
                                         var shopExp = 0.0
                                         var vehicleExp = 0.0
@@ -817,11 +922,11 @@ class ReportsHubActivity : AppCompatActivity() {
                                         }
                                         val totalExpenses = otherExp + shopExp + vehicleExp
 
-                                        // 7. Collection & Today Closing Balance
+                                        // 7. COLLECTION & TODAY CLOSING BALANCE
                                         val collectionTotal = cashSales + creditRecCash + otherCashIncome
                                         val todayClosingBalance = collectionTotal - totalExpenses
 
-                                        // 8. Stock Inquiry
+                                        // 8. STOCK INQUIRY
                                         val stockMap = HashMap<String, Pair<Int, Double>>()
                                         for (doc in stockSnap) {
                                             val iName = doc.getString("itemName") ?: continue
@@ -831,10 +936,10 @@ class ReportsHubActivity : AppCompatActivity() {
                                             stockMap[iName] = Pair(curr.first + bgs, curr.second + kgs)
                                         }
 
-                                        // 9. Income Details
+                                        // 9. INCOME DETAILS
                                         val incomeDetailsTotal = cashSales + gpaySales + creditRecCash + creditRecGpay
 
-                                        // 10. Customer Outstanding (Vertical)
+                                        // 10. CUSTOMER OUTSTANDING (Vertical)
                                         var custMasterOp = 0.0
                                         for (doc in custSnap) {
                                             custMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
@@ -866,7 +971,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                         val vertOpOut = (custMasterOp + prevSalesAll - prevIncAll - prevDiscAll).coerceAtLeast(0.0)
                                         val vertClosingOut = (vertOpOut + todaySalesTotal - incomeDetailsTotal - todayCustDiscount).coerceAtLeast(0.0)
 
-                                        // 11. Profit & Loss
+                                        // 11. PROFIT & LOSS
                                         val netProfitLoss = todaySalesTotal - todayPurchaseTot - totalExpenses - todayCustDiscount
 
                                         tvSummary.text = String.format(
@@ -878,13 +983,14 @@ class ReportsHubActivity : AppCompatActivity() {
                                         closingCardsContainer.removeAllViews()
 
                                         addClosingTwoColCard(
-                                            "1. PURCHASE DETAILS & 2. SUPPLIER OUTSTANDING",
-                                            listOf(
-                                                "Cash Purchase" to fmtVal(purCash),
-                                                "Credit Purchase" to fmtVal(purCredit),
-                                                "Today Total Purchase" to fmtVal(todayPurchaseTot),
-                                                "2. Supplier Closing Outstanding" to fmtVal(supplierClosingOut)
-                                            ),
+                                            "1. PURCHASE DETAILS (LINE BY LINE)",
+                                            purchaseLineRows,
+                                            highlightLast = true
+                                        )
+
+                                        addClosingTwoColCard(
+                                            "2. SUPPLIER OUTSTANDING",
+                                            listOf("Supplier Closing Outstanding" to fmtVal(supplierClosingOut)),
                                             highlightLast = true
                                         )
 
@@ -951,7 +1057,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                             listOf(
                                                 "Today Sales" to fmtVal(todaySalesTotal),
                                                 "(-) Today Purchase" to fmtVal(todayPurchaseTot),
-                                                "(-) Total Expenses & Discount" to fmtVal(totalExpenses + todayCustDiscount),
+                                                "(-) Expenses & Discount" to fmtVal(totalExpenses + todayCustDiscount),
                                                 "Net Profit / (Loss)" to fmtVal(netProfitLoss)
                                             ),
                                             highlightLast = true
@@ -966,7 +1072,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                             <style>
                                                 * { box-sizing: border-box; }
                                                 @page { size: A4 portrait; margin: 4mm; }
-                                                body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; font-size: 11px; }
+                                                body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; font-size: 10.5px; }
                                                 .center { text-align: center; }
                                                 h1 { font-size: 18px; margin: 0; }
                                                 h2 { font-size: 11.5px; margin: 1px 0 3px 0; }
@@ -974,9 +1080,10 @@ class ReportsHubActivity : AppCompatActivity() {
                                                 .cols { display: flex; justify-content: space-between; gap: 8px; }
                                                 .col { width: 49.5%; }
                                                 table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-                                                th, td { border: 1px solid #000; padding: 3.5px 5px; }
-                                                th { background: #E0E0E0; text-align: left; font-size: 11px; }
+                                                th, td { border: 1px solid #000; padding: 3px 5px; }
+                                                th { background: #E0E0E0; text-align: left; font-size: 10.5px; }
                                                 td.r { text-align: right; font-weight: bold; }
+                                                tr.subhdr td { background: #E3F2FD; color: #0D47A1; font-weight: bold; }
                                                 tr.hi td { background: #FFF9C4; font-weight: bold; }
                                             </style>
                                             </head>
@@ -989,11 +1096,12 @@ class ReportsHubActivity : AppCompatActivity() {
                                                 <div class="cols">
                                                     <div class="col">
                                                         <table>
-                                                            <tr><th colspan="2">1. PURCHASE &amp; 2. SUPPLIER OUTSTANDING</th></tr>
-                                                            <tr><td>Cash Purchase</td><td class="r">${fmtVal(purCash)}</td></tr>
-                                                            <tr><td>Credit Purchase</td><td class="r">${fmtVal(purCredit)}</td></tr>
-                                                            <tr><td>Today Total Purchase</td><td class="r">${fmtVal(todayPurchaseTot)}</td></tr>
-                                                            <tr class="hi"><td>2. Supplier Closing Outstanding</td><td class="r">${fmtVal(supplierClosingOut)}</td></tr>
+                                                            <tr><th colspan="2">1. PURCHASE DETAILS (LINE BY LINE)</th></tr>
+                                                            $purHtmlRows
+                                                        </table>
+                                                        <table>
+                                                            <tr><th colspan="2">2. SUPPLIER OUTSTANDING</th></tr>
+                                                            <tr class="hi"><td>Supplier Closing Outstanding</td><td class="r">${fmtVal(supplierClosingOut)}</td></tr>
                                                         </table>
                                                         <table>
                                                             <tr><th colspan="3">3. CREDIT BILL RECEIVED</th></tr>
@@ -1008,6 +1116,8 @@ class ReportsHubActivity : AppCompatActivity() {
                                                             <tr class="hi"><td>4. Today Total Sales</td><td class="r">${fmtVal(todaySalesTotal)}</td></tr>
                                                             <tr class="hi"><td>5. Cash Received (Cash Sales + Credit Cash)</td><td class="r">${fmtVal(cashReceivedTotal)}</td></tr>
                                                         </table>
+                                                    </div>
+                                                    <div class="col">
                                                         <table>
                                                             <tr><th colspan="2">6. EXPENSES &amp; 7. COLLECTION CLOSING</th></tr>
                                                             <tr><td>6A. Other Expenses</td><td class="r">${fmtVal(otherExp)}</td></tr>
@@ -1017,8 +1127,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                                             <tr><td>7. Collection Total</td><td class="r">${fmtVal(collectionTotal)}</td></tr>
                                                             <tr class="hi"><td>TODAY CLOSING BALANCE</td><td class="r">${fmtVal(todayClosingBalance)}</td></tr>
                                                         </table>
-                                                    </div>
-                                                    <div class="col">
                                                         <table>
                                                             <tr><th colspan="2">8. STOCK INQUIRY</th></tr>
                                                             $stockHtml
