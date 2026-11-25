@@ -30,7 +30,6 @@ class DashboardActivity : AppCompatActivity() {
         supportActionBar?.title = "Mandi ($role)"
         binding.tvWelcome.text = "Veggie Mandi Live Summary"
 
-        // Date Picker Setup (Defaults to Today)
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         binding.etDashDate.setText(selectedDateStr)
@@ -43,12 +42,10 @@ class DashboardActivity : AppCompatActivity() {
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
-        // View Button Click refreshes data for chosen date
         binding.btnDashViewDate.setOnClickListener {
             loadLiveSummary()
         }
 
-        // Quick Strip Bar Clicks
         binding.stripSales.setOnClickListener { startActivity(Intent(this, SalesActivity::class.java)) }
         binding.stripPurchase.setOnClickListener { startActivity(Intent(this, PurchaseActivity::class.java)) }
         binding.stripReceipt.setOnClickListener { startActivity(Intent(this, SalesReceiptActivity::class.java)) }
@@ -65,7 +62,6 @@ class DashboardActivity : AppCompatActivity() {
     private fun loadLiveSummary() {
         binding.tvDashDateSectionTitle.text = "2. SUMMARY FOR $selectedDateStr"
 
-        // 1. Live Available Stock Item-wise (Hide any item where stock is 0)
         db.collection("stock_batches").get().addOnSuccessListener { snap ->
             val itemBagsMap = HashMap<String, Int>()
             val itemKgsMap = HashMap<String, Double>()
@@ -90,7 +86,6 @@ class DashboardActivity : AppCompatActivity() {
                 val totalBags = itemBagsMap[item] ?: 0
                 val totalKgs = itemKgsMap[item] ?: 0.0
 
-                // Display ONLY if stock > 0
                 if (totalBags > 0 || totalKgs > 0.001) {
                     hasAnyStock = true
                     val rowTv = TextView(this)
@@ -122,7 +117,6 @@ class DashboardActivity : AppCompatActivity() {
             }
         }
 
-        // 2. Selected Date Summary: Purchase, Sales, Receipt, Payment, Income, Expenses
         db.collection("purchases").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
             var dayPur = 0.0
             for (doc in snap) {
@@ -155,7 +149,7 @@ class DashboardActivity : AppCompatActivity() {
             binding.tvDayPayment.text = "Payment\nRs. %.2f".format(dayPay)
         }
 
-        db.collection("expenses_income").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
+        db.collection("expenses").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
             var dayInc = 0.0
             var dayExp = 0.0
             for (doc in snap) {
@@ -168,7 +162,6 @@ class DashboardActivity : AppCompatActivity() {
             binding.tvDayExpense.text = "Expenses\nRs. %.2f".format(dayExp)
         }
 
-        // 3. Overall Total Collectable & Total Payable
         db.collection("customers").get().addOnSuccessListener { snap ->
             var totalCollectable = 0.0
             for (doc in snap) {
@@ -186,13 +179,11 @@ class DashboardActivity : AppCompatActivity() {
         }
     }
 
-    // Inflate Top Menu Strip
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.top_menu_strip, menu)
         return true
     }
 
-        // Handle Top Menu Strip Item Clicks
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.nav_customers -> startActivity(Intent(this, CustomerMasterActivity::class.java))
@@ -204,21 +195,19 @@ class DashboardActivity : AppCompatActivity() {
             R.id.nav_purchase_payment -> startActivity(Intent(this, PurchasePaymentActivity::class.java))
             R.id.nav_expense_income -> startActivity(Intent(this, ExpenseIncomeActivity::class.java))
 
-            // Purchase Reports Sub-Menu
             R.id.nav_pur_supplier_rep -> openReportHub("PUR_SUPPLIER")
             R.id.nav_pur_details -> openReportHub("PUR_DETAILS")
             R.id.nav_pur_itemwise -> openReportHub("PUR_ITEMWISE")
             R.id.nav_pur_sup_statement -> openReportHub("PUR_STATEMENT")
             R.id.nav_sup_out -> startActivity(Intent(this, SupplierOutstandingActivity::class.java))
 
-            // Sales Reports Sub-Menu
             R.id.nav_sal_customer_rep -> openReportHub("SAL_CUSTOMER")
             R.id.nav_sal_details -> openReportHub("SAL_DETAILS")
             R.id.nav_sal_itemwise -> openReportHub("SAL_ITEMWISE")
             R.id.nav_sal_cust_statement -> openReportHub("SAL_STATEMENT")
             R.id.nav_cust_out -> startActivity(Intent(this, CustomerOutstandingActivity::class.java))
 
-            // Others Sub-Menu
+            R.id.nav_daily_closing -> openReportHub("DAILY_CLOSING")
             R.id.nav_pnl -> startActivity(Intent(this, ProfitLossActivity::class.java))
             R.id.nav_history -> startActivity(Intent(this, TransactionHistoryActivity::class.java))
         }
@@ -230,5 +219,4 @@ class DashboardActivity : AppCompatActivity() {
         intent.putExtra("REPORT_TYPE", type)
         startActivity(intent)
     }
-    
 }
