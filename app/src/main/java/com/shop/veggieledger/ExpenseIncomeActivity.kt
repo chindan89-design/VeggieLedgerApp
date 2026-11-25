@@ -83,15 +83,18 @@ class ExpenseIncomeActivity : AppCompatActivity() {
 
     private val expCategories = arrayListOf("Other Expenses", "Shop Expenses", "Vehicle Expenses")
 
-    // Empty initially except the single "+ ADD NEW EXPENSES" option at the bottom
+    // NO predefined items — strictly only user-added items appear between hint and "+ ADD NEW"
+    private val SELECT_EXP_HINT = "-- Select Expenses --"
     private val ADD_NEW_EXP_LABEL = "+ ADD NEW EXPENSES"
-    private val expDropdownList = arrayListOf(ADD_NEW_EXP_LABEL)
+    private val expDropdownList = arrayListOf(SELECT_EXP_HINT, ADD_NEW_EXP_LABEL)
     private lateinit var expItemAdapter: ArrayAdapter<String>
+    private var isExpSpinnerReady = false
 
-    // Empty initially except the single "+ ADD NEW INCOME" option at the bottom
+    private val SELECT_INC_HINT = "-- Select Income --"
     private val ADD_NEW_INC_LABEL = "+ ADD NEW INCOME"
-    private val incDropdownList = arrayListOf(ADD_NEW_INC_LABEL)
+    private val incDropdownList = arrayListOf(SELECT_INC_HINT, ADD_NEW_INC_LABEL)
     private lateinit var incItemAdapter: ArrayAdapter<String>
+    private var isIncSpinnerReady = false
 
     private val expEntries = JSONArray()
     private val incEntries = JSONArray()
@@ -106,7 +109,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         incDateStr = today
 
         buildTabbedUi()
-        loadCustomDropdownHeads()
+        loadUserAddedDropdownItems()
         loadExpensesForDate()
         loadIncomesForDate()
     }
@@ -158,7 +161,6 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         tabBar.addView(btnTabIncome)
         mainCol.addView(tabBar)
 
-        // Build both tab containers
         layoutExpenseTab = buildExpenseTabView()
         layoutIncomeTab = buildIncomeTabView()
 
@@ -214,7 +216,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         hdr.setPadding(0, 0, 0, 10)
         card.addView(hdr)
 
-        // 1. Date & 2. Category (Other Expenses, Shop Expenses, Vehicle Expenses)
+        // 1. Date & 2. Category
         val row1 = LinearLayout(this)
         row1.orientation = LinearLayout.HORIZONTAL
         row1.weightSum = 2f
@@ -263,7 +265,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         row1.addView(colCat)
         card.addView(row1)
 
-        // 3. Expenses Dropdown Box (Starts empty with ONLY "+ ADD NEW EXPENSES" at bottom)
+        // 3. Expenses Dropdown Box (Strictly user-added items + "+ ADD NEW EXPENSES")
         val lblExpSpin = TextView(this)
         lblExpSpin.text = "3. Expenses *"
         lblExpSpin.textSize = 12f
@@ -276,6 +278,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         expItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, expDropdownList)
         expItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spExpItem.adapter = expItemAdapter
+        spExpItem.setSelection(0, false)
         val spLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -285,6 +288,10 @@ class ExpenseIncomeActivity : AppCompatActivity() {
 
         spExpItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                if (!isExpSpinnerReady) {
+                    isExpSpinnerReady = true
+                    return
+                }
                 val chosen = expDropdownList.getOrNull(pos) ?: ""
                 if (chosen == ADD_NEW_EXP_LABEL) {
                     showAddNewPopup(isExpense = true)
@@ -294,7 +301,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         }
         card.addView(spExpItem)
 
-        // 4. Description (e.g., 5 Tea, 10 Tea, 4 Members Tiffin)
+        // 4. Description
         val lblDesc = TextView(this)
         lblDesc.text = "4. Description (e.g. 5 Tea, 10 Tea, 4 Members Tiffin)"
         lblDesc.textSize = 12f
@@ -311,7 +318,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         card.addView(lblDesc)
         card.addView(etExpDesc)
 
-        // 5. Expenses Amount + Radio Buttons (Cash / Bank) right next to it
+        // 5. Expenses Amount + Radio Buttons (Cash / Bank)
         val lblAmt = TextView(this)
         lblAmt.text = "5. Expenses Amount & Mode *"
         lblAmt.textSize = 12f
@@ -483,7 +490,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         card.addView(lblDate)
         card.addView(etIncDate)
 
-        // 2. Income Dropdown Box (Starts empty with ONLY "+ ADD NEW INCOME" at bottom)
+        // 2. Income Dropdown Box
         val lblIncSpin = TextView(this)
         lblIncSpin.text = "2. Income Particulars *"
         lblIncSpin.textSize = 12f
@@ -496,6 +503,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         incItemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, incDropdownList)
         incItemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spIncItem.adapter = incItemAdapter
+        spIncItem.setSelection(0, false)
         val spLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -505,6 +513,10 @@ class ExpenseIncomeActivity : AppCompatActivity() {
 
         spIncItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                if (!isIncSpinnerReady) {
+                    isIncSpinnerReady = true
+                    return
+                }
                 val chosen = incDropdownList.getOrNull(pos) ?: ""
                 if (chosen == ADD_NEW_INC_LABEL) {
                     showAddNewPopup(isExpense = false)
@@ -649,14 +661,18 @@ class ExpenseIncomeActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // DROPDOWN MANAGEMENT ("+ ADD NEW EXPENSES" / "+ ADD NEW INCOME")
+    // DROPDOWN MANAGEMENT — ONLY USER-ADDED ITEMS (NO PREDEFINED ITEMS)
     // =========================================================================
-    private fun loadCustomDropdownHeads() {
+    private fun loadUserAddedDropdownItems() {
         db.collection("expense_heads").get().addOnSuccessListener { snap ->
             val savedExp = LinkedHashSet<String>()
             val savedInc = LinkedHashSet<String>()
 
             for (doc in snap) {
+                // Only load items explicitly created by the user
+                val isUserCreated = doc.getBoolean("userAdded") ?: false
+                if (!isUserCreated) continue
+
                 val name = doc.getString("name")?.trim() ?: continue
                 val type = doc.getString("type") ?: "Expense"
                 if (name.isEmpty()) continue
@@ -668,16 +684,18 @@ class ExpenseIncomeActivity : AppCompatActivity() {
             }
 
             expDropdownList.clear()
+            expDropdownList.add(SELECT_EXP_HINT)
             expDropdownList.addAll(savedExp)
-            expDropdownList.add(ADD_NEW_EXP_LABEL) // Always at the bottom
+            expDropdownList.add(ADD_NEW_EXP_LABEL)
             expItemAdapter.notifyDataSetChanged()
-            if (savedExp.isNotEmpty()) spExpItem.setSelection(0)
+            spExpItem.setSelection(0, false)
 
             incDropdownList.clear()
+            incDropdownList.add(SELECT_INC_HINT)
             incDropdownList.addAll(savedInc)
-            incDropdownList.add(ADD_NEW_INC_LABEL) // Always at the bottom
+            incDropdownList.add(ADD_NEW_INC_LABEL)
             incItemAdapter.notifyDataSetChanged()
-            if (savedInc.isNotEmpty()) spIncItem.setSelection(0)
+            spIncItem.setSelection(0, false)
         }
     }
 
@@ -687,7 +705,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
         box.setPadding(40, 24, 40, 12)
 
         val etNewName = EditText(this)
-        etNewName.hint = if (isExpense) "e.g. Tea, Tiffin, Coolie, Diesel" else "e.g. Commission, Empty Bag Sale"
+        etNewName.hint = if (isExpense) "Enter Expense Name..." else "Enter Income Name..."
         box.addView(etNewName)
 
         AlertDialog.Builder(this)
@@ -698,42 +716,41 @@ class ExpenseIncomeActivity : AppCompatActivity() {
                 val newName = etNewName.text.toString().trim()
                 if (newName.isEmpty()) {
                     Toast.makeText(this, "Enter a valid name", Toast.LENGTH_SHORT).show()
-                    if (isExpense && expDropdownList.size > 1) spExpItem.setSelection(0)
-                    if (!isExpense && incDropdownList.size > 1) spIncItem.setSelection(0)
+                    if (isExpense) spExpItem.setSelection(0, false)
+                    else spIncItem.setSelection(0, false)
                     return@setPositiveButton
                 }
 
                 if (isExpense) {
                     if (!expDropdownList.any { it.equals(newName, ignoreCase = true) }) {
-                        // Insert right before "+ ADD NEW EXPENSES"
                         expDropdownList.add(expDropdownList.size - 1, newName)
                         expItemAdapter.notifyDataSetChanged()
                     }
                     val idx = expDropdownList.indexOfFirst { it.equals(newName, ignoreCase = true) }
-                    if (idx >= 0) spExpItem.setSelection(idx)
+                    if (idx >= 0) spExpItem.setSelection(idx, false)
                 } else {
                     if (!incDropdownList.any { it.equals(newName, ignoreCase = true) }) {
-                        // Insert right before "+ ADD NEW INCOME"
                         incDropdownList.add(incDropdownList.size - 1, newName)
                         incItemAdapter.notifyDataSetChanged()
                     }
                     val idx = incDropdownList.indexOfFirst { it.equals(newName, ignoreCase = true) }
-                    if (idx >= 0) spIncItem.setSelection(idx)
+                    if (idx >= 0) spIncItem.setSelection(idx, false)
                 }
 
-                val prefix = if (isExpense) "exp_" else "inc_"
+                val prefix = if (isExpense) "user_exp_" else "user_inc_"
                 val docId = prefix + newName.lowercase(Locale.getDefault()).replace(Regex("[^a-z0-9]"), "_")
                 val docMap = hashMapOf(
                     "name" to newName,
                     "type" to if (isExpense) "Expense" else "Income",
+                    "userAdded" to true,
                     "createdAt" to System.currentTimeMillis()
                 )
                 db.collection("expense_heads").document(docId).set(docMap)
                 Toast.makeText(this, "Added: $newName", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel") { _, _ ->
-                if (isExpense && expDropdownList.size > 1) spExpItem.setSelection(0)
-                if (!isExpense && incDropdownList.size > 1) spIncItem.setSelection(0)
+                if (isExpense) spExpItem.setSelection(0, false)
+                else spIncItem.setSelection(0, false)
             }
             .show()
     }
@@ -744,9 +761,8 @@ class ExpenseIncomeActivity : AppCompatActivity() {
     private fun saveExpenseEntry() {
         val category = spExpCategory.selectedItem?.toString() ?: "Other Expenses"
         val itemName = spExpItem.selectedItem?.toString() ?: ""
-        if (itemName.isEmpty() || itemName == ADD_NEW_EXP_LABEL) {
-            Toast.makeText(this, "Please select or add an Expense item", Toast.LENGTH_SHORT).show()
-            showAddNewPopup(isExpense = true)
+        if (itemName.isEmpty() || itemName == SELECT_EXP_HINT || itemName == ADD_NEW_EXP_LABEL) {
+            Toast.makeText(this, "Please select an Expense item", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -787,6 +803,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
 
     private fun resetExpForm() {
         editingExpId = ""
+        spExpItem.setSelection(0, false)
         etExpDesc.setText("")
         etExpAmount.setText("")
         rbExpCash.isChecked = true
@@ -893,7 +910,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
                     expItemAdapter.notifyDataSetChanged()
                 }
                 val iIdx = expDropdownList.indexOfFirst { it.equals(item, ignoreCase = true) }
-                if (iIdx >= 0) spExpItem.setSelection(iIdx)
+                if (iIdx >= 0) spExpItem.setSelection(iIdx, false)
 
                 etExpDesc.setText(desc)
                 etExpAmount.setText(String.format(Locale.getDefault(), "%.2f", amt))
@@ -944,9 +961,8 @@ class ExpenseIncomeActivity : AppCompatActivity() {
     // =========================================================================
     private fun saveIncomeEntry() {
         val itemName = spIncItem.selectedItem?.toString() ?: ""
-        if (itemName.isEmpty() || itemName == ADD_NEW_INC_LABEL) {
-            Toast.makeText(this, "Please select or add an Income item", Toast.LENGTH_SHORT).show()
-            showAddNewPopup(isExpense = false)
+        if (itemName.isEmpty() || itemName == SELECT_INC_HINT || itemName == ADD_NEW_INC_LABEL) {
+            Toast.makeText(this, "Please select an Income item", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -987,6 +1003,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
 
     private fun resetIncForm() {
         editingIncId = ""
+        spIncItem.setSelection(0, false)
         etIncDesc.setText("")
         etIncAmount.setText("")
         rbIncCash.isChecked = true
@@ -1085,7 +1102,7 @@ class ExpenseIncomeActivity : AppCompatActivity() {
                     incItemAdapter.notifyDataSetChanged()
                 }
                 val iIdx = incDropdownList.indexOfFirst { it.equals(item, ignoreCase = true) }
-                if (iIdx >= 0) spIncItem.setSelection(iIdx)
+                if (iIdx >= 0) spIncItem.setSelection(iIdx, false)
 
                 etIncDesc.setText(desc)
                 etIncAmount.setText(String.format(Locale.getDefault(), "%.2f", amt))
