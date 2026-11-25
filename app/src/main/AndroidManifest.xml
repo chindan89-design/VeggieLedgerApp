@@ -33,7 +33,6 @@
         <activity android:name=".ProfitLossActivity" android:exported="false" />
         <activity android:name=".TransactionHistoryActivity" android:exported="false" />
         <activity android:name=".ReportsHubActivity" android:exported="false" />
-<activity android:name=".DailyClosingActivity" />
         <activity android:name=".DailyClosingActivity" android:exported="false" />
         
     </application>
