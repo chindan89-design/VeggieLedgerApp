@@ -7,11 +7,14 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TableRow
 import android.widget.TextView
@@ -29,6 +32,8 @@ class PurchaseActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPurchaseBinding
     private val db = FirebaseFirestore.getInstance()
+
+    private lateinit var etTotalNos: EditText
 
     private val allSuppliers = JSONArray()
     private val filteredSupplierMap = HashMap<String, String>()
@@ -63,6 +68,8 @@ class PurchaseActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         supportActionBar?.title = "Purchase Entry"
+
+        injectTotalNosFieldBeforeTotalKgs()
 
         binding.btnModeNewPurchase.setOnClickListener { switchToNewMode() }
         binding.btnModeEditPurchase.setOnClickListener { switchToEditMode() }
@@ -124,6 +131,7 @@ class PurchaseActivity : AppCompatActivity() {
         }
         binding.actvSupplier.addTextChangedListener(liveIdWatcher)
         binding.etBags.addTextChangedListener(liveIdWatcher)
+        etTotalNos.addTextChangedListener(liveIdWatcher)
 
         binding.etNetKgs.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -153,6 +161,7 @@ class PurchaseActivity : AppCompatActivity() {
         refreshCartGrid()
 
         binding.btnAddItem.setOnClickListener {
+            val totalNos = etTotalNos.text.toString().toIntOrNull() ?: 0
             val purchaseKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
             val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
@@ -175,6 +184,7 @@ class PurchaseActivity : AppCompatActivity() {
 
             val row = JSONObject()
             row.put("itemName", selectedItemName)
+            row.put("nos", totalNos)
             row.put("bags", bags)
             row.put("bagRate", bagRate)
             row.put("purchaseKgs", purchaseKgs)
@@ -187,6 +197,7 @@ class PurchaseActivity : AppCompatActivity() {
             cartItems.put(row)
             refreshCartGrid()
 
+            etTotalNos.setText("")
             binding.etBags.setText("")
             binding.etNetKgs.setText("")
             binding.etRatePerKg.setText("")
@@ -225,6 +236,7 @@ class PurchaseActivity : AppCompatActivity() {
                 val row = cartItems.getJSONObject(i)
                 val map = HashMap<String, Any>()
                 map["itemName"] = row.getString("itemName")
+                map["nos"] = row.optInt("nos", 0)
                 map["bags"] = row.getInt("bags")
                 map["bagRate"] = row.getDouble("bagRate")
                 map["purchaseKgs"] = row.getDouble("purchaseKgs")
@@ -282,6 +294,46 @@ class PurchaseActivity : AppCompatActivity() {
                     }
             }
         }
+    }
+
+    /**
+     * Dynamically places "Total Nos" right before "Total Kgs" (binding.etNetKgs)
+     * without requiring any XML layout file edits.
+     */
+    private fun injectTotalNosFieldBeforeTotalKgs() {
+        val parent = binding.etNetKgs.parent as? ViewGroup ?: return
+        var insertIndex = parent.indexOfChild(binding.etNetKgs)
+        if (insertIndex > 0 && parent.getChildAt(insertIndex - 1) is TextView) {
+            insertIndex -= 1
+        }
+
+        val nosBox = LinearLayout(this)
+        nosBox.orientation = LinearLayout.VERTICAL
+        val boxLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        boxLp.setMargins(0, 0, 0, 8)
+        nosBox.layoutParams = boxLp
+
+        val lblNos = TextView(this)
+        lblNos.text = "Total Nos"
+        lblNos.textSize = 12f
+        lblNos.setTypeface(null, Typeface.BOLD)
+        lblNos.setTextColor(Color.parseColor("#1565C0"))
+
+        etTotalNos = EditText(this)
+        etTotalNos.hint = "Enter Total Nos"
+        etTotalNos.inputType = InputType.TYPE_CLASS_NUMBER
+        etTotalNos.setBackgroundResource(android.R.drawable.edit_text)
+        etTotalNos.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        nosBox.addView(lblNos)
+        nosBox.addView(etTotalNos)
+        parent.addView(nosBox, insertIndex)
     }
 
     private fun switchToNewMode() {
@@ -490,6 +542,7 @@ class PurchaseActivity : AppCompatActivity() {
                 if (idx == 0) firstItemName = iName
                 val obj = JSONObject()
                 obj.put("itemName", iName)
+                obj.put("nos", (map["nos"] as? Number)?.toInt() ?: 0)
                 obj.put("bags", (map["bags"] as? Number)?.toInt() ?: 0)
                 obj.put("bagRate", (map["bagRate"] as? Number)?.toDouble() ?: 0.0)
                 obj.put("purchaseKgs", (map["purchaseKgs"] as? Number)?.toDouble() ?: 0.0)
@@ -518,6 +571,7 @@ class PurchaseActivity : AppCompatActivity() {
         if (index < 0 || index >= cartItems.length()) return
         val row = cartItems.getJSONObject(index)
         val iName = row.getString("itemName")
+        val nos = row.optInt("nos", 0)
         val bags = row.getInt("bags")
         val bagRate = row.getDouble("bagRate")
         val purKgs = row.getDouble("purchaseKgs")
@@ -539,6 +593,8 @@ class PurchaseActivity : AppCompatActivity() {
         binding.layoutOnionFields.visibility = if (isOnion) View.VISIBLE else View.GONE
         binding.layoutCoconutFields.visibility = if (isCoconut) View.VISIBLE else View.GONE
 
+        etTotalNos.setText(if (nos > 0) nos.toString() else "")
+
         if (isOnion) {
             binding.etBags.setText(if (bags > 0) bags.toString() else "")
             binding.etBagRate.setText(bagRate.toString())
@@ -555,7 +611,6 @@ class PurchaseActivity : AppCompatActivity() {
 
         suppressKudumiAutoCalc = false
 
-        // Remove the row from grid so user can modify and re-add cleanly
         cartItems.remove(index)
         refreshCartGrid()
         updateLotIdPreview()
@@ -654,16 +709,22 @@ class PurchaseActivity : AppCompatActivity() {
             else -> "SUP"
         }
 
-        var totalBags = 0
+        var totalBagsOrNos = 0
         for (i in 0 until cartItems.length()) {
-            totalBags += cartItems.getJSONObject(i).getInt("bags")
+            val itemObj = cartItems.getJSONObject(i)
+            val b = itemObj.getInt("bags")
+            val n = itemObj.optInt("nos", 0)
+            totalBagsOrNos += if (b > 0) b else n
         }
         val currentTypingBags = if (selectedItemName.equals("Onion", ignoreCase = true)) {
             (binding.etBags.text.toString().toIntOrNull() ?: 0)
         } else 0
-        totalBags += currentTypingBags
+        val currentTypingNos = if (currentTypingBags == 0) {
+            (etTotalNos.text.toString().toIntOrNull() ?: 0)
+        } else 0
+        totalBagsOrNos += (currentTypingBags + currentTypingNos)
 
-        binding.tvGeneratedBatchId.text = "$prefix-$selectedDayStr-$totalBags"
+        binding.tvGeneratedBatchId.text = "$prefix-$selectedDayStr-$totalBagsOrNos"
     }
 
     private fun loadItemsFromDb() {
@@ -742,6 +803,7 @@ class PurchaseActivity : AppCompatActivity() {
         for (idx in 0 until cartItems.length()) {
             val row = cartItems.getJSONObject(idx)
             val name = row.getString("itemName")
+            val nos = row.optInt("nos", 0)
             val bags = row.getInt("bags")
             val purKgs = row.getDouble("purchaseKgs")
             val kudumi = row.getDouble("kudumi")
@@ -758,15 +820,21 @@ class PurchaseActivity : AppCompatActivity() {
                 "%.0f+%.0f".format(kudumi, thadukki)
             } else "-"
 
+            val countText = when {
+                bags > 0 && nos > 0 -> "$nos / $bags"
+                nos > 0 -> nos.toString()
+                bags > 0 -> bags.toString()
+                else -> "-"
+            }
+
             tableRow.addView(makeCell(name, alignRight = false, bold = true))
-            tableRow.addView(makeCell(if (bags > 0) bags.toString() else "-", alignRight = true))
+            tableRow.addView(makeCell(countText, alignRight = true))
             tableRow.addView(makeCell("%.1f".format(purKgs), alignRight = true))
             tableRow.addView(makeCell(dedText, alignRight = true))
             tableRow.addView(makeCell("%.2f".format(netKgs), alignRight = true, bold = true, colorHex = "#1B5E20"))
             tableRow.addView(makeCell("%.2f".format(rate), alignRight = true))
             tableRow.addView(makeCell("%.2f".format(total), alignRight = true, bold = true, colorHex = "#1565C0"))
 
-            // Action Cell: EDIT & DELETE (X) side-by-side
             val actionLayout = LinearLayout(this)
             actionLayout.orientation = LinearLayout.HORIZONTAL
             actionLayout.gravity = Gravity.CENTER
@@ -814,6 +882,7 @@ class PurchaseActivity : AppCompatActivity() {
         selectedSupplierName = ""
 
         binding.actvSupplier.setText("")
+        etTotalNos.setText("")
         binding.etBags.setText("")
         binding.etBagRate.setText("10")
         binding.etNetKgs.setText("")
@@ -835,6 +904,7 @@ class PurchaseActivity : AppCompatActivity() {
         for (i in 0 until cartItems.length()) {
             val row = cartItems.getJSONObject(i)
             val itemName = row.getString("itemName")
+            val nos = row.optInt("nos", 0)
             val bags = row.getInt("bags")
             val netKgs = row.getDouble("netKgs")
             val rate = row.getDouble("ratePerKg")
@@ -846,7 +916,8 @@ class PurchaseActivity : AppCompatActivity() {
                 "supplierId" to selectedSupplierId,
                 "supplierName" to selectedSupplierName,
                 "itemName" to itemName,
-                "availableBags" to bags,
+                "availableBags" to if (bags > 0) bags else nos,
+                "availableNos" to nos,
                 "availableKgs" to netKgs,
                 "purchaseRate" to rate,
                 "timestamp" to System.currentTimeMillis()
@@ -873,6 +944,8 @@ class PurchaseActivity : AppCompatActivity() {
                 for (bDoc in bSnap) bDoc.reference.delete()
                 for (i in 0 until cartItems.length()) {
                     val row = cartItems.getJSONObject(i)
+                    val nos = row.optInt("nos", 0)
+                    val bags = row.getInt("bags")
                     val batchDoc = db.collection("stock_batches").document()
                     val batchData = hashMapOf(
                         "purchaseId" to purchaseId,
@@ -880,7 +953,8 @@ class PurchaseActivity : AppCompatActivity() {
                         "supplierId" to selectedSupplierId,
                         "supplierName" to selectedSupplierName,
                         "itemName" to row.getString("itemName"),
-                        "availableBags" to row.getInt("bags"),
+                        "availableBags" to if (bags > 0) bags else nos,
+                        "availableNos" to nos,
                         "availableKgs" to row.getDouble("netKgs"),
                         "purchaseRate" to row.getDouble("ratePerKg"),
                         "timestamp" to System.currentTimeMillis()
