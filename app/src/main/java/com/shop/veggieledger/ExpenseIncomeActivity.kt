@@ -2,528 +2,785 @@ package com.shop.veggieledger
 
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.print.PrintAttributes
+import android.print.PrintManager
 import android.view.Gravity
-import android.view.View
-import android.widget.AdapterView
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
-import com.shop.veggieledger.databinding.ActivityExpenseIncomeBinding
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
-class ExpenseIncomeActivity : AppCompatActivity() {
+class IncomeExpenseActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityExpenseIncomeBinding
     private val db = FirebaseFirestore.getInstance()
 
-    private var currentType: String = "Expense"
+    private lateinit var etDate: EditText
+    private lateinit var spType: Spinner
+    private lateinit var spItemList: Spinner
+    private lateinit var btnAddNewItem: Button
+    private lateinit var spPayMode: Spinner
+    private lateinit var etDesc: EditText
+    private lateinit var etAmount: EditText
+    private lateinit var btnSave: Button
+    private lateinit var btnCancelEdit: Button
+
+    private lateinit var tvCashSummary: TextView
+    private lateinit var tvBankSummary: TextView
+    private lateinit var tvNetSummary: TextView
+    private lateinit var tableLayout: TableLayout
+    private lateinit var printWebView: WebView
+
     private var selectedDateStr: String = ""
-    private val pendingGridList = JSONArray()
-    private var gridTotalAmount = 0.0
+    private var editingDocId: String = ""
+    private val dayEntries = JSONArray()
 
-    private val payModes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer")
+    private val entryTypes = arrayListOf("EXPENSE (-)", "INCOME (+)")
+    private val itemNamesList = arrayListOf<String>()
+    private lateinit var itemAdapter: ArrayAdapter<String>
+    private val payModes = arrayListOf("Cash", "GPay / UPI")
 
-    private val mainCategories = arrayListOf(
-        "Shop Expenses",
-        "Vehicle Expenses",
-        "Other Expenses"
+    private val defaultItems = listOf(
+        "Shop Expenses - Labour / Coolie",
+        "Shop Expenses - Tea & Food",
+        "Shop Expenses - Packing / Rope",
+        "Shop Expenses - Rent / EB",
+        "Vehicle Expenses - Diesel / Auto",
+        "Other Expenses",
+        "Other Income"
     )
-
-    private val defaultExpenseHeads = arrayListOf(
-        "Water",
-        "Tea / Coffee",
-        "Tiffin",
-        "Juice / Soup",
-        "Staff Salary",
-        "Vehicle Rent",
-        "Weighbridge Charges",
-        "Gate Entry Charges",
-        "Unloading Coolie",
-        "Labour Lunch Expenses"
-    )
-
-    private val dbExpenseHeadsList = arrayListOf("+ Add New Item")
-    private val ADD_NEW_OPTION = "+ Add New Item"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityExpenseIncomeBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        supportActionBar?.title = "Expenses & Income"
-
-        binding.btnTypeExpense.setOnClickListener { switchToExpenseMode() }
-        binding.btnTypeIncome.setOnClickListener { switchToIncomeMode() }
+        supportActionBar?.title = "Income & Expenses"
 
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
-        binding.etExpDate.setText(selectedDateStr)
 
-        binding.etExpDate.setOnClickListener {
+        buildUi(cal)
+        loadDropdownItemsFromCloud()
+        loadEntriesForDate()
+    }
+
+    private fun fmtVal(value: Double): String {
+        return if (abs(value) < 0.005) "-" else String.format(Locale.getDefault(), "%.2f", value)
+    }
+
+    private fun buildUi(cal: Calendar) {
+        val rootScroll = ScrollView(this)
+        rootScroll.setBackgroundColor(Color.parseColor("#ECEFF1"))
+        rootScroll.setPadding(16, 16, 16, 16)
+
+        val mainCol = LinearLayout(this)
+        mainCol.orientation = LinearLayout.VERTICAL
+        rootScroll.addView(mainCol)
+
+        // 1. TOP SUMMARY DASHBOARD CARD
+        val summaryCard = LinearLayout(this)
+        summaryCard.orientation = LinearLayout.VERTICAL
+        summaryCard.setBackgroundColor(Color.WHITE)
+        summaryCard.setPadding(18, 16, 18, 16)
+        val sumLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        sumLp.setMargins(0, 0, 0, 12)
+        summaryCard.layoutParams = sumLp
+
+        val tvDashTitle = TextView(this)
+        tvDashTitle.text = "DAILY INCOME & EXPENSE TALLY"
+        tvDashTitle.textSize = 16f
+        tvDashTitle.setTypeface(null, Typeface.BOLD)
+        tvDashTitle.setTextColor(Color.parseColor("#1B5E20"))
+        tvDashTitle.gravity = Gravity.CENTER
+        tvDashTitle.setPadding(0, 0, 0, 10)
+        summaryCard.addView(tvDashTitle)
+
+        tvCashSummary = TextView(this)
+        tvCashSummary.text = "Cash In: Rs. 0.00   |   Cash Out: Rs. 0.00"
+        tvCashSummary.textSize = 13.5f
+        tvCashSummary.setTypeface(null, Typeface.BOLD)
+        tvCashSummary.setTextColor(Color.parseColor("#2E7D32"))
+        tvCashSummary.setPadding(8, 6, 8, 6)
+        summaryCard.addView(tvCashSummary)
+
+        tvBankSummary = TextView(this)
+        tvBankSummary.text = "GPay/Bank In: Rs. 0.00   |   GPay/Bank Out: Rs. 0.00"
+        tvBankSummary.textSize = 13.5f
+        tvBankSummary.setTypeface(null, Typeface.BOLD)
+        tvBankSummary.setTextColor(Color.parseColor("#1565C0"))
+        tvBankSummary.setPadding(8, 4, 8, 8)
+        summaryCard.addView(tvBankSummary)
+
+        tvNetSummary = TextView(this)
+        tvNetSummary.text = "Net Cash: Rs. 0.00   |   Overall Net: Rs. 0.00"
+        tvNetSummary.textSize = 15f
+        tvNetSummary.setTypeface(null, Typeface.BOLD)
+        tvNetSummary.setTextColor(Color.parseColor("#D84315"))
+        tvNetSummary.setBackgroundColor(Color.parseColor("#FFF9C4"))
+        tvNetSummary.setPadding(12, 10, 12, 10)
+        summaryCard.addView(tvNetSummary)
+
+        mainCol.addView(summaryCard)
+
+        // 2. ENTRY FORM CARD
+        val formCard = LinearLayout(this)
+        formCard.orientation = LinearLayout.VERTICAL
+        formCard.setBackgroundColor(Color.WHITE)
+        formCard.setPadding(18, 18, 18, 18)
+        val formLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        formLp.setMargins(0, 0, 0, 14)
+        formCard.layoutParams = formLp
+
+        // Row 1: Date & Entry Type
+        val row1 = LinearLayout(this)
+        row1.orientation = LinearLayout.HORIZONTAL
+        row1.weightSum = 2f
+        row1.setPadding(0, 0, 0, 10)
+
+        val colDate = LinearLayout(this)
+        colDate.orientation = LinearLayout.VERTICAL
+        colDate.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lblDate = TextView(this)
+        lblDate.text = "1. Date *"
+        lblDate.textSize = 12f
+        lblDate.setTypeface(null, Typeface.BOLD)
+        etDate = EditText(this)
+        etDate.setText(selectedDateStr)
+        etDate.isFocusable = false
+        etDate.isClickable = true
+        etDate.setBackgroundResource(android.R.drawable.edit_text)
+        etDate.setOnClickListener {
             DatePickerDialog(this, { _, y, m, d ->
                 cal.set(y, m, d)
                 selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
-                binding.etExpDate.setText(selectedDateStr)
-                loadSavedEntriesForDate()
+                etDate.setText(selectedDateStr)
+                loadEntriesForDate()
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
+        colDate.addView(lblDate)
+        colDate.addView(etDate)
 
+        val colType = LinearLayout(this)
+        colType.orientation = LinearLayout.VERTICAL
+        colType.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lblType = TextView(this)
+        lblType.text = "2. Entry Type *"
+        lblType.textSize = 12f
+        lblType.setTypeface(null, Typeface.BOLD)
+        spType = Spinner(this)
+        spType.setBackgroundResource(android.R.drawable.btn_dropdown)
+        val typeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, entryTypes)
+        typeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spType.adapter = typeAdapter
+        colType.addView(lblType)
+        colType.addView(spType)
+
+        row1.addView(colDate)
+        row1.addView(colType)
+        formCard.addView(row1)
+
+        // Row 2: Select Item Drop-Down + "+ ADD NEW" Button
+        val lblItem = TextView(this)
+        lblItem.text = "3. Select Expense / Income Item *"
+        lblItem.textSize = 12f
+        lblItem.setTypeface(null, Typeface.BOLD)
+        lblItem.setTextColor(Color.parseColor("#1B5E20"))
+        formCard.addView(lblItem)
+
+        val rowItem = LinearLayout(this)
+        rowItem.orientation = LinearLayout.HORIZONTAL
+        rowItem.weightSum = 3f
+        rowItem.setPadding(0, 2, 0, 10)
+
+        spItemList = Spinner(this)
+        spItemList.setBackgroundResource(android.R.drawable.btn_dropdown)
+        val lpSpin = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2.05f)
+        lpSpin.setMargins(0, 0, 6, 0)
+        spItemList.layoutParams = lpSpin
+
+        itemNamesList.clear()
+        itemNamesList.addAll(defaultItems)
+        itemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNamesList)
+        itemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spItemList.adapter = itemAdapter
+
+        btnAddNewItem = Button(this)
+        btnAddNewItem.text = "+ ADD NEW"
+        btnAddNewItem.textSize = 12f
+        btnAddNewItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
+        btnAddNewItem.setTextColor(Color.WHITE)
+        btnAddNewItem.setTypeface(null, Typeface.BOLD)
+        val lpAddBtn = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.95f)
+        btnAddNewItem.layoutParams = lpAddBtn
+        btnAddNewItem.setOnClickListener { showAddNewItemDialog() }
+
+        rowItem.addView(spItemList)
+        rowItem.addView(btnAddNewItem)
+        formCard.addView(rowItem)
+
+        // Row 3: Mode & Amount
+        val row3 = LinearLayout(this)
+        row3.orientation = LinearLayout.HORIZONTAL
+        row3.weightSum = 2f
+        row3.setPadding(0, 0, 0, 8)
+
+        val colMode = LinearLayout(this)
+        colMode.orientation = LinearLayout.VERTICAL
+        colMode.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lblMode = TextView(this)
+        lblMode.text = "4. Payment Mode *"
+        lblMode.textSize = 12f
+        lblMode.setTypeface(null, Typeface.BOLD)
+        spPayMode = Spinner(this)
+        spPayMode.setBackgroundResource(android.R.drawable.btn_dropdown)
         val modeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
         modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spExpPayMode.adapter = modeAdapter
+        spPayMode.adapter = modeAdapter
+        colMode.addView(lblMode)
+        colMode.addView(spPayMode)
 
-        val mainCatAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, mainCategories)
-        mainCatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spMainCategory.adapter = mainCatAdapter
+        val colAmt = LinearLayout(this)
+        colAmt.orientation = LinearLayout.VERTICAL
+        colAmt.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        val lblAmt = TextView(this)
+        lblAmt.text = "5. Amount (Rs) *"
+        lblAmt.textSize = 12f
+        lblAmt.setTypeface(null, Typeface.BOLD)
+        etAmount = EditText(this)
+        etAmount.hint = "0.00"
+        etAmount.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        etAmount.setTypeface(null, Typeface.BOLD)
+        etAmount.setBackgroundResource(android.R.drawable.edit_text)
+        colAmt.addView(lblAmt)
+        colAmt.addView(etAmount)
 
-        bindExpenseHeadsSpinner()
-        loadExpenseHeadsFromDatabase()
+        row3.addView(colMode)
+        row3.addView(colAmt)
+        formCard.addView(row3)
 
-        val selectionListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
-                checkCustomExpenseVisibility()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-        binding.spMainCategory.onItemSelectedListener = selectionListener
-        binding.spAllExpenseHeads.onItemSelectedListener = selectionListener
+        // Row 4: Optional Notes
+        val lblDesc = TextView(this)
+        lblDesc.text = "6. Notes / Remarks (Optional)"
+        lblDesc.textSize = 12f
+        lblDesc.setTypeface(null, Typeface.BOLD)
+        etDesc = EditText(this)
+        etDesc.hint = "Enter details if needed..."
+        etDesc.setBackgroundResource(android.R.drawable.edit_text)
+        val lpDesc = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lpDesc.setMargins(0, 0, 0, 12)
+        etDesc.layoutParams = lpDesc
+        formCard.addView(lblDesc)
+        formCard.addView(etDesc)
 
-        // Add Expense Row to Data Grid
-        binding.btnAddExpenseRow.setOnClickListener {
-            val chosenMainCat = binding.spMainCategory.selectedItem?.toString() ?: "Shop Expenses"
-            val chosenHead = binding.spAllExpenseHeads.selectedItem?.toString() ?: ""
-            val amt = binding.etExpAmount.text.toString().toDoubleOrNull() ?: 0.0
-            val note = binding.etExpRemarks.text.toString().trim()
+        // Buttons Row: SAVE | CLEAR | PRINT A4 PDF
+        val btnRow = LinearLayout(this)
+        btnRow.orientation = LinearLayout.HORIZONTAL
+        btnRow.weightSum = 3f
 
-            val isNewOrOther = chosenMainCat.equals("Other Expenses", ignoreCase = true) ||
-                    chosenHead == ADD_NEW_OPTION
+        btnSave = Button(this)
+        btnSave.text = "SAVE ENTRY"
+        btnSave.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
+        btnSave.setTextColor(Color.WHITE)
+        btnSave.setTypeface(null, Typeface.BOLD)
+        val lpSave = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.3f)
+        lpSave.setMargins(0, 0, 4, 0)
+        btnSave.layoutParams = lpSave
+        btnSave.setOnClickListener { saveOrUpdateEntry() }
 
-            val finalExpName = if (isNewOrOther) {
-                binding.etCustomExpenseName.text.toString().trim()
-            } else {
-                chosenHead
-            }
+        btnCancelEdit = Button(this)
+        btnCancelEdit.text = "CLEAR"
+        btnCancelEdit.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
+        btnCancelEdit.setTextColor(Color.WHITE)
+        btnCancelEdit.setTypeface(null, Typeface.BOLD)
+        val lpCancel = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.8f)
+        lpCancel.setMargins(4, 0, 4, 0)
+        btnCancelEdit.layoutParams = lpCancel
+        btnCancelEdit.setOnClickListener { resetEntryForm() }
 
-            if (finalExpName.isEmpty()) {
-                Toast.makeText(this, "Please enter New Expense Name", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (amt <= 0.0) {
-                Toast.makeText(this, "Please enter valid Amount", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+        val btnPrint = Button(this)
+        btnPrint.text = "A4 PDF"
+        btnPrint.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
+        btnPrint.setTextColor(Color.WHITE)
+        btnPrint.setTypeface(null, Typeface.BOLD)
+        val lpPrint = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.9f)
+        lpPrint.setMargins(4, 0, 0, 0)
+        btnPrint.layoutParams = lpPrint
+        btnPrint.setOnClickListener { printDailyA4Sheet() }
 
-            if (isNewOrOther) {
-                saveNewExpenseHeadToDatabase(finalExpName)
-            }
+        btnRow.addView(btnSave)
+        btnRow.addView(btnCancelEdit)
+        btnRow.addView(btnPrint)
+        formCard.addView(btnRow)
 
-            val rowObj = JSONObject()
-            rowObj.put("type", "Expense")
-            rowObj.put("category", chosenMainCat)
-            rowObj.put("expenseName", finalExpName)
-            rowObj.put("amount", amt)
-            rowObj.put("remarks", note)
+        mainCol.addView(formCard)
 
-            pendingGridList.put(rowObj)
-            refreshDataGrid()
+        // 3. DAY LEDGER TABLE CARD
+        val listCard = LinearLayout(this)
+        listCard.orientation = LinearLayout.VERTICAL
+        listCard.setBackgroundColor(Color.WHITE)
+        listCard.setPadding(16, 16, 16, 16)
 
-            binding.etCustomExpenseName.setText("")
-            binding.etExpAmount.setText("")
-            binding.etExpRemarks.setText("")
-            binding.btnAddExpenseRow.text = "+ ADD EXPENSE TO GRID"
-        }
+        val tvListHdr = TextView(this)
+        tvListHdr.text = "ENTRIES FOR SELECTED DATE (EDIT / DELETE)"
+        tvListHdr.textSize = 14f
+        tvListHdr.setTypeface(null, Typeface.BOLD)
+        tvListHdr.setTextColor(Color.BLACK)
+        tvListHdr.setPadding(0, 0, 0, 10)
+        listCard.addView(tvListHdr)
 
-        // Add Income Row to Data Grid
-        binding.btnAddIncomeRow.setOnClickListener {
-            val incName = binding.etIncomeName.text.toString().trim()
-            val amt = binding.etIncAmount.text.toString().toDoubleOrNull() ?: 0.0
+        val hScroll = HorizontalScrollView(this)
+        tableLayout = TableLayout(this)
+        tableLayout.setBackgroundColor(Color.BLACK)
+        tableLayout.setPadding(1, 1, 1, 1)
+        hScroll.addView(tableLayout)
+        listCard.addView(hScroll)
 
-            if (incName.isEmpty()) {
-                Toast.makeText(this, "Please enter Income Name", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (amt <= 0.0) {
-                Toast.makeText(this, "Please enter valid Income Amount", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val rowObj = JSONObject()
-            rowObj.put("type", "Income")
-            rowObj.put("category", "Income")
-            rowObj.put("expenseName", incName)
-            rowObj.put("amount", amt)
-            rowObj.put("remarks", "")
-
-            pendingGridList.put(rowObj)
-            refreshDataGrid()
-
-            binding.etIncomeName.setText("")
-            binding.etIncAmount.setText("")
-            binding.btnAddIncomeRow.text = "+ ADD INCOME TO GRID"
-        }
-
-        // Save All Entries from Data Grid to Firestore
-        binding.btnSaveAllExpInc.setOnClickListener {
-            if (pendingGridList.length() == 0) {
-                Toast.makeText(this, "Add at least one entry to the grid first", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            binding.btnSaveAllExpInc.isEnabled = false
-            val payMode = binding.spExpPayMode.selectedItem?.toString() ?: "Cash"
-            val totalCount = pendingGridList.length()
-            var savedCount = 0
-
-            for (i in 0 until totalCount) {
-                val item = pendingGridList.getJSONObject(i)
-                val docId = db.collection("expenses_income").document().id
-                val dataMap = hashMapOf(
-                    "id" to docId,
-                    "type" to item.getString("type"),
-                    "date" to selectedDateStr,
-                    "category" to item.getString("category"),
-                    "subCategory" to item.getString("expenseName"),
-                    "amount" to item.getDouble("amount"),
-                    "payMode" to payMode,
-                    "remarks" to item.optString("remarks", ""),
-                    "timestamp" to (System.currentTimeMillis() + i)
-                )
-
-                db.collection("expenses_income").document(docId).set(dataMap)
-                    .addOnSuccessListener {
-                        savedCount++
-                        if (savedCount == totalCount) {
-                            Toast.makeText(this, "All $totalCount entries saved successfully!", Toast.LENGTH_SHORT).show()
-                            clearJsonArray(pendingGridList)
-                            refreshDataGrid()
-                            binding.btnSaveAllExpInc.isEnabled = true
-                            loadSavedEntriesForDate()
-                        }
-                    }
-                    .addOnFailureListener {
-                        binding.btnSaveAllExpInc.isEnabled = true
-                        Toast.makeText(this, "Error saving some entries", Toast.LENGTH_SHORT).show()
-                    }
-            }
-        }
-
-        refreshDataGrid()
-        loadSavedEntriesForDate()
+        mainCol.addView(listCard)
+        setContentView(rootScroll)
     }
 
-    private fun loadExpenseHeadsFromDatabase(selectNameAfterLoad: String = "") {
-        db.collection("expense_heads").get()
-            .addOnSuccessListener { snap ->
-                if (snap.isEmpty) {
-                    for (headName in defaultExpenseHeads) {
-                        val docId = db.collection("expense_heads").document().id
-                        db.collection("expense_heads").document(docId).set(
-                            hashMapOf("id" to docId, "name" to headName)
-                        )
-                    }
-                    dbExpenseHeadsList.clear()
-                    dbExpenseHeadsList.addAll(defaultExpenseHeads)
-                    dbExpenseHeadsList.sortBy { it.lowercase(Locale.getDefault()) }
-                    dbExpenseHeadsList.add(ADD_NEW_OPTION)
-                    bindExpenseHeadsSpinner(selectNameAfterLoad)
-                } else {
-                    val tempNames = arrayListOf<String>()
-                    for (doc in snap) {
-                        val name = doc.getString("name")?.trim() ?: ""
-                        if (name.isNotEmpty() && !tempNames.any { it.equals(name, ignoreCase = true) }) {
-                            tempNames.add(name)
-                        }
-                    }
-                    tempNames.sortBy { it.lowercase(Locale.getDefault()) }
-                    dbExpenseHeadsList.clear()
-                    dbExpenseHeadsList.addAll(tempNames)
-                    dbExpenseHeadsList.add(ADD_NEW_OPTION)
-                    bindExpenseHeadsSpinner(selectNameAfterLoad)
+    /**
+     * Loads saved custom expense/income items from Firestore ("expense_heads")
+     * and merges them with default items in the dropdown.
+     */
+    private fun loadDropdownItemsFromCloud(selectItemAfterLoad: String = "") {
+        db.collection("expense_heads").get().addOnSuccessListener { snap ->
+            val combinedSet = LinkedHashSet<String>()
+            combinedSet.addAll(defaultItems)
+
+            for (doc in snap) {
+                val itemName = doc.getString("name")?.trim() ?: ""
+                if (itemName.isNotEmpty()) {
+                    combinedSet.add(itemName)
                 }
             }
-            .addOnFailureListener {
-                dbExpenseHeadsList.clear()
-                dbExpenseHeadsList.addAll(defaultExpenseHeads)
-                dbExpenseHeadsList.add(ADD_NEW_OPTION)
-                bindExpenseHeadsSpinner(selectNameAfterLoad)
+
+            itemNamesList.clear()
+            itemNamesList.addAll(combinedSet)
+            itemAdapter.notifyDataSetChanged()
+
+            if (selectItemAfterLoad.isNotEmpty()) {
+                val idx = itemNamesList.indexOfFirst { it.equals(selectItemAfterLoad, ignoreCase = true) }
+                if (idx >= 0) spItemList.setSelection(idx)
             }
-    }
-
-    private fun bindExpenseHeadsSpinner(selectName: String = "") {
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, dbExpenseHeadsList)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spAllExpenseHeads.adapter = adapter
-
-        if (selectName.isNotEmpty()) {
-            val idx = dbExpenseHeadsList.indexOfFirst { it.equals(selectName, ignoreCase = true) }
-            if (idx >= 0) binding.spAllExpenseHeads.setSelection(idx)
         }
-        checkCustomExpenseVisibility()
     }
 
-    private fun saveNewExpenseHeadToDatabase(newHeadName: String) {
-        val exists = dbExpenseHeadsList.any { it.equals(newHeadName, ignoreCase = true) }
-        if (exists) return
+    /**
+     * Dialog triggered by "+ ADD NEW" button to add a new Expense/Income item
+     * permanently into the dropdown list and Firestore.
+     */
+    private fun showAddNewItemDialog() {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(40, 24, 40, 12)
 
-        val docId = db.collection("expense_heads").document().id
-        db.collection("expense_heads").document(docId)
-            .set(hashMapOf("id" to docId, "name" to newHeadName))
-            .addOnSuccessListener {
-                Toast.makeText(this, "'$newHeadName' saved to Expense Database!", Toast.LENGTH_SHORT).show()
-                loadExpenseHeadsFromDatabase(newHeadName)
+        val lblGroup = TextView(this)
+        lblGroup.text = "Group Type (for Daily Closing Tally)"
+        lblGroup.textSize = 12f
+        lblGroup.setTypeface(null, Typeface.BOLD)
+        box.addView(lblGroup)
+
+        val spGroup = Spinner(this)
+        val groups = listOf("Shop Expenses", "Vehicle Expenses", "Other Expenses", "Other Income")
+        val grpAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, groups)
+        grpAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spGroup.adapter = grpAdapter
+        box.addView(spGroup)
+
+        val lblName = TextView(this)
+        lblName.text = "New Item Name *"
+        lblName.textSize = 12f
+        lblName.setTypeface(null, Typeface.BOLD)
+        lblName.setPadding(0, 16, 0, 4)
+        box.addView(lblName)
+
+        val etNewName = EditText(this)
+        etNewName.hint = "e.g. Lorry Freight, Diesel, Market Fee"
+        box.addView(etNewName)
+
+        AlertDialog.Builder(this)
+            .setTitle("Add New Expense / Income Item")
+            .setView(box)
+            .setPositiveButton("ADD TO LIST") { _, _ ->
+                val rawName = etNewName.text.toString().trim()
+                if (rawName.isEmpty()) {
+                    Toast.makeText(this, "Enter item name", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val grp = spGroup.selectedItem?.toString() ?: "Other Expenses"
+                val formattedName = if (rawName.contains("-")) rawName else "$grp - $rawName"
+
+                // Immediately add to local dropdown and select it
+                if (!itemNamesList.any { it.equals(formattedName, ignoreCase = true) }) {
+                    itemNamesList.add(formattedName)
+                    itemAdapter.notifyDataSetChanged()
+                }
+                val newIdx = itemNamesList.indexOfFirst { it.equals(formattedName, ignoreCase = true) }
+                if (newIdx >= 0) spItemList.setSelection(newIdx)
+
+                // If "Other Income" selected, switch Entry Type to INCOME (+) automatically
+                if (grp.equals("Other Income", ignoreCase = true)) {
+                    spType.setSelection(1)
+                } else {
+                    spType.setSelection(0)
+                }
+
+                // Save to Firestore for future sessions
+                val docId = formattedName.lowercase(Locale.getDefault()).replace(Regex("[^a-z0-9]"), "_")
+                val itemDoc = hashMapOf(
+                    "name" to formattedName,
+                    "group" to grp,
+                    "createdAt" to System.currentTimeMillis()
+                )
+                db.collection("expense_heads").document(docId).set(itemDoc)
+                Toast.makeText(this, "Added: $formattedName", Toast.LENGTH_SHORT).show()
             }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
-    private fun checkCustomExpenseVisibility() {
-        val chosenMain = binding.spMainCategory.selectedItem?.toString() ?: ""
-        val chosenHead = binding.spAllExpenseHeads.selectedItem?.toString() ?: ""
+    private fun saveOrUpdateEntry() {
+        val typeStr = spType.selectedItem?.toString() ?: "EXPENSE (-)"
+        val isIncome = typeStr.startsWith("INCOME", ignoreCase = true)
+        val selectedItemName = spItemList.selectedItem?.toString() ?: "Other Expenses"
+        val mode = spPayMode.selectedItem?.toString() ?: "Cash"
+        val desc = etDesc.text.toString().trim()
+        val amount = etAmount.text.toString().toDoubleOrNull() ?: 0.0
 
-        val showCustomBox = chosenMain.equals("Other Expenses", ignoreCase = true) ||
-                chosenHead == ADD_NEW_OPTION
-
-        binding.layoutCustomExpenseName.visibility = if (showCustomBox) View.VISIBLE else View.GONE
-    }
-
-    private fun switchToExpenseMode() {
-        currentType = "Expense"
-        binding.layoutExpenseCard.visibility = View.VISIBLE
-        binding.layoutIncomeCard.visibility = View.GONE
-        binding.btnTypeExpense.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#C62828"))
-        binding.btnTypeIncome.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
-        binding.tvExpIncHeader.text = "EXPENSE ENTRY"
-        binding.tvExpIncHeader.setTextColor(Color.parseColor("#C62828"))
-        binding.btnSaveAllExpInc.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#C62828"))
-    }
-
-    private fun switchToIncomeMode() {
-        currentType = "Income"
-        binding.layoutExpenseCard.visibility = View.GONE
-        binding.layoutIncomeCard.visibility = View.VISIBLE
-        binding.btnTypeIncome.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
-        binding.btnTypeExpense.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
-        binding.tvExpIncHeader.text = "INCOME ENTRY"
-        binding.tvExpIncHeader.setTextColor(Color.parseColor("#1B5E20"))
-        binding.btnSaveAllExpInc.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
-    }
-
-    private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false, colorHex: String = "#000000"): TextView {
-        val tv = TextView(this)
-        tv.text = text
-        tv.setTextColor(Color.parseColor(colorHex))
-        tv.textSize = 12f
-        tv.setPadding(16, 14, 16, 14)
-        tv.gravity = if (alignRight) Gravity.END else Gravity.START
-        if (bold) tv.setTypeface(null, Typeface.BOLD)
-        return tv
-    }
-
-    private fun refreshDataGrid() {
-        val childCount = binding.tlExpIncGrid.childCount
-        if (childCount > 1) {
-            binding.tlExpIncGrid.removeViews(1, childCount - 1)
-        }
-
-        gridTotalAmount = 0.0
-
-        if (pendingGridList.length() == 0) {
-            val emptyRow = TableRow(this)
-            emptyRow.setBackgroundColor(Color.WHITE)
-            val emptyTv = TextView(this)
-            emptyTv.text = "No entries added to grid yet."
-            emptyTv.setTextColor(Color.GRAY)
-            emptyTv.setPadding(18, 18, 18, 18)
-            val lp = TableRow.LayoutParams()
-            lp.span = 4
-            emptyTv.layoutParams = lp
-            emptyRow.addView(emptyTv)
-            binding.tlExpIncGrid.addView(emptyRow)
-            binding.tvExpIncGrandTotal.text = "Total Grid Amount: Rs. 0.00"
+        if (amount <= 0.0) {
+            Toast.makeText(this, "Enter valid amount", Toast.LENGTH_SHORT).show()
             return
         }
 
-        for (idx in 0 until pendingGridList.length()) {
-            val row = pendingGridList.getJSONObject(idx)
-            val rowType = row.getString("type")
-            val cat = row.getString("category")
-            val expName = row.getString("expenseName")
-            val amt = row.getDouble("amount")
-            val note = row.optString("remarks", "")
-            gridTotalAmount += amt
+        btnSave.isEnabled = false
+        val docId = if (editingDocId.isNotEmpty()) editingDocId else db.collection("expenses").document().id
 
-            val tr = TableRow(this)
-            tr.setBackgroundColor(if (idx % 2 == 0) Color.WHITE else Color.parseColor("#F5F7FA"))
+        val data = hashMapOf<String, Any>(
+            "id" to docId,
+            "date" to selectedDateStr,
+            "type" to if (isIncome) "Income" else "Expense",
+            "category" to selectedItemName,
+            "payMode" to mode,
+            "description" to desc,
+            "amount" to amount,
+            "timestamp" to System.currentTimeMillis()
+        )
 
-            val nameDisplay = if (note.isNotEmpty()) "$expName ($note)" else expName
-            val amtColor = if (rowType.equals("Income", ignoreCase = true)) "#1B5E20" else "#C62828"
-
-            tr.addView(makeCell(cat, bold = true))
-            tr.addView(makeCell(nameDisplay))
-            tr.addView(makeCell("%.2f".format(amt), alignRight = true, bold = true, colorHex = amtColor))
-
-            val actionBox = LinearLayout(this)
-            actionBox.orientation = LinearLayout.HORIZONTAL
-            actionBox.gravity = Gravity.CENTER
-
-            val editBtn = TextView(this)
-            editBtn.text = "EDIT"
-            editBtn.setTextColor(Color.parseColor("#1565C0"))
-            editBtn.setTypeface(null, Typeface.BOLD)
-            editBtn.textSize = 11f
-            editBtn.setPadding(12, 14, 12, 14)
-            editBtn.setOnClickListener {
-                loadGridRowForEdit(idx)
+        db.collection("expenses").document(docId).set(data)
+            .addOnSuccessListener {
+                val msg = if (editingDocId.isNotEmpty()) "Entry Updated!" else "Entry Saved!"
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                resetEntryForm()
+                loadEntriesForDate()
             }
-
-            val delBtn = TextView(this)
-            delBtn.text = "X"
-            delBtn.setTextColor(Color.RED)
-            delBtn.setTypeface(null, Typeface.BOLD)
-            delBtn.textSize = 12f
-            delBtn.setPadding(14, 14, 14, 14)
-            delBtn.setOnClickListener {
-                pendingGridList.remove(idx)
-                refreshDataGrid()
+            .addOnFailureListener {
+                btnSave.isEnabled = true
+                Toast.makeText(this, "Failed to save entry", Toast.LENGTH_SHORT).show()
             }
-
-            actionBox.addView(editBtn)
-            actionBox.addView(delBtn)
-            tr.addView(actionBox)
-
-            binding.tlExpIncGrid.addView(tr)
-        }
-
-        binding.tvExpIncGrandTotal.text = "Total Grid Amount: Rs. %.2f".format(gridTotalAmount)
     }
 
-    private fun loadGridRowForEdit(index: Int) {
-        if (index < 0 || index >= pendingGridList.length()) return
-        val row = pendingGridList.getJSONObject(index)
-        val rowType = row.getString("type")
-        val cat = row.getString("category")
-        val expName = row.getString("expenseName")
-        val amt = row.getDouble("amount")
-        val note = row.optString("remarks", "")
-
-        if (rowType.equals("Income", ignoreCase = true)) {
-            switchToIncomeMode()
-            binding.etIncomeName.setText(expName)
-            binding.etIncAmount.setText("%.2f".format(amt))
-            binding.btnAddIncomeRow.text = "UPDATE INCOME IN GRID"
-        } else {
-            switchToExpenseMode()
-            val mainIdx = mainCategories.indexOfFirst { it.equals(cat, ignoreCase = true) }
-            if (mainIdx >= 0) binding.spMainCategory.setSelection(mainIdx)
-
-            val headIdx = dbExpenseHeadsList.indexOfFirst { it.equals(expName, ignoreCase = true) }
-            if (headIdx >= 0 && !cat.equals("Other Expenses", ignoreCase = true)) {
-                binding.spAllExpenseHeads.setSelection(headIdx)
-                binding.layoutCustomExpenseName.visibility = View.GONE
-            } else {
-                val addNewIdx = dbExpenseHeadsList.indexOf(ADD_NEW_OPTION)
-                if (addNewIdx >= 0) binding.spAllExpenseHeads.setSelection(addNewIdx)
-                binding.layoutCustomExpenseName.visibility = View.VISIBLE
-                binding.etCustomExpenseName.setText(expName)
-            }
-
-            binding.etExpAmount.setText("%.2f".format(amt))
-            binding.etExpRemarks.setText(note)
-            binding.btnAddExpenseRow.text = "UPDATE EXPENSE IN GRID"
-        }
-
-        pendingGridList.remove(index)
-        refreshDataGrid()
-        Toast.makeText(this, "Loaded row for editing", Toast.LENGTH_SHORT).show()
+    private fun resetEntryForm() {
+        editingDocId = ""
+        etDesc.setText("")
+        etAmount.setText("")
+        btnSave.text = "SAVE ENTRY"
+        btnSave.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1B5E20"))
+        btnSave.isEnabled = true
     }
 
-    private fun clearJsonArray(arr: JSONArray) {
-        while (arr.length() > 0) arr.remove(0)
+    private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false, bgColor: Int = Color.WHITE, textColor: Int = Color.BLACK): TextView {
+        val tv = TextView(this)
+        tv.text = text
+        tv.setTextColor(textColor)
+        tv.setBackgroundColor(bgColor)
+        tv.textSize = 13.5f
+        tv.setPadding(14, 14, 14, 14)
+        tv.gravity = if (alignRight) Gravity.END else Gravity.START
+        if (bold) tv.setTypeface(null, Typeface.BOLD)
+        val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT)
+        lp.setMargins(1, 1, 1, 1)
+        tv.layoutParams = lp
+        return tv
     }
 
-    private fun loadSavedEntriesForDate() {
-        binding.tvSavedEntriesTitle.text = "SAVED ENTRIES FOR $selectedDateStr"
-        binding.llSavedDateEntries.removeAllViews()
-
-        db.collection("expenses_income")
+    private fun loadEntriesForDate() {
+        db.collection("expenses")
             .whereEqualTo("date", selectedDateStr)
             .get()
             .addOnSuccessListener { snap ->
-                binding.llSavedDateEntries.removeAllViews()
-                if (snap.isEmpty) {
-                    val emptyTv = TextView(this)
-                    emptyTv.text = "No saved entries for $selectedDateStr."
-                    emptyTv.setTextColor(Color.GRAY)
-                    emptyTv.setPadding(12, 12, 12, 12)
-                    binding.llSavedDateEntries.addView(emptyTv)
-                    return@addOnSuccessListener
-                }
+                while (dayEntries.length() > 0) dayEntries.remove(0)
 
-                for (doc in snap) {
+                var cashIn = 0.0
+                var cashOut = 0.0
+                var bankIn = 0.0
+                var bankOut = 0.0
+
+                val docs = snap.documents.sortedBy { d -> d.getLong("timestamp") ?: 0L }
+
+                for (doc in docs) {
                     val type = doc.getString("type") ?: "Expense"
-                    val cat = doc.getString("category") ?: ""
-                    val subCat = doc.getString("subCategory") ?: ""
+                    val isInc = type.equals("Income", ignoreCase = true)
+                    val cat = doc.getString("category") ?: "Other Expenses"
+                    val mode = doc.getString("payMode") ?: "Cash"
+                    val desc = doc.getString("description") ?: ""
                     val amt = doc.getDouble("amount") ?: 0.0
-                    val rem = doc.getString("remarks") ?: ""
+                    val isCash = mode.equals("Cash", ignoreCase = true)
 
-                    val rowCard = LinearLayout(this)
-                    rowCard.orientation = LinearLayout.HORIZONTAL
-                    rowCard.gravity = Gravity.CENTER_VERTICAL
-                    rowCard.setBackgroundColor(Color.WHITE)
-                    rowCard.setPadding(16, 14, 16, 14)
-                    val cardLp = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                    cardLp.setMargins(0, 0, 0, 8)
-                    rowCard.layoutParams = cardLp
-
-                    val remText = if (rem.isNotEmpty()) " ($rem)" else ""
-                    val infoTv = TextView(this)
-                    infoTv.text = "[$cat] $subCat$remText\nRs. %.2f".format(amt)
-                    infoTv.setTextColor(
-                        if (type.equals("Income", ignoreCase = true)) Color.parseColor("#1B5E20")
-                        else Color.parseColor("#C62828")
-                    )
-                    infoTv.setTypeface(null, Typeface.BOLD)
-                    infoTv.textSize = 13f
-                    infoTv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-
-                    val delBtn = TextView(this)
-                    delBtn.text = "DEL"
-                    delBtn.setTextColor(Color.WHITE)
-                    delBtn.setBackgroundColor(Color.parseColor("#C62828"))
-                    delBtn.setTypeface(null, Typeface.BOLD)
-                    delBtn.textSize = 12f
-                    delBtn.setPadding(24, 14, 24, 14)
-                    delBtn.setOnClickListener {
-                        AlertDialog.Builder(this)
-                            .setTitle("Delete Saved Entry")
-                            .setMessage("Delete $subCat (Rs. %.2f)?".format(amt))
-                            .setPositiveButton("DELETE") { _, _ ->
-                                db.collection("expenses_income").document(doc.id).delete()
-                                    .addOnSuccessListener {
-                                        Toast.makeText(this, "Deleted!", Toast.LENGTH_SHORT).show()
-                                        loadSavedEntriesForDate()
-                                    }
-                            }
-                            .setNegativeButton("Cancel", null)
-                            .show()
+                    if (isInc) {
+                        if (isCash) cashIn += amt else bankIn += amt
+                    } else {
+                        if (isCash) cashOut += amt else bankOut += amt
                     }
 
-                    rowCard.addView(infoTv)
-                    rowCard.addView(delBtn)
-                    binding.llSavedDateEntries.addView(rowCard)
+                    val obj = JSONObject()
+                    obj.put("id", doc.id)
+                    obj.put("type", type)
+                    obj.put("category", cat)
+                    obj.put("payMode", mode)
+                    obj.put("description", desc)
+                    obj.put("amount", amt)
+                    dayEntries.put(obj)
                 }
+
+                val netCash = cashIn - cashOut
+                val netTotal = (cashIn + bankIn) - (cashOut + bankOut)
+
+                tvCashSummary.text = String.format(
+                    Locale.getDefault(),
+                    "Cash In: Rs. %s   |   Cash Out: Rs. %s",
+                    fmtVal(cashIn), fmtVal(cashOut)
+                )
+                tvBankSummary.text = String.format(
+                    Locale.getDefault(),
+                    "GPay/Bank In: Rs. %s   |   GPay/Bank Out: Rs. %s",
+                    fmtVal(bankIn), fmtVal(bankOut)
+                )
+                tvNetSummary.text = String.format(
+                    Locale.getDefault(),
+                    "Net Cash: Rs. %s   |   Overall Net: Rs. %s",
+                    fmtVal(netCash), fmtVal(netTotal)
+                )
+
+                renderEntriesTable(cashIn + bankIn, cashOut + bankOut)
             }
+    }
+
+    private fun renderEntriesTable(totalIncAll: Double, totalExpAll: Double) {
+        tableLayout.removeAllViews()
+
+        val hdrRow = TableRow(this)
+        hdrRow.setBackgroundColor(Color.BLACK)
+        val hdrBg = Color.parseColor("#1B5E20")
+        hdrRow.addView(makeCell("ITEM / PARTICULARS", bold = true, bgColor = hdrBg, textColor = Color.WHITE))
+        hdrRow.addView(makeCell("MODE", bold = true, bgColor = hdrBg, textColor = Color.WHITE))
+        hdrRow.addView(makeCell("INCOME (+)", alignRight = true, bold = true, bgColor = hdrBg, textColor = Color.WHITE))
+        hdrRow.addView(makeCell("EXPENSE (-)", alignRight = true, bold = true, bgColor = hdrBg, textColor = Color.WHITE))
+        hdrRow.addView(makeCell("EDIT", bold = true, bgColor = hdrBg, textColor = Color.WHITE))
+        hdrRow.addView(makeCell("DEL", bold = true, bgColor = hdrBg, textColor = Color.WHITE))
+        tableLayout.addView(hdrRow)
+
+        if (dayEntries.length() == 0) {
+            val emptyRow = TableRow(this)
+            emptyRow.setBackgroundColor(Color.BLACK)
+            val tv = makeCell("No income or expense entries for $selectedDateStr")
+            val lp = TableRow.LayoutParams()
+            lp.span = 6
+            lp.setMargins(1, 1, 1, 1)
+            tv.layoutParams = lp
+            emptyRow.addView(tv)
+            tableLayout.addView(emptyRow)
+            return
+        }
+
+        for (i in 0 until dayEntries.length()) {
+            val obj = dayEntries.getJSONObject(i)
+            val docId = obj.getString("id")
+            val type = obj.getString("type")
+            val isInc = type.equals("Income", ignoreCase = true)
+            val cat = obj.getString("category")
+            val mode = obj.getString("payMode")
+            val desc = obj.getString("description")
+            val amt = obj.getDouble("amount")
+
+            val label = if (desc.isNotEmpty()) "$cat\n($desc)" else cat
+            val rowBg = if (i % 2 == 0) Color.WHITE else Color.parseColor("#F9FBE7")
+
+            val tr = TableRow(this)
+            tr.setBackgroundColor(Color.BLACK)
+            tr.addView(makeCell(label, bold = true, bgColor = rowBg))
+            tr.addView(makeCell(mode, bgColor = rowBg))
+            tr.addView(makeCell(if (isInc) fmtVal(amt) else "-", alignRight = true, bold = isInc, bgColor = rowBg, textColor = Color.parseColor("#1B5E20")))
+            tr.addView(makeCell(if (!isInc) fmtVal(amt) else "-", alignRight = true, bold = !isInc, bgColor = rowBg, textColor = Color.parseColor("#C62828")))
+
+            val editTv = makeCell("EDIT", bold = true, bgColor = Color.parseColor("#E3F2FD"), textColor = Color.parseColor("#0D47A1"))
+            editTv.setOnClickListener {
+                editingDocId = docId
+                spType.setSelection(if (isInc) 1 else 0)
+
+                if (!itemNamesList.any { it.equals(cat, ignoreCase = true) }) {
+                    itemNamesList.add(cat)
+                    itemAdapter.notifyDataSetChanged()
+                }
+                val itemIdx = itemNamesList.indexOfFirst { it.equals(cat, ignoreCase = true) }
+                if (itemIdx >= 0) spItemList.setSelection(itemIdx)
+
+                val modeIdx = payModes.indexOfFirst { it.equals(mode, ignoreCase = true) }
+                if (modeIdx >= 0) spPayMode.setSelection(modeIdx)
+                etDesc.setText(desc)
+                etAmount.setText(String.format(Locale.getDefault(), "%.2f", amt))
+
+                btnSave.text = "UPDATE ENTRY"
+                btnSave.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
+                Toast.makeText(this, "Editing entry...", Toast.LENGTH_SHORT).show()
+            }
+            tr.addView(editTv)
+
+            val delTv = makeCell("DEL", bold = true, bgColor = Color.parseColor("#FFEBEE"), textColor = Color.parseColor("#B71C1C"))
+            delTv.setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("Delete Entry")
+                    .setMessage("Delete $cat (Rs. ${fmtVal(amt)})?")
+                    .setPositiveButton("DELETE") { _, _ ->
+                        db.collection("expenses").document(docId).delete()
+                            .addOnSuccessListener {
+                                if (editingDocId == docId) resetEntryForm()
+                                Toast.makeText(this, "Deleted!", Toast.LENGTH_SHORT).show()
+                                loadEntriesForDate()
+                            }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            tr.addView(delTv)
+
+            tableLayout.addView(tr)
+        }
+
+        // Total Row
+        val totRow = TableRow(this)
+        totRow.setBackgroundColor(Color.BLACK)
+        val totBg = Color.parseColor("#C8E6C9")
+        totRow.addView(makeCell("TOTAL", bold = true, bgColor = totBg))
+        totRow.addView(makeCell("", bold = true, bgColor = totBg))
+        totRow.addView(makeCell(fmtVal(totalIncAll), alignRight = true, bold = true, bgColor = totBg))
+        totRow.addView(makeCell(fmtVal(totalExpAll), alignRight = true, bold = true, bgColor = totBg))
+        totRow.addView(makeCell("", bgColor = totBg))
+        totRow.addView(makeCell("", bgColor = totBg))
+        tableLayout.addView(totRow)
+    }
+
+    private fun printDailyA4Sheet() {
+        val rowsHtml = StringBuilder()
+        var totInc = 0.0
+        var totExp = 0.0
+
+        for (i in 0 until dayEntries.length()) {
+            val obj = dayEntries.getJSONObject(i)
+            val isInc = obj.getString("type").equals("Income", ignoreCase = true)
+            val cat = obj.getString("category")
+            val mode = obj.getString("payMode")
+            val desc = obj.getString("description")
+            val amt = obj.getDouble("amount")
+
+            if (isInc) totInc += amt else totExp += amt
+            val particulars = if (desc.isNotEmpty()) "$cat - $desc" else cat
+
+            rowsHtml.append(
+                "<tr><td class='center'>${i + 1}</td><td class='left'>$particulars</td><td class='center'>$mode</td><td>${if (isInc) fmtVal(amt) else "-"}</td><td>${if (!isInc) fmtVal(amt) else "-"}</td></tr>"
+            )
+        }
+
+        val netBal = totInc - totExp
+        rowsHtml.append(
+            "<tr class='total'><td colspan='3' class='left'>TOTAL</td><td>${fmtVal(totInc)}</td><td>${fmtVal(totExp)}</td></tr>"
+        )
+        rowsHtml.append(
+            "<tr class='net'><td colspan='4' class='left'>NET BALANCE (INCOME - EXPENSE)</td><td>Rs. ${fmtVal(netBal)}</td></tr>"
+        )
+
+        val htmlDoc = """
+            <html>
+            <head>
+            <style>
+                * { box-sizing: border-box; }
+                @page { size: A4 portrait; margin: 6mm; }
+                body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+                .center { text-align: center; }
+                .left { text-align: left !important; }
+                h1 { font-size: 21px; margin: 0; }
+                h2 { font-size: 13px; margin: 2px 0 4px 0; }
+                h3 { font-size: 16px; margin: 4px 0 8px 0; text-decoration: underline; }
+                .meta { font-size: 13.5px; font-weight: bold; margin-bottom: 6px; }
+                table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+                table.grid th, table.grid td { border: 1px solid #000; padding: 6px; text-align: right; }
+                table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; }
+                tr.total td { font-weight: bold; background-color: #FFFDE7; border-top: 2px solid #000; }
+                tr.net td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 14px; }
+            </style>
+            </head>
+            <body>
+                <div class="center">
+                    <h1>THIRUVENI COCONUTS</h1>
+                    <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
+                    <h3>DAILY INCOME &amp; EXPENSE STATEMENT</h3>
+                </div>
+                <div class="meta">DATE: $selectedDateStr</div>
+                <table class="grid">
+                    <thead>
+                        <tr>
+                            <th style="width:8%;">S.NO</th>
+                            <th style="width:46%;">PARTICULARS</th>
+                            <th style="width:14%;">MODE</th>
+                            <th style="width:16%;">INCOME (+)</th>
+                            <th style="width:16%;">EXPENSE (-)</th>
+                        </tr>
+                    </thead>
+                    <tbody>$rowsHtml</tbody>
+                </table>
+            </body>
+            </html>
+        """.trimIndent()
+
+        printWebView = WebView(this)
+        printWebView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+                val printAdapter = printWebView.createPrintDocumentAdapter("Income_Expense_$selectedDateStr")
+                val builder = PrintAttributes.Builder()
+                builder.setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                builder.setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                printManager.print("Income Expense A4", printAdapter, builder.build())
+            }
+        }
+        printWebView.loadDataWithBaseURL(null, htmlDoc, "text/HTML", "UTF-8", null)
+        Toast.makeText(this, "Preparing Daily Income & Expense A4 PDF...", Toast.LENGTH_SHORT).show()
     }
 }
