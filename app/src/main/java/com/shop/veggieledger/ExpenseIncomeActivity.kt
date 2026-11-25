@@ -31,7 +31,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 
-class IncomeExpenseActivity : AppCompatActivity() {
+class ExpenseIncomeActivity : AppCompatActivity() {
 
     private val db = FirebaseFirestore.getInstance()
 
@@ -366,10 +366,6 @@ class IncomeExpenseActivity : AppCompatActivity() {
         setContentView(rootScroll)
     }
 
-    /**
-     * Loads saved custom expense/income items from Firestore ("expense_heads")
-     * and merges them with default items in the dropdown.
-     */
     private fun loadDropdownItemsFromCloud(selectItemAfterLoad: String = "") {
         db.collection("expense_heads").get().addOnSuccessListener { snap ->
             val combinedSet = LinkedHashSet<String>()
@@ -393,10 +389,6 @@ class IncomeExpenseActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Dialog triggered by "+ ADD NEW" button to add a new Expense/Income item
-     * permanently into the dropdown list and Firestore.
-     */
     private fun showAddNewItemDialog() {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.VERTICAL
@@ -438,7 +430,6 @@ class IncomeExpenseActivity : AppCompatActivity() {
                 val grp = spGroup.selectedItem?.toString() ?: "Other Expenses"
                 val formattedName = if (rawName.contains("-")) rawName else "$grp - $rawName"
 
-                // Immediately add to local dropdown and select it
                 if (!itemNamesList.any { it.equals(formattedName, ignoreCase = true) }) {
                     itemNamesList.add(formattedName)
                     itemAdapter.notifyDataSetChanged()
@@ -446,14 +437,12 @@ class IncomeExpenseActivity : AppCompatActivity() {
                 val newIdx = itemNamesList.indexOfFirst { it.equals(formattedName, ignoreCase = true) }
                 if (newIdx >= 0) spItemList.setSelection(newIdx)
 
-                // If "Other Income" selected, switch Entry Type to INCOME (+) automatically
                 if (grp.equals("Other Income", ignoreCase = true)) {
                     spType.setSelection(1)
                 } else {
                     spType.setSelection(0)
                 }
 
-                // Save to Firestore for future sessions
                 val docId = formattedName.lowercase(Locale.getDefault()).replace(Regex("[^a-z0-9]"), "_")
                 val itemDoc = hashMapOf(
                     "name" to formattedName,
