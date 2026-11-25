@@ -63,7 +63,14 @@ class ReportsHubActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        reportType = intent.getStringExtra("REPORT_TYPE") ?: "SAL_STATEMENT"
+        reportType = intent.getStringExtra("REPORT_TYPE") ?: "SAL_CUSTOMER"
+
+        if (reportType == "DAILY_CLOSING") {
+            startActivity(Intent(this, DailyClosingActivity::class.java))
+            finish()
+            return
+        }
+
         supportActionBar?.title = getReportTitle(reportType)
 
         buildUiProgrammatically()
@@ -106,6 +113,23 @@ class ReportsHubActivity : AppCompatActivity() {
         val mainCol = LinearLayout(this)
         mainCol.orientation = LinearLayout.VERTICAL
         rootScroll.addView(mainCol)
+
+        // Direct Shortcut Button to 11-Step Daily Account Closing Report
+        val btnDailyClosing = Button(this)
+        btnDailyClosing.text = "DAILY ACCOUNT CLOSING REPORT (11 STEPS)"
+        btnDailyClosing.setBackgroundColor(Color.parseColor("#E65100"))
+        btnDailyClosing.setTextColor(Color.WHITE)
+        btnDailyClosing.setTypeface(null, Typeface.BOLD)
+        val dcLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        dcLp.setMargins(0, 0, 0, 12)
+        btnDailyClosing.layoutParams = dcLp
+        btnDailyClosing.setOnClickListener {
+            startActivity(Intent(this, DailyClosingActivity::class.java))
+        }
+        mainCol.addView(btnDailyClosing)
 
         val filterCard = LinearLayout(this)
         filterCard.orientation = LinearLayout.VERTICAL
