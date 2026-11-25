@@ -9,6 +9,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivityDashboardBinding
@@ -34,6 +35,9 @@ class DashboardActivity : AppCompatActivity() {
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         binding.etDashDate.setText(selectedDateStr)
 
+        // Automatically convert any Excel serial dates (e.g., 46351 -> "25-11-2026") in Firestore
+        fixSerialDatesInFirestore()
+
         binding.etDashDate.setOnClickListener {
             DatePickerDialog(this, { _, y, m, d ->
                 cal.set(y, m, d)
@@ -57,6 +61,49 @@ class DashboardActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadLiveSummary()
+    }
+
+    private fun fixSerialDatesInFirestore() {
+        val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+        val baseCal = Calendar.getInstance().apply {
+            set(1899, Calendar.DECEMBER, 30, 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        val collections = listOf("sales", "purchases", "receipts", "payments", "expenses")
+
+        for (colName in collections) {
+            db.collection(colName).get().addOnSuccessListener { snapshot ->
+                val batch = db.batch()
+                var updatedCount = 0
+
+                for (doc in snapshot.documents) {
+                    val rawDate = doc.get("date")?.toString()?.trim() ?: continue
+                    val serial = rawDate.toDoubleOrNull()?.toInt()
+
+                    // Detect Excel serial date numbers (e.g., 46351 -> 25-11-2026)
+                    if (serial != null && serial in 40000..60000) {
+                        val cal = baseCal.clone() as Calendar
+                        cal.add(Calendar.DAY_OF_YEAR, serial)
+                        val formattedDate = sdf.format(cal.time)
+
+                        batch.update(doc.reference, "date", formattedDate)
+                        updatedCount++
+                    }
+                }
+
+                if (updatedCount > 0) {
+                    batch.commit().addOnSuccessListener {
+                        Toast.makeText(
+                            this,
+                            "Fixed $updatedCount serial dates in $colName!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        loadLiveSummary()
+                    }
+                }
+            }
+        }
     }
 
     private fun loadLiveSummary() {
