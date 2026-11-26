@@ -166,12 +166,12 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        spSalesStockBatch.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+        spSalesStockBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 updateSelectedBatchAvailabilityBanner()
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
-        })
+        }
 
         fetchNextBillNo()
         loadCustomers()
@@ -547,32 +547,18 @@ class SalesActivity : AppCompatActivity() {
      * 4. Select Name (+ Previous Balance)
      * 5. Coconut -> Kgs, Rate, Amount | Other than Coconut -> Bags, Kgs, Rate, Bag Rate, Weigh Coolie, Total Amount
      * 6. Pay Mode (Cash | GPay | Credit in single line + Cash Given By)
+     * Followed by + ADD ITEM TO BILL button right below the table.
      */
     private fun buildAllInputsAsTableLayout() {
         val addBtnParent = binding.btnAddSalesItem.parent as? ViewGroup ?: return
-        val insertIdx = addBtnParent.indexOfChild(binding.btnAddSalesItem)
 
-        // Hide old scattered widgets & labels between header/editPanel and btnAddSalesItem
         binding.etSalesBillNo.visibility = View.GONE
         binding.spSalesPayMode.visibility = View.GONE
 
-        for (i in 0 until insertIdx) {
-            val child = addBtnParent.getChildAt(i)
-            if (child.id != binding.tvSalesHeader.id &&
-                child.id != binding.layoutEditSalesPanel.id &&
-                child.id != binding.btnImportSalesCsv.id &&
-                child.id != binding.btnModeNewSales.id &&
-                child.id != binding.btnModeEditSales.id
-            ) {
-                // Keep mode toggle row if it contains btnModeNewSales
-                val containsModeBtn = (child as? ViewGroup)?.findViewById<View>(binding.btnModeNewSales.id) != null
-                if (!containsModeBtn) {
-                    child.visibility = View.GONE
-                }
-            }
-        }
+        val dateParent = binding.etSalesDate.parent as? ViewGroup
+        val custParent = binding.etSalesCustomer.parent as? ViewGroup
+        val payParent = binding.spSalesPayMode.parent as? ViewGroup
 
-        // Detach reusable XML controls from their old parents so they can be placed inside TableRows
         fun detachView(v: View) {
             (v.parent as? ViewGroup)?.removeView(v)
             v.visibility = View.VISIBLE
@@ -587,8 +573,34 @@ class SalesActivity : AppCompatActivity() {
         detachView(binding.etSalesRate)
         detachView(binding.etSalesBagCharge)
         detachView(binding.tvLineAmountPreview)
+        detachView(binding.btnAddSalesItem)
 
-        // Initialize programmatic views
+        listOfNotNull(dateParent, custParent, payParent).forEach { p ->
+            if (p != addBtnParent && p.id != binding.root.id) {
+                val grandParent = p.parent as? ViewGroup
+                if (grandParent != null && grandParent != addBtnParent && grandParent.id != binding.root.id) {
+                    grandParent.visibility = View.GONE
+                } else {
+                    p.visibility = View.GONE
+                }
+            }
+        }
+
+        for (i in 0 until addBtnParent.childCount) {
+            val child = addBtnParent.getChildAt(i)
+            val containsModeBtn = (child as? ViewGroup)?.findViewById<View>(binding.btnModeNewSales.id) != null
+            if (!containsModeBtn &&
+                child.id != binding.tvSalesHeader.id &&
+                child.id != binding.layoutEditSalesPanel.id &&
+                child.id != binding.btnImportSalesCsv.id &&
+                child.id != binding.tlSalesItemsGrid.id &&
+                child.id != binding.tvSalesGrandTotal.id &&
+                child.id != binding.btnSaveSalesBill.id
+            ) {
+                child.visibility = View.GONE
+            }
+        }
+
         spSalesStockBatch = Spinner(this)
         spSalesStockBatch.setBackgroundResource(android.R.drawable.btn_dropdown)
         batchSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
@@ -647,7 +659,6 @@ class SalesActivity : AppCompatActivity() {
         etSplitCash.addTextChangedListener(splitWatcher)
         etSplitGpay.addTextChangedListener(splitWatcher)
 
-        // Master Bordered TableLayout
         val formTable = TableLayout(this)
         formTable.setBackgroundColor(Color.parseColor("#BDBDBD"))
         formTable.setPadding(1, 1, 1, 1)
@@ -702,7 +713,7 @@ class SalesActivity : AppCompatActivity() {
         // 2. Select Item
         addFormRow("2. Select Item", binding.spSalesItem)
 
-        // 3. Select Stock (Dropdown + Avail Stock text in same cell)
+        // 3. Select Stock
         val stockCellBox = LinearLayout(this)
         stockCellBox.orientation = LinearLayout.VERTICAL
         spSalesStockBatch.layoutParams = LinearLayout.LayoutParams(
@@ -714,7 +725,7 @@ class SalesActivity : AppCompatActivity() {
         stockCellBox.addView(tvSelectedBatchAvail)
         addFormRow("3. Select Stock", stockCellBox)
 
-        // 4. Select Name (Customer + Prev Balance in same cell)
+        // 4. Select Name
         val custCellBox = LinearLayout(this)
         custCellBox.orientation = LinearLayout.VERTICAL
         binding.etSalesCustomer.hint = "Tap to select customer..."
@@ -747,7 +758,7 @@ class SalesActivity : AppCompatActivity() {
         // 5E. Weigh Coolie (Non-Coconut only)
         rowWeighCoolie = addFormRow("Weigh Coolie", etSalesWeighCoolie, "#FFFDE7")
 
-        // 5F. Total Amount Preview
+        // 5F. Amount Preview
         binding.tvLineAmountPreview.textSize = 15f
         binding.tvLineAmountPreview.setTypeface(null, Typeface.BOLD)
         binding.tvLineAmountPreview.setTextColor(Color.parseColor("#D84315"))
@@ -767,7 +778,17 @@ class SalesActivity : AppCompatActivity() {
         rowCashPayer = addFormRow("Cash Given By", etCashPayerName, "#E3F2FD")
         rowCashPayer.visibility = View.GONE
 
-        addBtnParent.addView(formTable, insertIdx)
+        val gridIdx = addBtnParent.indexOfChild(binding.tlSalesItemsGrid)
+        val targetPos = if (gridIdx >= 0) gridIdx else addBtnParent.childCount
+        addBtnParent.addView(formTable, targetPos)
+
+        val addBtnLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        addBtnLp.setMargins(0, 4, 0, 12)
+        binding.btnAddSalesItem.layoutParams = addBtnLp
+        addBtnParent.addView(binding.btnAddSalesItem, targetPos + 1)
     }
 
     private fun recalculateSplitCredit() {
