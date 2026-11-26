@@ -4,9 +4,16 @@ import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
+import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -26,10 +33,12 @@ class CustomerMasterActivity : AppCompatActivity() {
     private lateinit var itemAdapter: ArrayAdapter<String>
     private val itemNames = arrayListOf("Coconut", "Onion", "Garlic")
 
+    private lateinit var etSearchCustomer: EditText
+    private lateinit var tvCustomerCount: TextView
+    private lateinit var llFullCustomerList: LinearLayout
+
     private val groups = arrayListOf("Group A", "Group B", "Group C", "Group D")
-    private val customerDisplayList = arrayListOf<String>()
-    private val customerDocsJson = JSONArray()
-    private lateinit var listAdapter: ArrayAdapter<String>
+    private val allCustomersJson = JSONArray()
 
     private var editingCustomerId: String = ""
 
@@ -41,13 +50,11 @@ class CustomerMasterActivity : AppCompatActivity() {
         supportActionBar?.title = "Customer Master"
 
         injectItemDropdownField()
+        setupFullListWithSearchAndEdit()
 
         val groupAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, groups)
         groupAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spCustGroup.adapter = groupAdapter
-
-        listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, customerDisplayList)
-        binding.lvCustomers.adapter = listAdapter
 
         binding.btnSaveCustomer.setOnClickListener {
             saveOrUpdateCustomer()
@@ -55,36 +62,6 @@ class CustomerMasterActivity : AppCompatActivity() {
 
         binding.btnCancel.setOnClickListener {
             resetForm()
-        }
-
-        binding.lvCustomers.setOnItemClickListener { _, _, position, _ ->
-            if (position >= 0 && position < customerDocsJson.length()) {
-                loadCustomerIntoForm(customerDocsJson.getJSONObject(position))
-            }
-        }
-
-        binding.lvCustomers.setOnItemLongClickListener { _, _, position, _ ->
-            if (position >= 0 && position < customerDocsJson.length()) {
-                val obj = customerDocsJson.getJSONObject(position)
-                val docId = obj.optString("id", "")
-                val cName = obj.optString("name", "")
-                if (docId.isNotEmpty()) {
-                    AlertDialog.Builder(this)
-                        .setTitle("Delete Customer")
-                        .setMessage("Are you sure you want to delete $cName?")
-                        .setPositiveButton("DELETE") { _, _ ->
-                            db.collection("customers").document(docId).delete()
-                                .addOnSuccessListener {
-                                    if (editingCustomerId == docId) resetForm()
-                                    Toast.makeText(this, "Customer Deleted!", Toast.LENGTH_SHORT).show()
-                                    loadCustomersFromDb()
-                                }
-                        }
-                        .setNegativeButton("Cancel", null)
-                        .show()
-                }
-            }
-            true
         }
 
         loadItemsFromDb()
@@ -125,6 +102,62 @@ class CustomerMasterActivity : AppCompatActivity() {
         itemBox.addView(lblItem)
         itemBox.addView(spCustItem)
         parent.addView(itemBox, insertIndex)
+    }
+
+    /**
+     * Replaces the fixed-height ListView with a Search Box + Full Expandable Customer List
+     * featuring dedicated EDIT and DEL buttons for every customer.
+     */
+    private fun setupFullListWithSearchAndEdit() {
+        val parent = binding.lvCustomers.parent as? ViewGroup ?: return
+        val listIndex = parent.indexOfChild(binding.lvCustomers)
+        binding.lvCustomers.visibility = View.GONE
+
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        etSearchCustomer = EditText(this)
+        etSearchCustomer.hint = "Search by Name, Phone, Group or Item..."
+        etSearchCustomer.inputType = InputType.TYPE_CLASS_TEXT
+        etSearchCustomer.setBackgroundResource(android.R.drawable.edit_text)
+        etSearchCustomer.setPadding(24, 20, 24, 20)
+        val searchLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        searchLp.setMargins(0, 4, 0, 8)
+        etSearchCustomer.layoutParams = searchLp
+
+        etSearchCustomer.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                renderFilteredCustomerList(s?.toString() ?: "")
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+        container.addView(etSearchCustomer)
+
+        tvCustomerCount = TextView(this)
+        tvCustomerCount.text = "Loading customers..."
+        tvCustomerCount.textSize = 12.5f
+        tvCustomerCount.setTypeface(null, Typeface.BOLD)
+        tvCustomerCount.setTextColor(Color.parseColor("#1565C0"))
+        tvCustomerCount.setPadding(4, 0, 4, 8)
+        container.addView(tvCustomerCount)
+
+        llFullCustomerList = LinearLayout(this)
+        llFullCustomerList.orientation = LinearLayout.VERTICAL
+        llFullCustomerList.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        container.addView(llFullCustomerList)
+
+        parent.addView(container, listIndex)
     }
 
     private fun loadItemsFromDb() {
@@ -216,41 +249,144 @@ class CustomerMasterActivity : AppCompatActivity() {
 
     private fun loadCustomersFromDb() {
         db.collection("customers").get().addOnSuccessListener { snap ->
-            customerDisplayList.clear()
-            while (customerDocsJson.length() > 0) customerDocsJson.remove(0)
+            while (allCustomersJson.length() > 0) allCustomersJson.remove(0)
 
             val sortedDocs = snap.documents.sortedBy { doc ->
                 (doc.getString("name") ?: "").lowercase(Locale.getDefault())
             }
 
             for (doc in sortedDocs) {
-                val name = doc.getString("name") ?: ""
-                val phone = doc.getString("contact") ?: ""
-                val group = doc.getString("group") ?: "Group A"
-                val itemName = doc.getString("itemName") ?: doc.getString("mappedItem") ?: "Coconut"
-                val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
-                val currBal = doc.getDouble("currentBalance") ?: opBal
-                val area = doc.getString("area") ?: ""
-                val address = doc.getString("address") ?: ""
-
                 val obj = JSONObject()
                 obj.put("id", doc.id)
-                obj.put("name", name)
-                obj.put("contact", phone)
-                obj.put("group", group)
-                obj.put("itemName", itemName)
-                obj.put("opbal", opBal)
-                obj.put("currentBalance", currBal)
-                obj.put("area", area)
-                obj.put("address", address)
-                customerDocsJson.put(obj)
-
-                val phPart = if (phone.isNotEmpty()) " | $phone" else ""
-                customerDisplayList.add(
-                    String.format(Locale.getDefault(), "%s%s [%s - %s]\nBal: Rs. %.2f", name, phPart, itemName, group, currBal)
-                )
+                obj.put("name", doc.getString("name") ?: "")
+                obj.put("contact", doc.getString("contact") ?: "")
+                obj.put("group", doc.getString("group") ?: "Group A")
+                obj.put("itemName", doc.getString("itemName") ?: doc.getString("mappedItem") ?: "Coconut")
+                val op = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                obj.put("opbal", op)
+                obj.put("currentBalance", doc.getDouble("currentBalance") ?: op)
+                obj.put("area", doc.getString("area") ?: "")
+                obj.put("address", doc.getString("address") ?: "")
+                allCustomersJson.put(obj)
             }
-            listAdapter.notifyDataSetChanged()
+
+            renderFilteredCustomerList(etSearchCustomer.text.toString())
+        }
+    }
+
+    private fun renderFilteredCustomerList(query: String) {
+        llFullCustomerList.removeAllViews()
+        val q = query.trim().lowercase(Locale.getDefault())
+        var shownCount = 0
+
+        for (i in 0 until allCustomersJson.length()) {
+            val obj = allCustomersJson.getJSONObject(i)
+            val docId = obj.optString("id", "")
+            val name = obj.optString("name", "")
+            val phone = obj.optString("contact", "")
+            val group = obj.optString("group", "Group A")
+            val itemName = obj.optString("itemName", "Coconut")
+            val currBal = obj.optDouble("currentBalance", 0.0)
+            val area = obj.optString("area", "")
+
+            if (q.isNotEmpty()) {
+                val matchName = name.lowercase(Locale.getDefault()).contains(q)
+                val matchPhone = phone.lowercase(Locale.getDefault()).contains(q)
+                val matchGroup = group.lowercase(Locale.getDefault()).contains(q)
+                val matchItem = itemName.lowercase(Locale.getDefault()).contains(q)
+                val matchArea = area.lowercase(Locale.getDefault()).contains(q)
+                if (!matchName && !matchPhone && !matchGroup && !matchItem && !matchArea) {
+                    continue
+                }
+            }
+
+            shownCount++
+
+            val card = LinearLayout(this)
+            card.orientation = LinearLayout.HORIZONTAL
+            card.gravity = Gravity.CENTER_VERTICAL
+            card.setBackgroundColor(Color.WHITE)
+            card.setPadding(20, 16, 16, 16)
+            val cardLp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            cardLp.setMargins(0, 0, 0, 8)
+            card.layoutParams = cardLp
+
+            val infoTv = TextView(this)
+            val phPart = if (phone.isNotEmpty()) " | Ph: $phone" else ""
+            infoTv.text = String.format(
+                Locale.getDefault(),
+                "%d. %s%s\nItem: %s  |  %s  |  Bal: Rs. %.2f",
+                shownCount,
+                name,
+                phPart,
+                itemName,
+                group,
+                currBal
+            )
+            infoTv.setTextColor(Color.BLACK)
+            infoTv.setTypeface(null, Typeface.BOLD)
+            infoTv.textSize = 13f
+            infoTv.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+            val editBtn = TextView(this)
+            editBtn.text = "EDIT"
+            editBtn.setTextColor(Color.WHITE)
+            editBtn.setBackgroundColor(Color.parseColor("#1565C0"))
+            editBtn.setTypeface(null, Typeface.BOLD)
+            editBtn.textSize = 12f
+            editBtn.setPadding(22, 14, 22, 14)
+            val editLp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            editLp.setMargins(8, 0, 6, 0)
+            editBtn.layoutParams = editLp
+            editBtn.setOnClickListener {
+                loadCustomerIntoForm(obj)
+            }
+
+            val delBtn = TextView(this)
+            delBtn.text = "DEL"
+            delBtn.setTextColor(Color.WHITE)
+            delBtn.setBackgroundColor(Color.parseColor("#C62828"))
+            delBtn.setTypeface(null, Typeface.BOLD)
+            delBtn.textSize = 12f
+            delBtn.setPadding(18, 14, 18, 14)
+            delBtn.setOnClickListener {
+                if (docId.isNotEmpty()) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Delete Customer")
+                        .setMessage("Are you sure you want to delete $name?")
+                        .setPositiveButton("DELETE") { _, _ ->
+                            db.collection("customers").document(docId).delete()
+                                .addOnSuccessListener {
+                                    if (editingCustomerId == docId) resetForm()
+                                    Toast.makeText(this, "Customer Deleted!", Toast.LENGTH_SHORT).show()
+                                    loadCustomersFromDb()
+                                }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+
+            card.addView(infoTv)
+            card.addView(editBtn)
+            card.addView(delBtn)
+            llFullCustomerList.addView(card)
+        }
+
+        tvCustomerCount.text = "Showing $shownCount of ${allCustomersJson.length()} Customers"
+
+        if (shownCount == 0) {
+            val emptyTv = TextView(this)
+            emptyTv.text = "No matching customers found."
+            emptyTv.setTextColor(Color.GRAY)
+            emptyTv.setPadding(16, 16, 16, 16)
+            llFullCustomerList.addView(emptyTv)
         }
     }
 
@@ -273,6 +409,11 @@ class CustomerMasterActivity : AppCompatActivity() {
         if (itemIdx >= 0) spCustItem.setSelection(itemIdx)
 
         binding.btnSaveCustomer.text = "UPDATE DETAILS"
+
+        // Scroll smoothly to top form so user can edit immediately
+        val rootScroll = binding.root as? ScrollView
+        rootScroll?.smoothScrollTo(0, 0)
+
         Toast.makeText(this, "Editing ${obj.optString("name", "")}", Toast.LENGTH_SHORT).show()
     }
 
