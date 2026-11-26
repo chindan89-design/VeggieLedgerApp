@@ -287,24 +287,39 @@ class CoconutDayBookActivity : AppCompatActivity() {
                         collectionTree["Credit Bill Received by Cash"] = arrayListOf()
                         collectionTree["Other Incomes"] = arrayListOf()
 
-                        // 1. Cash Sales (Coconut)
+                                               // 1. Cash Sales (Coconut) — reads `cash` field directly
                         for (sDoc in salSnap.documents) {
                             val cocoAmt = getCoconutAmountFromSaleDoc(sDoc)
                             if (cocoAmt <= 0.0) continue
 
                             val dYmd = dateToYmd(safeString(sDoc, "date"))
                             val mode = safeString(sDoc, "payMode", "Credit")
-                            if (!mode.equals("Cash", ignoreCase = true)) continue
+                            val grandTot = safeDouble(sDoc, "grandTotal")
+                            val storedCash = safeDouble(sDoc, "cash")
+                                .let { if (it > 0.0) it else safeDouble(sDoc, "cashAmount") }
+                            val storedGpay = safeDouble(sDoc, "gpay")
+                                .let { if (it > 0.0) it else safeDouble(sDoc, "gpayAmount") }
+
+                            val rawCashIn = when {
+                                storedCash > 0.0 -> storedCash
+                                mode.equals("Cash", ignoreCase = true) && storedGpay <= 0.0 -> grandTot
+                                else -> 0.0
+                            }
+                            if (rawCashIn <= 0.0) continue
+
+                            val ratio = if (grandTot > 0.0) (cocoAmt / grandTot).coerceIn(0.0, 1.0) else 1.0
+                            val cocoCashAmt = rawCashIn * ratio
 
                             val cName = safeString(sDoc, "customerName", "Customer")
                             val bNo = safeString(sDoc, "billNo", sDoc.id)
 
                             if (dYmd in 1 until targetYmd) {
-                                prevCashIn += cocoAmt
+                                prevCashIn += cocoCashAmt
                             } else if (dYmd == targetYmd) {
-                                collectionTree["Cash Sales"]?.add(TreeEntry("$cName ($bNo)", "Cash", cocoAmt))
+                                collectionTree["Cash Sales"]?.add(TreeEntry("$cName ($bNo)", "Cash", cocoCashAmt))
                             }
                         }
+
 
                         // 2. Credit Bill Received by Cash
                         for (rDoc in recSnap.documents) {
