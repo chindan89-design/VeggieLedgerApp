@@ -59,7 +59,7 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var etSalesWeighCoolie: EditText
     private lateinit var btnSendWhatsappBill: Button
 
-    // 3 Split Payment Boxes in Single Line + Extra Cash Payer Name Box
+    // 6. Pay Mode (Single-line Cash | GPay | Credit + Extra Cash Payer Name Box)
     private lateinit var splitPayContainer: LinearLayout
     private lateinit var etSplitCash: EditText
     private lateinit var etSplitGpay: EditText
@@ -277,10 +277,10 @@ class SalesActivity : AppCompatActivity() {
                 else -> binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0
             }
 
-            val weighCoolie = if (isOnion) {
-                etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0
-            } else {
+            val weighCoolie = if (isCoconut) {
                 0.0
+            } else {
+                etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0
             }
 
             val baseAmt = kgs * rate
@@ -308,7 +308,7 @@ class SalesActivity : AppCompatActivity() {
             binding.etSalesRate.setText("")
             binding.etSalesBagCharge.setText("")
             etSalesWeighCoolie.setText("")
-            binding.tvLineAmountPreview.text = "Item Amt: Rs. 0.00"
+            binding.tvLineAmountPreview.text = "Amount: Rs. 0.00"
         }
 
         binding.btnSaveSalesBill.setOnClickListener {
@@ -537,12 +537,12 @@ class SalesActivity : AppCompatActivity() {
 
     /**
      * Exact visual layout:
-     * 1. Date (BillNo hidden)
+     * 1. Bill Date (Bill No auto-generated & hidden)
      * 2. Select Item dropdown
-     * 3. Supplier Available Stock
-     * 4. Customer Name + Previous Balance
-     * 5. Bags / Net Kgs / Rate / Amount
-     * 6. Payment Split (Cash | GPay | Credit in ONE single line) right below Net Kgs / Rate / Amount
+     * 3. Select Stock (Supplier Available Stock)
+     * 4. Select Name (Customer Name + Previous Balance)
+     * 5. Coconut -> Kgs, Rate, Amount | Other than Coconut -> Bags, Kgs, Rate, Bag Rate, Weigh Coolie, Total Amount
+     * 6. Pay Mode (Single line Cash | GPay | Credit)
      */
     private fun arrangeSalesEntryOrder() {
         // Hide Bill No field & its label
@@ -560,9 +560,24 @@ class SalesActivity : AppCompatActivity() {
             }
         }
 
+        // Hide old Payment Mode Spinner & any nearby Payment Mode label
         binding.spSalesPayMode.visibility = View.GONE
+        (binding.spSalesPayMode.parent as? ViewGroup)?.let { p ->
+            for (idx in 0 until p.childCount) {
+                val child = p.getChildAt(idx)
+                if (child is TextView) {
+                    val txt = child.text.toString()
+                    if (txt.contains("Pay", ignoreCase = true) && txt.contains("Mode", ignoreCase = true)) {
+                        child.visibility = View.GONE
+                    }
+                }
+            }
+        }
 
-        // 1. Supplier Available Stock box
+        // Update Bag Charge hint to "Bag Rate"
+        binding.etSalesBagCharge.hint = "Bag Rate (Rs)"
+
+        // 3. Select Stock container
         stockBatchContainer = LinearLayout(this)
         stockBatchContainer.orientation = LinearLayout.VERTICAL
         stockBatchContainer.setBackgroundColor(Color.parseColor("#E8F5E9"))
@@ -575,7 +590,7 @@ class SalesActivity : AppCompatActivity() {
         stockBatchContainer.layoutParams = boxLp
 
         val lblStock = TextView(this)
-        lblStock.text = "Supplier Available Stock (Lot / Batch) *"
+        lblStock.text = "Select Stock (Supplier Lot / Batch) *"
         lblStock.textSize = 12.5f
         lblStock.setTypeface(null, Typeface.BOLD)
         lblStock.setTextColor(Color.parseColor("#1B5E20"))
@@ -603,7 +618,28 @@ class SalesActivity : AppCompatActivity() {
         stockBatchContainer.addView(spSalesStockBatch)
         stockBatchContainer.addView(tvSelectedBatchAvail)
 
-        // 2. Single-line Payment Split container (Cash | GPay | Credit)
+        // Weigh Coolie box (shown for non-Coconut items after Bag Rate)
+        weighCoolieContainer = LinearLayout(this)
+        weighCoolieContainer.orientation = LinearLayout.VERTICAL
+        weighCoolieContainer.visibility = View.GONE
+        val wLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        wLp.setMargins(0, 4, 0, 8)
+        weighCoolieContainer.layoutParams = wLp
+
+        etSalesWeighCoolie = EditText(this)
+        etSalesWeighCoolie.hint = "Weigh Coolie (Rs)"
+        etSalesWeighCoolie.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        etSalesWeighCoolie.setBackgroundResource(android.R.drawable.edit_text)
+        etSalesWeighCoolie.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        weighCoolieContainer.addView(etSalesWeighCoolie)
+
+        // 6. Pay Mode container (Single line Cash | GPay | Credit)
         splitPayContainer = LinearLayout(this)
         splitPayContainer.orientation = LinearLayout.VERTICAL
         splitPayContainer.setBackgroundColor(Color.parseColor("#E3F2FD"))
@@ -612,8 +648,16 @@ class SalesActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        cLp.setMargins(0, 6, 0, 8)
+        cLp.setMargins(0, 8, 0, 8)
         splitPayContainer.layoutParams = cLp
+
+        val lblPayMode = TextView(this)
+        lblPayMode.text = "Pay Mode (Cash | GPay | Credit)"
+        lblPayMode.textSize = 12f
+        lblPayMode.setTypeface(null, Typeface.BOLD)
+        lblPayMode.setTextColor(Color.parseColor("#0D47A1"))
+        lblPayMode.setPadding(4, 0, 0, 4)
+        splitPayContainer.addView(lblPayMode)
 
         val singleRow = LinearLayout(this)
         singleRow.orientation = LinearLayout.HORIZONTAL
@@ -649,7 +693,6 @@ class SalesActivity : AppCompatActivity() {
         singleRow.addView(etSplitCredit)
         splitPayContainer.addView(singleRow)
 
-        // Conditional Payer Name box right underneath when Cash > 0
         cashPayerBox = LinearLayout(this)
         cashPayerBox.orientation = LinearLayout.VERTICAL
         cashPayerBox.visibility = View.GONE
@@ -675,36 +718,8 @@ class SalesActivity : AppCompatActivity() {
         etSplitCash.addTextChangedListener(splitWatcher)
         etSplitGpay.addTextChangedListener(splitWatcher)
 
-        // 3. Weigh Coolie box for Onion
-        weighCoolieContainer = LinearLayout(this)
-        weighCoolieContainer.orientation = LinearLayout.VERTICAL
-        weighCoolieContainer.visibility = View.GONE
-        val wLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        wLp.setMargins(0, 4, 0, 8)
-        weighCoolieContainer.layoutParams = wLp
-
-        val lblCoolie = TextView(this)
-        lblCoolie.text = "Weigh Coolie (Onion) (Rs)"
-        lblCoolie.textSize = 12.5f
-        lblCoolie.setTypeface(null, Typeface.BOLD)
-        lblCoolie.setTextColor(Color.parseColor("#E65100"))
-
-        etSalesWeighCoolie = EditText(this)
-        etSalesWeighCoolie.hint = "Enter Weigh Coolie (Rs)"
-        etSalesWeighCoolie.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        etSalesWeighCoolie.setBackgroundResource(android.R.drawable.edit_text)
-        etSalesWeighCoolie.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-
-        weighCoolieContainer.addView(lblCoolie)
-        weighCoolieContainer.addView(etSalesWeighCoolie)
-
-        // Place Item -> Stock -> Customer -> Bags/Kgs/Rate/Amount -> Single-line Payment Split
+        // Arrange exact sequence:
+        // 1. Bill Date -> 2. Select Item -> 3. Select Stock -> 4. Select Name -> 5. Qty/Rate/Total -> 6. Pay Mode
         val formContainer = binding.spSalesItem.parent as? ViewGroup
         if (formContainer != null && formContainer == binding.etSalesCustomer.parent) {
             val itemIdx = formContainer.indexOfChild(binding.spSalesItem)
@@ -738,11 +753,12 @@ class SalesActivity : AppCompatActivity() {
             }
         }
 
-        // Insert Weigh Coolie after Bag Charge, and Single-Line PayMode right below Net Kgs / Rate / Amount
+        // Insert Weigh Coolie right after Bag Rate (etSalesBagCharge)
         (binding.etSalesBagCharge.parent as? ViewGroup)?.let { p ->
             p.addView(weighCoolieContainer, p.indexOfChild(binding.etSalesBagCharge) + 1)
         }
 
+        // Insert 6. Pay Mode right below Total Amount (tvLineAmountPreview)
         val amountAnchor: View = if (binding.tvLineAmountPreview.parent != null) {
             binding.tvLineAmountPreview
         } else {
@@ -758,15 +774,13 @@ class SalesActivity : AppCompatActivity() {
         val gpayVal = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
         val paidSum = cashVal + gpayVal
 
-        // Compare against current bill total OR live typed line preview before clicking Add Item
         val liveLineAmt = run {
             val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
             val isCoconut = itemName.equals("Coconut", ignoreCase = true)
-            val isOnion = itemName.equals("Onion", ignoreCase = true)
             val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
             val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
             val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
-            val wCoolie = if (isOnion) (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+            val wCoolie = if (isCoconut) 0.0 else (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0)
             (kgs * rate) + bagChg + wCoolie
         }
 
@@ -1255,6 +1269,11 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Step 5 Visibility Rule:
+     * - Coconut: Kgs, Rate, Amount only (hides Bags, Bag Rate, Weigh Coolie)
+     * - Other than Coconut: Bags, Kgs, Rate, Bag Rate, Weigh Coolie, Total Amount
+     */
     private fun onSalesItemChanged(itemName: String) {
         val isCoconut = itemName.equals("Coconut", ignoreCase = true)
         val isOnion = itemName.equals("Onion", ignoreCase = true)
@@ -1268,19 +1287,16 @@ class SalesActivity : AppCompatActivity() {
             binding.etSalesBags.setText("")
             binding.etSalesBagCharge.setText("")
             etSalesWeighCoolie.setText("")
-        } else if (isOnion) {
-            binding.etSalesBags.visibility = View.VISIBLE
-            binding.etSalesBagCharge.visibility = View.VISIBLE
-            weighCoolieContainer.visibility = View.VISIBLE
-            val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
-            if (bags > 0) {
-                binding.etSalesBagCharge.setText(String.format(Locale.getDefault(), "%.2f", bags * 10.0))
-            }
         } else {
             binding.etSalesBags.visibility = View.VISIBLE
             binding.etSalesBagCharge.visibility = View.VISIBLE
-            weighCoolieContainer.visibility = View.GONE
-            etSalesWeighCoolie.setText("")
+            weighCoolieContainer.visibility = View.VISIBLE
+            if (isOnion) {
+                val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
+                if (bags > 0) {
+                    binding.etSalesBagCharge.setText(String.format(Locale.getDefault(), "%.2f", bags * 10.0))
+                }
+            }
         }
 
         updateLineAmountPreview()
@@ -1289,15 +1305,15 @@ class SalesActivity : AppCompatActivity() {
     private fun updateLineAmountPreview() {
         val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
         val isCoconut = itemName.equals("Coconut", ignoreCase = true)
-        val isOnion = itemName.equals("Onion", ignoreCase = true)
 
         val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
         val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
         val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
-        val weighCoolie = if (isOnion) (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+        val weighCoolie = if (isCoconut) 0.0 else (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0)
 
         val lineTot = (kgs * rate) + bagChg + weighCoolie
-        binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Item Amt: Rs. %.2f", lineTot)
+        val prefix = if (isCoconut) "Amount" else "Total Amount"
+        binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "%s: Rs. %.2f", prefix, lineTot)
         recalculateSplitCredit()
     }
 
