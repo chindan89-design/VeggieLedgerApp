@@ -26,6 +26,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
@@ -44,7 +45,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
     private var shareText: String = ""
     private var printableHtml: String = ""
 
-    // Cached calculated values for direct A4 PDF generation
     private var lastOpBal: Double = 0.0
     private var lastTodayCollection: Double = 0.0
     private var lastTotalAvailable: Double = 0.0
@@ -57,25 +57,41 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        supportActionBar?.title = "Coconut Day Book"
+        try {
+            supportActionBar?.title = "Coconut Day Book"
+            buildUi()
 
-        buildUi()
+            val cal = Calendar.getInstance()
+            val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+            selectedDateStr = sdf.format(cal.time)
+            etDayBookDate.setText(selectedDateStr)
 
-        val cal = Calendar.getInstance()
-        val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-        selectedDateStr = sdf.format(cal.time)
-        etDayBookDate.setText(selectedDateStr)
+            etDayBookDate.setOnClickListener {
+                DatePickerDialog(this, { _, y, m, d ->
+                    cal.set(y, m, d)
+                    selectedDateStr = sdf.format(cal.time)
+                    etDayBookDate.setText(selectedDateStr)
+                    loadCoconutDayBook()
+                }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+            }
 
-        etDayBookDate.setOnClickListener {
-            DatePickerDialog(this, { _, y, m, d ->
-                cal.set(y, m, d)
-                selectedDateStr = sdf.format(cal.time)
-                etDayBookDate.setText(selectedDateStr)
-                loadCoconutDayBook()
-            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+            loadCoconutDayBook()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error opening Day Book: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
 
-        loadCoconutDayBook()
+    private fun safeDouble(doc: DocumentSnapshot, field: String): Double {
+        val raw = doc.get(field) ?: return 0.0
+        return when (raw) {
+            is Number -> raw.toDouble()
+            is String -> raw.trim().toDoubleOrNull() ?: 0.0
+            else -> 0.0
+        }
+    }
+
+    private fun safeString(doc: DocumentSnapshot, field: String, defaultVal: String = ""): String {
+        return doc.get(field)?.toString()?.trim() ?: defaultVal
     }
 
     private fun fmt(v: Double): String {
@@ -201,8 +217,8 @@ class CoconutDayBookActivity : AppCompatActivity() {
         setContentView(rootScroll)
     }
 
-    private fun isCoconutSaleDoc(docData: Map<String, Any>): Boolean {
-        val rawItems = docData["items"] as? List<*>
+    private fun isCoconutSaleDoc(doc: DocumentSnapshot): Boolean {
+        val rawItems = doc.get("items") as? List<*>
         if (rawItems != null && rawItems.isNotEmpty()) {
             for (entry in rawItems) {
                 val m = entry as? Map<*, *> ?: continue
@@ -210,12 +226,12 @@ class CoconutDayBookActivity : AppCompatActivity() {
                 if (iName.equals("Coconut", ignoreCase = true)) return true
             }
         }
-        val singleItem = (docData["itemName"]?.toString() ?: "").trim()
+        val singleItem = safeString(doc, "itemName")
         return singleItem.equals("Coconut", ignoreCase = true)
     }
 
-    private fun getCoconutAmountFromSaleDoc(docData: Map<String, Any>): Double {
-        val rawItems = docData["items"] as? List<*>
+    private fun getCoconutAmountFromSaleDoc(doc: DocumentSnapshot): Double {
+        val rawItems = doc.get("items") as? List<*>
         if (rawItems != null && rawItems.isNotEmpty()) {
             var sum = 0.0
             for (entry in rawItems) {
@@ -230,9 +246,9 @@ class CoconutDayBookActivity : AppCompatActivity() {
             }
             if (sum > 0.0) return sum
         }
-        val singleItem = (docData["itemName"]?.toString() ?: "").trim()
+        val singleItem = safeString(doc, "itemName")
         if (singleItem.equals("Coconut", ignoreCase = true)) {
-            return (docData["grandTotal"] as? Number)?.toDouble() ?: 0.0
+            return safeDouble(doc, "grandTotal")
         }
         return 0.0
     }
@@ -245,176 +261,180 @@ class CoconutDayBookActivity : AppCompatActivity() {
         db.collection("sales").get().addOnSuccessListener { salSnap ->
             db.collection("receipts").get().addOnSuccessListener { recSnap ->
                 db.collection("expenses").get().addOnSuccessListener { expSnap ->
+                    try {
+                        val coconutBillNos = HashSet<String>()
+                        val coconutCustomerIds = HashSet<String>()
+                        val coconutCustomerNames = HashSet<String>()
 
-                    val coconutBillNos = HashSet<String>()
-                    val coconutCustomerIds = HashSet<String>()
-                    val coconutCustomerNames = HashSet<String>()
+                        for (sDoc in salSnap.documents) {
+                            if (isCoconutSaleDoc(sDoc)) {
+                                val bNo = safeString(sDoc, "billNo").lowercase(Locale.getDefault())
+                                if (bNo.isNotEmpty()) coconutBillNos.add(bNo)
+                                coconutBillNos.add(sDoc.id.lowercase(Locale.getDefault()))
 
-                    for (sDoc in salSnap) {
-                        if (isCoconutSaleDoc(sDoc.data)) {
-                            val bNo = (sDoc.getString("billNo") ?: "").trim().lowercase(Locale.getDefault())
-                            if (bNo.isNotEmpty()) coconutBillNos.add(bNo)
-                            coconutBillNos.add(sDoc.id.lowercase(Locale.getDefault()))
-
-                            val cid = (sDoc.getString("customerId") ?: "").trim()
-                            val cname = (sDoc.getString("customerName") ?: "").trim().lowercase(Locale.getDefault())
-                            if (cid.isNotEmpty()) coconutCustomerIds.add(cid)
-                            if (cname.isNotEmpty()) coconutCustomerNames.add(cname)
-                        }
-                    }
-
-                    var prevCashIn = 0.0
-                    var prevCashOut = 0.0
-
-                    val collectionTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
-                    collectionTree["Cash Sales"] = arrayListOf()
-                    collectionTree["Credit Bill Received by Cash"] = arrayListOf()
-                    collectionTree["Other Incomes"] = arrayListOf()
-
-                    // 1. Cash Sales (Coconut)
-                    for (sDoc in salSnap) {
-                        val cocoAmt = getCoconutAmountFromSaleDoc(sDoc.data)
-                        if (cocoAmt <= 0.0) continue
-
-                        val dYmd = dateToYmd(sDoc.getString("date") ?: "")
-                        val mode = (sDoc.getString("payMode") ?: "Credit").trim()
-                        if (!mode.equals("Cash", ignoreCase = true)) continue
-
-                        val cName = sDoc.getString("customerName") ?: "Customer"
-                        val bNo = sDoc.getString("billNo") ?: sDoc.id
-
-                        if (dYmd in 1 until targetYmd) {
-                            prevCashIn += cocoAmt
-                        } else if (dYmd == targetYmd) {
-                            collectionTree["Cash Sales"]?.add(TreeEntry("$cName ($bNo)", "Cash", cocoAmt))
-                        }
-                    }
-
-                    // 2. Credit Bill Received by Cash
-                    for (rDoc in recSnap) {
-                        val dYmd = dateToYmd(rDoc.getString("date") ?: "")
-                        val amt = rDoc.getDouble("amount") ?: 0.0
-                        if (amt <= 0.0) continue
-
-                        val mode = (rDoc.getString("payMode") ?: "Cash").trim()
-                        if (!mode.equals("Cash", ignoreCase = true)) continue
-
-                        val cid = (rDoc.getString("customerId") ?: "").trim()
-                        val cname = (rDoc.getString("customerName") ?: "").trim()
-                        val rNo = rDoc.getString("receiptNo") ?: rDoc.id
-
-                        var matchesCoconut = (cid.isNotEmpty() && coconutCustomerIds.contains(cid)) ||
-                                (cname.isNotEmpty() && coconutCustomerNames.contains(cname.lowercase(Locale.getDefault())))
-
-                        val rawAllocs = rDoc.get("billAllocations") as? List<*>
-                        if (rawAllocs != null) {
-                            for (a in rawAllocs) {
-                                val m = a as? Map<*, *> ?: continue
-                                val bId = (m["billDocId"]?.toString() ?: "").lowercase(Locale.getDefault())
-                                val bNo = (m["billNo"]?.toString() ?: "").lowercase(Locale.getDefault())
-                                if (coconutBillNos.contains(bId) || coconutBillNos.contains(bNo)) {
-                                    matchesCoconut = true
-                                }
+                                val cid = safeString(sDoc, "customerId")
+                                val cname = safeString(sDoc, "customerName").lowercase(Locale.getDefault())
+                                if (cid.isNotEmpty()) coconutCustomerIds.add(cid)
+                                if (cname.isNotEmpty()) coconutCustomerNames.add(cname)
                             }
                         }
 
-                        if (!matchesCoconut && coconutCustomerIds.isNotEmpty()) continue
+                        var prevCashIn = 0.0
+                        var prevCashOut = 0.0
 
-                        if (dYmd in 1 until targetYmd) {
-                            prevCashIn += amt
-                        } else if (dYmd == targetYmd) {
-                            collectionTree["Credit Bill Received by Cash"]?.add(TreeEntry("$cname ($rNo)", "Cash", amt))
+                        val collectionTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
+                        collectionTree["Cash Sales"] = arrayListOf()
+                        collectionTree["Credit Bill Received by Cash"] = arrayListOf()
+                        collectionTree["Other Incomes"] = arrayListOf()
+
+                        // 1. Cash Sales (Coconut)
+                        for (sDoc in salSnap.documents) {
+                            val cocoAmt = getCoconutAmountFromSaleDoc(sDoc)
+                            if (cocoAmt <= 0.0) continue
+
+                            val dYmd = dateToYmd(safeString(sDoc, "date"))
+                            val mode = safeString(sDoc, "payMode", "Credit")
+                            if (!mode.equals("Cash", ignoreCase = true)) continue
+
+                            val cName = safeString(sDoc, "customerName", "Customer")
+                            val bNo = safeString(sDoc, "billNo", sDoc.id)
+
+                            if (dYmd in 1 until targetYmd) {
+                                prevCashIn += cocoAmt
+                            } else if (dYmd == targetYmd) {
+                                collectionTree["Cash Sales"]?.add(TreeEntry("$cName ($bNo)", "Cash", cocoAmt))
+                            }
                         }
-                    }
 
-                    // 3. Other Incomes & 3 Expense Categories (Shop, Other, Vehicle)
-                    val expenseTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
-                    expenseTree["Shop Expenses"] = arrayListOf()
-                    expenseTree["Other Expenses"] = arrayListOf()
-                    expenseTree["Vehicle Expenses"] = arrayListOf()
+                        // 2. Credit Bill Received by Cash
+                        for (rDoc in recSnap.documents) {
+                            val dYmd = dateToYmd(safeString(rDoc, "date"))
+                            val amt = safeDouble(rDoc, "amount")
+                            if (amt <= 0.0) continue
 
-                    for (eDoc in expSnap) {
-                        val dYmd = dateToYmd(eDoc.getString("date") ?: "")
-                        val type = (eDoc.getString("type") ?: "Expense").trim()
-                        val cat = (eDoc.getString("category") ?: "Other Expenses").trim()
-                        val desc = (eDoc.getString("description")
-                            ?: eDoc.getString("particulars")
-                            ?: eDoc.getString("remarks")
-                            ?: cat).trim().ifEmpty { cat }
-                        val amt = eDoc.getDouble("amount") ?: 0.0
-                        val mode = (eDoc.getString("payMode") ?: "Cash").trim()
-                        if (amt <= 0.0) continue
+                            val mode = safeString(rDoc, "payMode", "Cash")
+                            if (!mode.equals("Cash", ignoreCase = true)) continue
 
-                        if (type.equals("Income", ignoreCase = true)) {
+                            val cid = safeString(rDoc, "customerId")
+                            val cname = safeString(rDoc, "customerName", "Customer")
+                            val rNo = safeString(rDoc, "receiptNo", rDoc.id)
+
+                            var matchesCoconut = (cid.isNotEmpty() && coconutCustomerIds.contains(cid)) ||
+                                    (cname.isNotEmpty() && coconutCustomerNames.contains(cname.lowercase(Locale.getDefault())))
+
+                            val rawAllocs = rDoc.get("billAllocations") as? List<*>
+                            if (rawAllocs != null) {
+                                for (a in rawAllocs) {
+                                    val m = a as? Map<*, *> ?: continue
+                                    val bId = (m["billDocId"]?.toString() ?: "").lowercase(Locale.getDefault())
+                                    val bNo = (m["billNo"]?.toString() ?: "").lowercase(Locale.getDefault())
+                                    if (coconutBillNos.contains(bId) || coconutBillNos.contains(bNo)) {
+                                        matchesCoconut = true
+                                    }
+                                }
+                            }
+
+                            if (!matchesCoconut && coconutCustomerIds.isNotEmpty()) continue
+
                             if (dYmd in 1 until targetYmd) {
                                 prevCashIn += amt
                             } else if (dYmd == targetYmd) {
-                                collectionTree["Other Incomes"]?.add(TreeEntry(desc, "$cat | $mode", amt))
-                            }
-                        } else {
-                            if (dYmd in 1 until targetYmd) {
-                                prevCashOut += amt
-                            } else if (dYmd == targetYmd) {
-                                val targetCat = when {
-                                    cat.equals("Shop Expenses", ignoreCase = true) -> "Shop Expenses"
-                                    cat.equals("Vehicle Expenses", ignoreCase = true) -> "Vehicle Expenses"
-                                    else -> "Other Expenses"
-                                }
-                                expenseTree[targetCat]?.add(TreeEntry(desc, mode, amt))
+                                collectionTree["Credit Bill Received by Cash"]?.add(TreeEntry("$cname ($rNo)", "Cash", amt))
                             }
                         }
+
+                        // 3. Other Incomes & 3 Expense Categories (Shop, Other, Vehicle)
+                        val expenseTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
+                        expenseTree["Shop Expenses"] = arrayListOf()
+                        expenseTree["Other Expenses"] = arrayListOf()
+                        expenseTree["Vehicle Expenses"] = arrayListOf()
+
+                        for (eDoc in expSnap.documents) {
+                            val dYmd = dateToYmd(safeString(eDoc, "date"))
+                            val type = safeString(eDoc, "type", "Expense")
+                            val cat = safeString(eDoc, "category", "Other Expenses")
+                            val desc = safeString(eDoc, "description")
+                                .ifEmpty { safeString(eDoc, "particulars") }
+                                .ifEmpty { safeString(eDoc, "remarks") }
+                                .ifEmpty { cat }
+                            val amt = safeDouble(eDoc, "amount")
+                            val mode = safeString(eDoc, "payMode", "Cash")
+                            if (amt <= 0.0) continue
+
+                            if (type.equals("Income", ignoreCase = true)) {
+                                if (dYmd in 1 until targetYmd) {
+                                    prevCashIn += amt
+                                } else if (dYmd == targetYmd) {
+                                    collectionTree["Other Incomes"]?.add(TreeEntry(desc, "$cat | $mode", amt))
+                                }
+                            } else {
+                                if (dYmd in 1 until targetYmd) {
+                                    prevCashOut += amt
+                                } else if (dYmd == targetYmd) {
+                                    val targetCat = when {
+                                        cat.equals("Shop Expenses", ignoreCase = true) -> "Shop Expenses"
+                                        cat.equals("Vehicle Expenses", ignoreCase = true) -> "Vehicle Expenses"
+                                        else -> "Other Expenses"
+                                    }
+                                    expenseTree[targetCat]?.add(TreeEntry(desc, mode, amt))
+                                }
+                            }
+                        }
+
+                        val openingBalance = (prevCashIn - prevCashOut).coerceAtLeast(0.0)
+
+                        var todayCollectionTotal = 0.0
+                        for ((_, list) in collectionTree) {
+                            for (item in list) todayCollectionTotal += item.amount
+                        }
+
+                        var todayExpenseTotal = 0.0
+                        for ((_, list) in expenseTree) {
+                            for (item in list) todayExpenseTotal += item.amount
+                        }
+
+                        val totalAvailable = openingBalance + todayCollectionTotal
+                        val closingBalance = totalAvailable - todayExpenseTotal
+
+                        lastOpBal = openingBalance
+                        lastTodayCollection = todayCollectionTotal
+                        lastTotalAvailable = totalAvailable
+                        lastTotalExpense = todayExpenseTotal
+                        lastClosingBal = closingBalance
+                        lastCollectionTree.clear()
+                        lastCollectionTree.putAll(collectionTree)
+                        lastExpenseTree.clear()
+                        lastExpenseTree.putAll(expenseTree)
+
+                        tvSummaryStrip.text = String.format(
+                            Locale.getDefault(),
+                            "Op.Bal: Rs. %s  |  Collection: Rs. %s  |  Exp: Rs. %s  |  Cl.Bal: Rs. %s",
+                            fmt(openingBalance), fmt(todayCollectionTotal), fmt(todayExpenseTotal), fmt(closingBalance)
+                        )
+
+                        renderDayBookCards(
+                            openingBalance,
+                            collectionTree,
+                            todayCollectionTotal,
+                            totalAvailable,
+                            expenseTree,
+                            todayExpenseTotal,
+                            closingBalance
+                        )
+                    } catch (ex: Exception) {
+                        tvSummaryStrip.text = "Calculation Error: ${ex.message}"
                     }
-
-                    val openingBalance = (prevCashIn - prevCashOut).coerceAtLeast(0.0)
-
-                    var todayCollectionTotal = 0.0
-                    for ((_, list) in collectionTree) {
-                        for (item in list) todayCollectionTotal += item.amount
-                    }
-
-                    var todayExpenseTotal = 0.0
-                    for ((_, list) in expenseTree) {
-                        for (item in list) todayExpenseTotal += item.amount
-                    }
-
-                    val totalAvailable = openingBalance + todayCollectionTotal
-                    val closingBalance = totalAvailable - todayExpenseTotal
-
-                    // Cache for PDF generator
-                    lastOpBal = openingBalance
-                    lastTodayCollection = todayCollectionTotal
-                    lastTotalAvailable = totalAvailable
-                    lastTotalExpense = todayExpenseTotal
-                    lastClosingBal = closingBalance
-                    lastCollectionTree.clear()
-                    lastCollectionTree.putAll(collectionTree)
-                    lastExpenseTree.clear()
-                    lastExpenseTree.putAll(expenseTree)
-
-                    tvSummaryStrip.text = String.format(
-                        Locale.getDefault(),
-                        "Op.Bal: Rs. %s  |  Collection: Rs. %s  |  Exp: Rs. %s  |  Cl.Bal: Rs. %s",
-                        fmt(openingBalance), fmt(todayCollectionTotal), fmt(todayExpenseTotal), fmt(closingBalance)
-                    )
-
-                    renderDayBookCards(
-                        openingBalance,
-                        collectionTree,
-                        todayCollectionTotal,
-                        totalAvailable,
-                        expenseTree,
-                        todayExpenseTotal,
-                        closingBalance
-                    )
+                }.addOnFailureListener { e ->
+                    tvSummaryStrip.text = "Expenses load error: ${e.message}"
                 }
+            }.addOnFailureListener { e ->
+                tvSummaryStrip.text = "Receipts load error: ${e.message}"
             }
+        }.addOnFailureListener { e ->
+            tvSummaryStrip.text = "Sales load error: ${e.message}"
         }
     }
 
-    /**
-     * Generates a clean A4 PDF file directly in Downloads/VeggieReports and opens
-     * WhatsApp / Share sheet to send the PDF immediately.
-     */
     private fun generateAndShareDayBookPdf() {
         if (lastCollectionTree.isEmpty() && lastExpenseTree.isEmpty()) {
             Toast.makeText(this, "Please wait for Day Book data to load", Toast.LENGTH_SHORT).show()
@@ -423,8 +443,8 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
         try {
             val pdfDoc = PdfDocument()
-            val pageWidth = 595 // A4 width in PostScript points (72 dpi)
-            val pageHeight = 842 // A4 height
+            val pageWidth = 595
+            val pageHeight = 842
             val margin = 32f
             var pageNum = 1
 
@@ -505,7 +525,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             val cx = pageWidth / 2f
             var y = 40f
 
-            // Header
             canvas.drawText("THIRUVENI COCONUTS", cx, y, pShop)
             y += 16f
             canvas.drawText("SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU, CHENNAI - 107", cx, y, pAddr)
@@ -513,7 +532,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             canvas.drawText("COCONUT DAY BOOK  |  DATE: $selectedDateStr", cx, y, pDocTitle)
             y += 14f
 
-            // 1. Opening Balance Box
             pFill.color = Color.parseColor("#E3F2FD")
             canvas.drawRect(margin, y, pageWidth - margin, y + 24f, pFill)
             canvas.drawRect(margin, y, pageWidth - margin, y + 24f, pBorder)
@@ -523,7 +541,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             canvas.drawText("Rs. ${fmt(lastOpBal)}", pageWidth - margin - 8f, y + 16f, pCatRight)
             y += 32f
 
-            // Helper to draw a TreeView section in PDF
             fun drawPdfTreeSection(
                 secTitle: String,
                 hdrColorHex: String,
@@ -591,7 +608,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
                 y += 30f
             }
 
-            // 2. Incomes / Collection
             drawPdfTreeSection(
                 secTitle = "2. INCOMES / COLLECTION",
                 hdrColorHex = "#1B5E20",
@@ -603,7 +619,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
                 totalVal = lastTotalAvailable
             )
 
-            // 3. Expenses (Category-wise TreeView)
             drawPdfTreeSection(
                 secTitle = "3. EXPENSES (CATEGORY-WISE TREE VIEW)",
                 hdrColorHex = "#C62828",
@@ -615,7 +630,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
                 totalVal = lastTotalExpense
             )
 
-            // 4. Closing Balance Box
             y = newPageIfNeeded(y, 28f)
             val clHex = if (lastClosingBal >= 0.0) "#1B5E20" else "#C62828"
             val clBgHex = if (lastClosingBal >= 0.0) "#C8E6C9" else "#FFCDD2"
@@ -629,7 +643,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
             pdfDoc.finishPage(page)
 
-            // Save PDF via MediaStore so no FileProvider XML is needed
             val safeDate = selectedDateStr.replace("[^0-9A-Za-z_-]".toRegex(), "-")
             val fileName = "Coconut_DayBook_${safeDate}_${System.currentTimeMillis()}.pdf"
 
@@ -708,13 +721,11 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
         val htmlSb = StringBuilder()
 
-        // 1. OPENING BALANCE
         contentContainer.addView(
             makeSingleBannerCard("1. OPENING BALANCE (OP. BAL)", "Rs. ${fmt(opBal)}", "#1565C0", "#E3F2FD")
         )
         htmlSb.append("<tr class='op'><td colspan='2'>1. OPENING BALANCE (OP. BAL)</td><td class='r'>${fmt(opBal)}</td></tr>")
 
-        // 2. INCOMES / COLLECTION (TREE VIEW)
         contentContainer.addView(
             makeTreeSectionCard(
                 sectionTitle = "2. INCOMES / COLLECTION",
@@ -731,7 +742,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             )
         )
 
-        // 3. EXPENSES (CATEGORY-WISE TREE VIEW: Shop, Other, Vehicle)
         contentContainer.addView(
             makeTreeSectionCard(
                 sectionTitle = "3. EXPENSES (CATEGORY-WISE TREE VIEW)",
@@ -748,7 +758,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             )
         )
 
-        // 4. CLOSING BALANCE
         val clColor = if (closingBal >= 0.0) "#1B5E20" else "#C62828"
         val clBg = if (closingBal >= 0.0) "#C8E6C9" else "#FFCDD2"
         contentContainer.addView(
