@@ -19,6 +19,7 @@ import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.Spinner
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
@@ -41,8 +42,17 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
+    // Supplier Batch Selector & Weigh Coolie UI
+    private lateinit var stockBatchContainer: LinearLayout
+    private lateinit var spSalesStockBatch: Spinner
+    private lateinit var tvSelectedBatchAvail: TextView
     private lateinit var weighCoolieContainer: LinearLayout
     private lateinit var etSalesWeighCoolie: EditText
+
+    private val allStockBatchesJson = JSONArray()
+    private val filteredBatchesJson = JSONArray()
+    private val batchDisplayList = arrayListOf<String>()
+    private lateinit var batchSpinnerAdapter: ArrayAdapter<String>
 
     private val customerList = arrayListOf<CustomerItem>()
     private val editFilterCustomerList = arrayListOf<String>()
@@ -85,6 +95,7 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
+        injectStockBatchSelectorAfterItem()
         injectWeighCoolieFieldForOnion()
 
         binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
@@ -141,9 +152,17 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
+        spSalesStockBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                updateSelectedBatchAvailabilityBanner()
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
         fetchNextBillNo()
         loadCustomers()
         loadItems()
+        loadAvailableStockBatches()
 
         binding.etSalesCustomer.setOnClickListener {
             showCustomerSearchDialog()
@@ -183,9 +202,64 @@ class SalesActivity : AppCompatActivity() {
             val isCoconut = itemName.equals("Coconut", ignoreCase = true)
             val isOnion = itemName.equals("Onion", ignoreCase = true)
 
+            // Validate selected supplier stock batch
+            val batchPos = spSalesStockBatch.selectedItemPosition
+            if (filteredBatchesJson.length() == 0 || batchPos < 0 || batchPos >= filteredBatchesJson.length()) {
+                Toast.makeText(this, "No available stock batch for $itemName! Add Purchase first.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            val selectedBatchObj = filteredBatchesJson.getJSONObject(batchPos)
+            val stockDocId = selectedBatchObj.optString("docId", "")
+            val batchId = selectedBatchObj.optString("batchId", "")
+            val supplierName = selectedBatchObj.optString("supplierName", "Unknown Supplier")
+            val availBags = selectedBatchObj.optInt("availableBags", 0)
+            val availKgs = selectedBatchObj.optDouble("availableKgs", 0.0)
+
+            // Calculate how much from this exact batch is already in the current bill grid
+            var alreadyUsedBags = 0
+            var alreadyUsedKgs = 0.0
+            for (k in 0 until billItemsArray.length()) {
+                val existing = billItemsArray.getJSONObject(k)
+                if (existing.optString("stockDocId", "") == stockDocId) {
+                    alreadyUsedBags += existing.optInt("bags", 0)
+                    alreadyUsedKgs += existing.optDouble("netKgs", 0.0)
+                }
+            }
+
+            val remainingBags = (availBags - alreadyUsedBags).coerceAtLeast(0)
+            val remainingKgs = (availKgs - alreadyUsedKgs).coerceAtLeast(0.0)
+
             val bags = if (isCoconut) 0 else (binding.etSalesBags.text.toString().toIntOrNull() ?: 0)
             val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
             val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
+
+            if (kgs <= 0.0 && bags <= 0) {
+                Toast.makeText(this, "Enter valid Bags or Net Kgs", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (rate <= 0.0) {
+                Toast.makeText(this, "Enter valid Rate", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // Strict stock limit check against selected supplier batch
+            if (kgs > remainingKgs + 0.01) {
+                Toast.makeText(
+                    this,
+                    String.format(Locale.getDefault(), "Insufficient Stock! %s (%s) only has %.2f Kgs left.", supplierName, batchId, remainingKgs),
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
+            if (!isCoconut && bags > remainingBags) {
+                Toast.makeText(
+                    this,
+                    "Insufficient Bags! $supplierName ($batchId) only has $remainingBags Bags left.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
 
             val bagChg = when {
                 isCoconut -> 0.0
@@ -202,20 +276,14 @@ class SalesActivity : AppCompatActivity() {
                 0.0
             }
 
-            if (kgs <= 0.0 && bags <= 0) {
-                Toast.makeText(this, "Enter valid Bags or Net Kgs", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (rate <= 0.0) {
-                Toast.makeText(this, "Enter valid Rate", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
             val baseAmt = kgs * rate
             val rowTotal = baseAmt + bagChg + weighCoolie
 
             val rowObj = JSONObject()
             rowObj.put("itemName", itemName)
+            rowObj.put("stockDocId", stockDocId)
+            rowObj.put("batchId", batchId)
+            rowObj.put("supplierName", supplierName)
             rowObj.put("bags", bags)
             rowObj.put("netKgs", kgs)
             rowObj.put("rate", rate)
@@ -226,6 +294,7 @@ class SalesActivity : AppCompatActivity() {
 
             billItemsArray.put(rowObj)
             refreshBillItemsGrid()
+            updateSelectedBatchAvailabilityBanner()
 
             binding.etSalesBags.setText("")
             binding.etSalesKgs.setText("")
@@ -260,10 +329,15 @@ class SalesActivity : AppCompatActivity() {
             var totalBagChargesAll = 0.0
             var totalWeighCoolieAll = 0.0
             var firstItemName = ""
+            var firstBatchId = ""
+            var firstSupplierName = ""
 
             for (i in 0 until billItemsArray.length()) {
                 val obj = billItemsArray.getJSONObject(i)
                 val iName = obj.getString("itemName")
+                val sDocId = obj.optString("stockDocId", "")
+                val bId = obj.optString("batchId", "")
+                val sName = obj.optString("supplierName", "")
                 val bgs = obj.getInt("bags")
                 val kgs = obj.getDouble("netKgs")
                 val rt = obj.getDouble("rate")
@@ -271,7 +345,11 @@ class SalesActivity : AppCompatActivity() {
                 val bChg = obj.getDouble("bagCharge")
                 val wCoolie = obj.optDouble("weighCoolie", 0.0)
 
-                if (i == 0) firstItemName = iName
+                if (i == 0) {
+                    firstItemName = iName
+                    firstBatchId = bId
+                    firstSupplierName = sName
+                }
                 totalBagsAll += bgs
                 totalKgsAll += kgs
                 totalBagChargesAll += bChg
@@ -279,6 +357,10 @@ class SalesActivity : AppCompatActivity() {
 
                 val itemMap = hashMapOf<String, Any>(
                     "itemName" to iName,
+                    "stockDocId" to sDocId,
+                    "stockId" to bId,
+                    "batchId" to bId,
+                    "supplierName" to sName,
                     "bags" to bgs,
                     "netKgs" to kgs,
                     "rate" to rt,
@@ -292,20 +374,31 @@ class SalesActivity : AppCompatActivity() {
             val isCredit = payMode.equals("Credit", ignoreCase = true)
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
+                // 1. Restore old stock items to their exact supplier batches
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
-                    restoreStockFifo(
+                    restoreStockToSpecificBatch(
+                        oldObj.optString("stockDocId", ""),
+                        oldObj.optString("batchId", ""),
                         oldObj.optString("itemName", ""),
                         oldObj.optInt("bags", 0),
                         oldObj.optDouble("netKgs", 0.0)
                     )
                 }
 
+                // 2. Deduct new stock items from their selected supplier batches
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
-                    deductStockFifo(obj.getString("itemName"), obj.getInt("bags"), obj.getDouble("netKgs"))
+                    deductStockFromSpecificBatch(
+                        obj.optString("stockDocId", ""),
+                        obj.optString("batchId", ""),
+                        obj.getString("itemName"),
+                        obj.getInt("bags"),
+                        obj.getDouble("netKgs")
+                    )
                 }
 
+                // 3. Adjust customer balance
                 if (oldSalePayMode.equals("Credit", ignoreCase = true) && oldSaleCustomerId.isNotEmpty()) {
                     val oldUnpaid = (oldSaleGrandTotal - oldSalePaidAmount).coerceAtLeast(0.0)
                     adjustCustomerBalance(oldSaleCustomerId, -oldUnpaid)
@@ -331,6 +424,8 @@ class SalesActivity : AppCompatActivity() {
                     "payMode" to payMode,
                     "items" to itemsForDb,
                     "itemName" to firstItemName,
+                    "batchId" to firstBatchId,
+                    "supplierName" to firstSupplierName,
                     "bags" to totalBagsAll,
                     "netKgs" to totalKgsAll,
                     "totalBagCharges" to totalBagChargesAll,
@@ -354,9 +449,16 @@ class SalesActivity : AppCompatActivity() {
                         Toast.makeText(this, "Failed to update bill", Toast.LENGTH_SHORT).show()
                     }
             } else {
+                // Deduct from exact selected supplier stock batches
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
-                    deductStockFifo(obj.getString("itemName"), obj.getInt("bags"), obj.getDouble("netKgs"))
+                    deductStockFromSpecificBatch(
+                        obj.optString("stockDocId", ""),
+                        obj.optString("batchId", ""),
+                        obj.getString("itemName"),
+                        obj.getInt("bags"),
+                        obj.getDouble("netKgs")
+                    )
                 }
 
                 val saleId = db.collection("sales").document().id
@@ -369,6 +471,8 @@ class SalesActivity : AppCompatActivity() {
                     "payMode" to payMode,
                     "items" to itemsForDb,
                     "itemName" to firstItemName,
+                    "batchId" to firstBatchId,
+                    "supplierName" to firstSupplierName,
                     "bags" to totalBagsAll,
                     "netKgs" to totalKgsAll,
                     "totalBagCharges" to totalBagChargesAll,
@@ -400,9 +504,159 @@ class SalesActivity : AppCompatActivity() {
     }
 
     /**
-     * Dynamically injects the "Weigh Coolie (Rs)" field right after Bag Charge,
-     * shown ONLY when Onion is selected.
+     * Places the Supplier Available Stock Batch dropdown right below the Item Spinner
+     * so every sale is strictly linked to the supplier whose stock is being sold.
      */
+    private fun injectStockBatchSelectorAfterItem() {
+        val parent = binding.spSalesItem.parent as? ViewGroup ?: return
+        val insertIdx = parent.indexOfChild(binding.spSalesItem) + 1
+
+        stockBatchContainer = LinearLayout(this)
+        stockBatchContainer.orientation = LinearLayout.VERTICAL
+        stockBatchContainer.setBackgroundColor(Color.parseColor("#E8F5E9"))
+        stockBatchContainer.setPadding(16, 12, 16, 12)
+        val boxLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        boxLp.setMargins(0, 6, 0, 10)
+        stockBatchContainer.layoutParams = boxLp
+
+        val lblStock = TextView(this)
+        lblStock.text = "Select Supplier Available Stock (Lot / Batch) *"
+        lblStock.textSize = 12.5f
+        lblStock.setTypeface(null, Typeface.BOLD)
+        lblStock.setTextColor(Color.parseColor("#1B5E20"))
+
+        spSalesStockBatch = Spinner(this)
+        spSalesStockBatch.setBackgroundResource(android.R.drawable.btn_dropdown)
+        val spLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (46 * resources.displayMetrics.density).toInt()
+        )
+        spSalesStockBatch.layoutParams = spLp
+
+        batchSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
+        batchSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spSalesStockBatch.adapter = batchSpinnerAdapter
+
+        tvSelectedBatchAvail = TextView(this)
+        tvSelectedBatchAvail.text = "Loading available stock..."
+        tvSelectedBatchAvail.textSize = 12f
+        tvSelectedBatchAvail.setTypeface(null, Typeface.BOLD)
+        tvSelectedBatchAvail.setTextColor(Color.parseColor("#D84315"))
+        tvSelectedBatchAvail.setPadding(4, 4, 4, 0)
+
+        stockBatchContainer.addView(lblStock)
+        stockBatchContainer.addView(spSalesStockBatch)
+        stockBatchContainer.addView(tvSelectedBatchAvail)
+        parent.addView(stockBatchContainer, insertIdx)
+    }
+
+    private fun loadAvailableStockBatches() {
+        db.collection("stock_batches").get().addOnSuccessListener { snap ->
+            while (allStockBatchesJson.length() > 0) allStockBatchesJson.remove(0)
+
+            val sortedDocs = snap.documents.sortedBy { doc -> doc.getLong("timestamp") ?: 0L }
+            for (doc in sortedDocs) {
+                val iName = (doc.getString("itemName") ?: "").trim()
+                val availBags = (doc.getLong("availableBags") ?: 0L).toInt()
+                val availKgs = doc.getDouble("availableKgs") ?: 0.0
+
+                // Only include batches that still have positive available stock
+                if (iName.isNotEmpty() && (availKgs > 0.001 || availBags > 0)) {
+                    val obj = JSONObject()
+                    obj.put("docId", doc.id)
+                    obj.put("batchId", doc.getString("batchId") ?: doc.id.take(6))
+                    obj.put("supplierName", doc.getString("supplierName") ?: "Unknown Supplier")
+                    obj.put("itemName", iName)
+                    obj.put("availableBags", availBags)
+                    obj.put("availableKgs", availKgs)
+                    obj.put("purchaseRate", doc.getDouble("purchaseRate") ?: doc.getDouble("ratePerKg") ?: 0.0)
+                    allStockBatchesJson.put(obj)
+                }
+            }
+
+            val currentItem = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+            filterBatchesForSelectedItem(currentItem)
+        }
+    }
+
+    private fun filterBatchesForSelectedItem(itemName: String) {
+        while (filteredBatchesJson.length() > 0) filteredBatchesJson.remove(0)
+        batchDisplayList.clear()
+
+        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+
+        for (i in 0 until allStockBatchesJson.length()) {
+            val obj = allStockBatchesJson.getJSONObject(i)
+            val bItem = obj.optString("itemName", "")
+            if (!bItem.equals(itemName, ignoreCase = true)) continue
+
+            val sup = obj.optString("supplierName", "Unknown")
+            val bId = obj.optString("batchId", "")
+            val bags = obj.optInt("availableBags", 0)
+            val kgs = obj.optDouble("availableKgs", 0.0)
+
+            filteredBatchesJson.put(obj)
+            val label = if (isCoconut) {
+                String.format(Locale.getDefault(), "%s [%s] — %.2f Kgs", sup, bId, kgs)
+            } else {
+                String.format(Locale.getDefault(), "%s [%s] — %d Bags | %.2f Kgs", sup, bId, bags, kgs)
+            }
+            batchDisplayList.add(label)
+        }
+
+        if (batchDisplayList.isEmpty()) {
+            batchDisplayList.add("No $itemName stock available")
+        }
+
+        batchSpinnerAdapter.notifyDataSetChanged()
+        spSalesStockBatch.setSelection(0)
+        updateSelectedBatchAvailabilityBanner()
+    }
+
+    private fun updateSelectedBatchAvailabilityBanner() {
+        val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val pos = spSalesStockBatch.selectedItemPosition
+
+        if (filteredBatchesJson.length() == 0 || pos < 0 || pos >= filteredBatchesJson.length()) {
+            tvSelectedBatchAvail.text = "Available Stock: 0.00 Kgs (Purchase entry required)"
+            tvSelectedBatchAvail.setTextColor(Color.RED)
+            return
+        }
+
+        val obj = filteredBatchesJson.getJSONObject(pos)
+        val stockDocId = obj.optString("docId", "")
+        val sup = obj.optString("supplierName", "")
+        val bId = obj.optString("batchId", "")
+        val availBags = obj.optInt("availableBags", 0)
+        val availKgs = obj.optDouble("availableKgs", 0.0)
+        val purRate = obj.optDouble("purchaseRate", 0.0)
+
+        var usedBags = 0
+        var usedKgs = 0.0
+        for (k in 0 until billItemsArray.length()) {
+            val row = billItemsArray.getJSONObject(k)
+            if (row.optString("stockDocId", "") == stockDocId) {
+                usedBags += row.optInt("bags", 0)
+                usedKgs += row.optDouble("netKgs", 0.0)
+            }
+        }
+
+        val remBags = (availBags - usedBags).coerceAtLeast(0)
+        val remKgs = (availKgs - usedKgs).coerceAtLeast(0.0)
+
+        tvSelectedBatchAvail.setTextColor(Color.parseColor("#1B5E20"))
+        val rateHint = if (purRate > 0.0) String.format(Locale.getDefault(), " | Pur.Rate: %.2f", purRate) else ""
+        tvSelectedBatchAvail.text = if (isCoconut) {
+            String.format(Locale.getDefault(), "Supplier: %s (%s) | Avail: %.2f Kgs%s", sup, bId, remKgs, rateHint)
+        } else {
+            String.format(Locale.getDefault(), "Supplier: %s (%s) | Avail: %d Bags / %.2f Kgs%s", sup, bId, remBags, remKgs, rateHint)
+        }
+    }
+
     private fun injectWeighCoolieFieldForOnion() {
         val parent = binding.etSalesBagCharge.parent as? ViewGroup ?: return
         val insertIdx = parent.indexOfChild(binding.etSalesBagCharge) + 1
@@ -437,15 +691,11 @@ class SalesActivity : AppCompatActivity() {
         parent.addView(weighCoolieContainer, insertIdx)
     }
 
-    /**
-     * Item visibility rules:
-     * - Coconut: NO Bags, NO Bag Charge, NO Weigh Coolie
-     * - Garlic: Bags + Bag Charge ONLY (NO Weigh Coolie)
-     * - Onion: Bags (Rs. 10/bag) + Bag Charge + Weigh Coolie
-     */
     private fun onSalesItemChanged(itemName: String) {
         val isCoconut = itemName.equals("Coconut", ignoreCase = true)
         val isOnion = itemName.equals("Onion", ignoreCase = true)
+
+        filterBatchesForSelectedItem(itemName)
 
         if (isCoconut) {
             binding.etSalesBags.visibility = View.GONE
@@ -463,7 +713,6 @@ class SalesActivity : AppCompatActivity() {
                 binding.etSalesBagCharge.setText(String.format(Locale.getDefault(), "%.2f", bags * 10.0))
             }
         } else {
-            // Garlic & other bagged items
             binding.etSalesBags.visibility = View.VISIBLE
             binding.etSalesBagCharge.visibility = View.VISIBLE
             weighCoolieContainer.visibility = View.GONE
@@ -614,7 +863,7 @@ class SalesActivity : AppCompatActivity() {
     private fun confirmAndDeleteSale(docId: String, bNo: String, data: Map<String, Any>) {
         AlertDialog.Builder(this)
             .setTitle("Delete Sales Bill")
-            .setMessage("Are you sure you want to delete $bNo? Stock and Customer balance will be restored.")
+            .setMessage("Are you sure you want to delete $bNo? Stock will be returned to its Supplier batch and Customer balance will be restored.")
             .setPositiveButton("DELETE") { _, _ ->
                 deleteSaleAndRestore(docId, data)
             }
@@ -634,16 +883,19 @@ class SalesActivity : AppCompatActivity() {
                 if (rawItems != null) {
                     for (entry in rawItems) {
                         val m = entry as? Map<*, *> ?: continue
+                        val sDocId = m["stockDocId"]?.toString() ?: ""
+                        val bId = m["batchId"]?.toString() ?: m["stockId"]?.toString() ?: ""
                         val iName = m["itemName"]?.toString() ?: ""
                         val bgs = (m["bags"] as? Number)?.toInt() ?: 0
                         val kgs = (m["netKgs"] as? Number)?.toDouble() ?: 0.0
-                        restoreStockFifo(iName, bgs, kgs)
+                        restoreStockToSpecificBatch(sDocId, bId, iName, bgs, kgs)
                     }
                 } else {
+                    val bId = data["batchId"]?.toString() ?: data["stockId"]?.toString() ?: ""
                     val iName = data["itemName"]?.toString() ?: ""
                     val bgs = (data["bags"] as? Number)?.toInt() ?: 0
                     val kgs = (data["netKgs"] as? Number)?.toDouble() ?: 0.0
-                    restoreStockFifo(iName, bgs, kgs)
+                    restoreStockToSpecificBatch("", bId, iName, bgs, kgs)
                 }
 
                 if (pMode.equals("Credit", ignoreCase = true) && custId.isNotEmpty()) {
@@ -655,7 +907,8 @@ class SalesActivity : AppCompatActivity() {
                     editingSaleDocId = ""
                     resetForm()
                 }
-                Toast.makeText(this, "Sales Bill Deleted & Stock Restored!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Sales Bill Deleted & Supplier Stock Restored!", Toast.LENGTH_SHORT).show()
+                loadAvailableStockBatches()
                 loadSalesForEditFilter()
             }
             .addOnFailureListener {
@@ -700,6 +953,9 @@ class SalesActivity : AppCompatActivity() {
             for (entry in rawItems) {
                 val m = entry as? Map<*, *> ?: continue
                 val iName = m["itemName"]?.toString() ?: "Coconut"
+                val sDocId = m["stockDocId"]?.toString() ?: ""
+                val bId = m["batchId"]?.toString() ?: m["stockId"]?.toString() ?: ""
+                val sName = m["supplierName"]?.toString() ?: ""
                 val bgs = (m["bags"] as? Number)?.toInt() ?: 0
                 val kgs = (m["netKgs"] as? Number)?.toDouble() ?: 0.0
                 val rt = (m["rate"] as? Number)?.toDouble() ?: 0.0
@@ -709,6 +965,9 @@ class SalesActivity : AppCompatActivity() {
 
                 val obj = JSONObject()
                 obj.put("itemName", iName)
+                obj.put("stockDocId", sDocId)
+                obj.put("batchId", bId)
+                obj.put("supplierName", sName)
                 obj.put("bags", bgs)
                 obj.put("netKgs", kgs)
                 obj.put("rate", rt)
@@ -723,6 +982,8 @@ class SalesActivity : AppCompatActivity() {
             }
         } else {
             val iName = data["itemName"]?.toString() ?: "Coconut"
+            val bId = data["batchId"]?.toString() ?: data["stockId"]?.toString() ?: ""
+            val sName = data["supplierName"]?.toString() ?: ""
             val bgs = (data["bags"] as? Number)?.toInt() ?: 0
             val kgs = (data["netKgs"] as? Number)?.toDouble() ?: 0.0
             val tot = oldSaleGrandTotal
@@ -730,6 +991,9 @@ class SalesActivity : AppCompatActivity() {
 
             val obj = JSONObject()
             obj.put("itemName", iName)
+            obj.put("stockDocId", "")
+            obj.put("batchId", bId)
+            obj.put("supplierName", sName)
             obj.put("bags", bgs)
             obj.put("netKgs", kgs)
             obj.put("rate", rt)
@@ -756,10 +1020,84 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    private fun restoreStockFifo(itemName: String, bagsToAdd: Int, kgsToAdd: Double) {
-        if (itemName.isEmpty() || (bagsToAdd <= 0 && kgsToAdd <= 0.0)) return
+    /**
+     * Deducts sold Bags & Kgs directly from the exact selected Supplier Stock Batch.
+     */
+    private fun deductStockFromSpecificBatch(
+        stockDocId: String,
+        batchId: String,
+        itemName: String,
+        bagsToDeduct: Int,
+        kgsToDeduct: Double
+    ) {
+        if (stockDocId.isNotEmpty()) {
+            val batchRef = db.collection("stock_batches").document(stockDocId)
+            db.runTransaction { tr ->
+                val snap = tr.get(batchRef)
+                if (snap.exists()) {
+                    val availBags = (snap.getLong("availableBags") ?: 0L).toInt()
+                    val availKgs = snap.getDouble("availableKgs") ?: 0.0
+                    val newBags = (availBags - bagsToDeduct).coerceAtLeast(0)
+                    val newKgs = (availKgs - kgsToDeduct).coerceAtLeast(0.0)
+                    tr.update(
+                        batchRef,
+                        hashMapOf<String, Any>(
+                            "availableBags" to newBags,
+                            "availableKgs" to newKgs
+                        )
+                    )
+                }
+            }.addOnCompleteListener {
+                loadAvailableStockBatches()
+            }
+            return
+        }
+
+        // Fallback by batchId or FIFO if docId is empty
+        deductStockFifo(itemName, bagsToDeduct, kgsToDeduct)
+    }
+
+    /**
+     * Restores Bags & Kgs back to the exact Supplier Stock Batch when a sale is edited or deleted.
+     */
+    private fun restoreStockToSpecificBatch(
+        stockDocId: String,
+        batchId: String,
+        itemName: String,
+        bagsToAdd: Int,
+        kgsToAdd: Double
+    ) {
+        if (bagsToAdd <= 0 && kgsToAdd <= 0.0) return
+
+        if (stockDocId.isNotEmpty()) {
+            val batchRef = db.collection("stock_batches").document(stockDocId)
+            db.runTransaction { tr ->
+                val snap = tr.get(batchRef)
+                if (snap.exists()) {
+                    val availBags = (snap.getLong("availableBags") ?: 0L).toInt()
+                    val availKgs = snap.getDouble("availableKgs") ?: 0.0
+                    tr.update(
+                        batchRef,
+                        hashMapOf<String, Any>(
+                            "availableBags" to (availBags + bagsToAdd),
+                            "availableKgs" to (availKgs + kgsToAdd)
+                        )
+                    )
+                }
+            }.addOnCompleteListener {
+                loadAvailableStockBatches()
+            }
+            return
+        }
+
         db.collection("stock_batches").get().addOnSuccessListener { snap ->
-            val targetDoc = snap.documents.filter { doc ->
+            val byBatch = if (batchId.isNotEmpty()) {
+                snap.documents.firstOrNull { d ->
+                    (d.getString("batchId") ?: "").equals(batchId, ignoreCase = true)
+                }
+            } else null
+
+            val targetDoc = byBatch ?: snap.documents.filter { doc ->
                 (doc.getString("itemName") ?: "").equals(itemName, ignoreCase = true)
             }.maxByOrNull { doc -> doc.getLong("timestamp") ?: 0L }
 
@@ -771,7 +1109,9 @@ class SalesActivity : AppCompatActivity() {
                         "availableBags" to (availBags + bagsToAdd),
                         "availableKgs" to (availKgs + kgsToAdd)
                     )
-                )
+                ).addOnCompleteListener {
+                    loadAvailableStockBatches()
+                }
             }
         }
     }
@@ -808,6 +1148,7 @@ class SalesActivity : AppCompatActivity() {
                     )
                 )
             }
+            loadAvailableStockBatches()
         }
     }
 
@@ -993,6 +1334,7 @@ class SalesActivity : AppCompatActivity() {
                             Toast.makeText(this, "SUCCESS! Imported $importedCount Sales Bills!", Toast.LENGTH_LONG).show()
                             fetchNextBillNo()
                             loadCustomers()
+                            loadAvailableStockBatches()
                         }
                         .addOnFailureListener { err ->
                             Toast.makeText(this, "DB Save Error: ${err.message}", Toast.LENGTH_LONG).show()
@@ -1232,6 +1574,7 @@ class SalesActivity : AppCompatActivity() {
         for (i in 0 until billItemsArray.length()) {
             val obj = billItemsArray.getJSONObject(i)
             val iName = obj.getString("itemName")
+            val supName = obj.optString("supplierName", "")
             val bgs = obj.getInt("bags")
             val kgs = obj.getDouble("netKgs")
             val rt = obj.getDouble("rate")
@@ -1243,6 +1586,7 @@ class SalesActivity : AppCompatActivity() {
             val tr = TableRow(this)
             tr.setBackgroundColor(if (i % 2 == 0) Color.WHITE else Color.parseColor("#F1F8E9"))
 
+            val itemWithSup = if (supName.isNotEmpty()) "$iName ($supName)" else iName
             val bagDisplay = if (iName.equals("Coconut", ignoreCase = true) || bgs <= 0) "-" else "$bgs"
             val extraCharges = bChg + wCoolie
             val extraDisplay = if (wCoolie > 0.0) {
@@ -1251,7 +1595,7 @@ class SalesActivity : AppCompatActivity() {
                 String.format(Locale.getDefault(), "%.2f", extraCharges)
             }
 
-            tr.addView(makeCell(iName, bold = true))
+            tr.addView(makeCell(itemWithSup, bold = true))
             tr.addView(makeCell(bagDisplay, alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", kgs), alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rt), alignRight = true))
@@ -1267,6 +1611,7 @@ class SalesActivity : AppCompatActivity() {
             delBtn.setOnClickListener {
                 billItemsArray.remove(i)
                 refreshBillItemsGrid()
+                updateSelectedBatchAvailabilityBanner()
             }
             tr.addView(delBtn)
 
@@ -1337,5 +1682,6 @@ class SalesActivity : AppCompatActivity() {
         binding.btnSaveSalesBill.isEnabled = true
         if (!isEditMode) fetchNextBillNo() else binding.etSalesBillNo.setText("")
         loadCustomers()
+        loadAvailableStockBatches()
     }
 }
