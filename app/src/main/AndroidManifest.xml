@@ -9,7 +9,10 @@
         android:label="Veggie Mandi"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
-
+        <activity
+            android:name=".CoconutDayBookActivity"
+            android:exported="false" />
+        
         <activity
             android:name=".LoginActivity"
             android:exported="true">
