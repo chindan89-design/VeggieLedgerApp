@@ -1,3 +1,6 @@
+.LENGTH_SHORT).show()
+    }
+}
 package com.shop.veggieledger
 
 import android.app.DatePickerDialog
@@ -25,6 +28,7 @@ import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import org.json.JSONArray
 import org.json.JSONObject
@@ -73,6 +77,43 @@ class ReportsHubActivity : AppCompatActivity() {
         buildUiProgrammatically()
         setupDates()
         setupPartyDropdownIfNeeded()
+    }
+
+    private fun safeDouble(doc: DocumentSnapshot, field: String): Double {
+        val raw = doc.get(field) ?: return 0.0
+        return when (raw) {
+            is Number -> raw.toDouble()
+            is String -> raw.trim().toDoubleOrNull() ?: 0.0
+            else -> 0.0
+        }
+    }
+
+    private fun getSaleSplitAmounts(doc: DocumentSnapshot): Triple<Double, Double, Double> {
+        val tot = safeDouble(doc, "grandTotal")
+        val mode = (doc.getString("payMode") ?: "Credit").trim()
+        val hasSplitFields = doc.contains("cash") || doc.contains("gpay") || doc.contains("credit") ||
+                doc.contains("cashAmount") || doc.contains("gpayAmount")
+
+        return if (hasSplitFields) {
+            val cAmt = if (doc.contains("cash")) safeDouble(doc, "cash") else safeDouble(doc, "cashAmount")
+            val gAmt = if (doc.contains("gpay")) safeDouble(doc, "gpay") else safeDouble(doc, "gpayAmount")
+            val crAmt = if (doc.contains("credit")) {
+                safeDouble(doc, "credit")
+            } else if (doc.contains("balanceAmount")) {
+                safeDouble(doc, "balanceAmount")
+            } else {
+                (tot - cAmt - gAmt).coerceAtLeast(0.0)
+            }
+            Triple(cAmt, gAmt, crAmt)
+        } else {
+            when {
+                mode.equals("Cash", ignoreCase = true) -> Triple(tot, 0.0, 0.0)
+                mode.contains("GPay", ignoreCase = true) ||
+                        mode.contains("UPI", ignoreCase = true) ||
+                        mode.contains("Bank", ignoreCase = true) -> Triple(0.0, tot, 0.0)
+                else -> Triple(0.0, 0.0, tot)
+            }
+        }
     }
 
     private fun fmtVal(value: Double): String {
@@ -438,7 +479,6 @@ class ReportsHubActivity : AppCompatActivity() {
             return
         }
 
-        // Purchase-wise Sales Report: Populate Lot / Stock ID + Supplier dropdown
         if (reportType == "PUR_WISE_SALES") {
             layoutPartyBox.visibility = View.VISIBLE
             tvPartyLabel.text = "1. Select Purchase Stock ID / Lot"
@@ -507,7 +547,7 @@ class ReportsHubActivity : AppCompatActivity() {
             }
             for (doc in sortedDocs) {
                 val name = doc.getString("name")?.trim() ?: continue
-                val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                val opBal = safeDouble(doc, "opbal").let { if (it != 0.0) it else safeDouble(doc, "openingBalance") }
                 partyNames.add(name)
                 partyOpBalMap[name] = opBal
                 partyIdMap[name] = doc.id
@@ -672,18 +712,14 @@ class ReportsHubActivity : AppCompatActivity() {
             db.collection("sales").get().addOnSuccessListener { salSnap ->
                 db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
 
-                    // Map batchId -> current available stock
                     val availKgsByBatch = HashMap<String, Double>()
-                    val availBagsByBatch = HashMap<String, Int>()
                     for (stDoc in stockSnap) {
                         val bId = (stDoc.getString("batchId") ?: "").trim().uppercase(Locale.getDefault())
                         if (bId.isNotEmpty()) {
-                            availKgsByBatch[bId] = (availKgsByBatch[bId] ?: 0.0) + (stDoc.getDouble("availableKgs") ?: 0.0)
-                            availBagsByBatch[bId] = (availBagsByBatch[bId] ?: 0) + (stDoc.getLong("availableBags") ?: 0L).toInt()
+                            availKgsByBatch[bId] = (availKgsByBatch[bId] ?: 0.0) + safeDouble(stDoc, "availableKgs")
                         }
                     }
 
-                    // Collect all sales entries grouped by batchId (and fallback supplierName+itemName)
                     val salesByBatch = HashMap<String, ArrayList<JSONObject>>()
                     val sortedSales = salSnap.documents.sortedBy { it.getLong("timestamp") ?: 0L }
 
@@ -725,8 +761,8 @@ class ReportsHubActivity : AppCompatActivity() {
                         } else {
                             val iName = sDoc.getString("itemName") ?: ""
                             val bags = (sDoc.getLong("bags") ?: 0L).toInt()
-                            val kgs = sDoc.getDouble("netKgs") ?: 0.0
-                            val tot = sDoc.getDouble("grandTotal") ?: 0.0
+                            val kgs = safeDouble(sDoc, "netKgs")
+                            val tot = safeDouble(sDoc, "grandTotal")
                             val rate = if (kgs > 0.0) tot / kgs else 0.0
 
                             val key = if (docBatchId.isNotEmpty()) docBatchId else "SUP_${docSupName.uppercase(Locale.getDefault())}_${iName.uppercase(Locale.getDefault())}"
@@ -1095,6 +1131,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                 db.collection("customers").get().addOnSuccessListener { custSnap ->
                                     db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
 
+                                        // 1. PURCHASE DETAILS
                                         val purchaseLineRows = arrayListOf<Pair<String, String>>()
                                         val purHtmlRows = StringBuilder()
 
@@ -1105,7 +1142,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                         val sortedPurDocs = purSnap.documents.sortedBy { it.getLong("timestamp") ?: 0L }
                                         for (doc in sortedPurDocs) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
-                                            val tot = doc.getDouble("grandTotal") ?: 0.0
+                                            val tot = safeDouble(doc, "grandTotal")
                                             if (dYmd in 1..targetYmd) totalPurAll += tot
                                             if (dYmd != targetYmd) continue
 
@@ -1164,25 +1201,27 @@ class ReportsHubActivity : AppCompatActivity() {
                                         purchaseLineRows.add("Today Total Purchase Amount" to fmtVal(todayPurchaseTot))
                                         purHtmlRows.append("<tr class='hi'><td>Today Total Purchase Amount</td><td class='r'>${fmtVal(todayPurchaseTot)}</td></tr>")
 
+                                        // 2. SUPPLIER OUTSTANDING
                                         var supMasterOp = 0.0
                                         for (doc in supSnap) {
-                                            supMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
+                                            supMasterOp += safeDouble(doc, "opbal").let { if (it != 0.0) it else safeDouble(doc, "openingBalance") }
                                         }
                                         var totalSupPaid = 0.0
                                         for (doc in paySnap) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
                                             if (dYmd in 1..targetYmd) {
-                                                totalSupPaid += (doc.getDouble("amount") ?: 0.0) + (doc.getDouble("discount") ?: 0.0)
+                                                totalSupPaid += safeDouble(doc, "amount") + safeDouble(doc, "discount")
                                             }
                                         }
                                         for (doc in purSnap) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
                                             if (dYmd in 1..targetYmd && (doc.getString("payMode") ?: "").equals("Cash", ignoreCase = true)) {
-                                                totalSupPaid += (doc.getDouble("grandTotal") ?: 0.0)
+                                                totalSupPaid += safeDouble(doc, "grandTotal")
                                             }
                                         }
                                         val supplierClosingOut = (supMasterOp + totalPurAll - totalSupPaid).coerceAtLeast(0.0)
 
+                                        // 3. CREDIT BILL RECEIVED (Cash & GPay)
                                         var creditRecCash = 0.0
                                         var creditRecGpay = 0.0
                                         var todayCustDiscount = 0.0
@@ -1195,32 +1234,33 @@ class ReportsHubActivity : AppCompatActivity() {
 
                                             if (dYmd == targetYmd) {
                                                 val mode = (doc.getString("payMode") ?: "Cash").trim()
-                                                val amt = doc.getDouble("amount") ?: 0.0
-                                                val disc = doc.getDouble("discount") ?: 0.0
+                                                val amt = safeDouble(doc, "amount")
+                                                val disc = safeDouble(doc, "discount")
                                                 todayCustDiscount += disc
                                                 if (mode.equals("Cash", ignoreCase = true)) creditRecCash += amt
                                                 else creditRecGpay += amt
                                             }
                                         }
 
+                                        // 4. TODAY SALES (Reads `cash`, `gpay`, `credit` fields directly)
                                         var cashSales = 0.0
                                         var gpaySales = 0.0
                                         var creditSales = 0.0
                                         for (doc in salSnap) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
                                             if (dYmd == targetYmd) {
-                                                val mode = (doc.getString("payMode") ?: "Credit").trim()
-                                                val tot = doc.getDouble("grandTotal") ?: 0.0
-                                                when {
-                                                    mode.equals("Cash", ignoreCase = true) -> cashSales += tot
-                                                    mode.contains("GPay", ignoreCase = true) || mode.contains("UPI", ignoreCase = true) || mode.contains("Bank", ignoreCase = true) -> gpaySales += tot
-                                                    else -> creditSales += tot
-                                                }
+                                                val (cAmt, gAmt, crAmt) = getSaleSplitAmounts(doc)
+                                                cashSales += cAmt
+                                                gpaySales += gAmt
+                                                creditSales += crAmt
                                             }
                                         }
                                         val todaySalesTotal = cashSales + gpaySales + creditSales
+
+                                        // 5. CASH RECEIVED
                                         val cashReceivedTotal = cashSales + creditRecCash
 
+                                        // 6. EXPENSES (A. Other, B. Shop, C. Vehicle) & Other Income
                                         var otherExp = 0.0
                                         var shopExp = 0.0
                                         var vehicleExp = 0.0
@@ -1231,7 +1271,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                             if (dYmd != targetYmd) continue
                                             val type = doc.getString("type") ?: "Expense"
                                             val cat = (doc.getString("category") ?: "Other Expenses").trim()
-                                            val amt = doc.getDouble("amount") ?: 0.0
+                                            val amt = safeDouble(doc, "amount")
                                             val mode = (doc.getString("payMode") ?: "Cash").trim()
 
                                             if (type.equals("Income", ignoreCase = true)) {
@@ -1245,23 +1285,28 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
                                         val totalExpenses = otherExp + shopExp + vehicleExp
+
+                                        // 7. COLLECTION & TODAY CLOSING BALANCE
                                         val collectionTotal = cashSales + creditRecCash + otherCashIncome
                                         val todayClosingBalance = collectionTotal - totalExpenses
 
+                                        // 8. STOCK INQUIRY
                                         val stockMap = HashMap<String, Pair<Int, Double>>()
                                         for (doc in stockSnap) {
                                             val iName = doc.getString("itemName") ?: continue
                                             val bgs = (doc.getLong("availableBags") ?: 0L).toInt()
-                                            val kgs = doc.getDouble("availableKgs") ?: 0.0
+                                            val kgs = safeDouble(doc, "availableKgs")
                                             val curr = stockMap[iName] ?: Pair(0, 0.0)
                                             stockMap[iName] = Pair(curr.first + bgs, curr.second + kgs)
                                         }
 
+                                        // 9. INCOME DETAILS
                                         val incomeDetailsTotal = cashSales + gpaySales + creditRecCash + creditRecGpay
 
+                                        // 10. CUSTOMER OUTSTANDING (Vertical)
                                         var custMasterOp = 0.0
                                         for (doc in custSnap) {
-                                            custMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
+                                            custMasterOp += safeDouble(doc, "opbal").let { if (it != 0.0) it else safeDouble(doc, "openingBalance") }
                                         }
                                         var prevSalesAll = 0.0
                                         var prevIncAll = 0.0
@@ -1269,27 +1314,29 @@ class ReportsHubActivity : AppCompatActivity() {
 
                                         for (doc in salSnap) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
-                                            val tot = doc.getDouble("grandTotal") ?: 0.0
-                                            val isCred = (doc.getString("payMode") ?: "Credit").equals("Credit", ignoreCase = true)
+                                            val tot = safeDouble(doc, "grandTotal")
+                                            val (cAmt, gAmt, _) = getSaleSplitAmounts(doc)
+                                            val directPaid = cAmt + gAmt
                                             val bNo = (doc.getString("billNo") ?: "").trim().lowercase(Locale.getDefault())
                                             val linked = (bNo.isNotEmpty() && receiptLinkedBills.contains(bNo)) || receiptLinkedBills.contains(doc.id.lowercase(Locale.getDefault()))
-                                            val unlinkedCash = if (!isCred && !linked) tot else 0.0
+                                            val unlinkedDirect = if (!linked) directPaid else 0.0
 
                                             if (dYmd in 1 until targetYmd) {
                                                 prevSalesAll += tot
-                                                prevIncAll += unlinkedCash
+                                                prevIncAll += unlinkedDirect
                                             }
                                         }
                                         for (doc in recSnap) {
                                             val dYmd = dateToYmd(doc.getString("date") ?: "")
                                             if (dYmd in 1 until targetYmd) {
-                                                prevIncAll += (doc.getDouble("amount") ?: 0.0)
-                                                prevDiscAll += (doc.getDouble("discount") ?: 0.0)
+                                                prevIncAll += safeDouble(doc, "amount")
+                                                prevDiscAll += safeDouble(doc, "discount")
                                             }
                                         }
                                         val vertOpOut = (custMasterOp + prevSalesAll - prevIncAll - prevDiscAll).coerceAtLeast(0.0)
                                         val vertClosingOut = (vertOpOut + todaySalesTotal - incomeDetailsTotal - todayCustDiscount).coerceAtLeast(0.0)
 
+                                        // 11. PROFIT & LOSS
                                         val netProfitLoss = todaySalesTotal - todayPurchaseTot - totalExpenses - todayCustDiscount
 
                                         tvSummary.text = String.format(
@@ -1496,7 +1543,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
                     for (doc in sortedCustDocs) {
                         val cName = doc.getString("name")?.trim() ?: continue
-                        val baseOp = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                        val baseOp = safeDouble(doc, "opbal").let { if (it != 0.0) it else safeDouble(doc, "openingBalance") }
                         if (isAll || cName.equals(selectedCust, ignoreCase = true)) {
                             targetCustomers.add(Triple(doc.id, cName, baseOp))
                         }
@@ -1525,14 +1572,13 @@ class ReportsHubActivity : AppCompatActivity() {
                             if (sCid != custId && sCname != custNameLower) continue
 
                             val dStr = sDoc.getString("date") ?: ""
-                            val pMode = sDoc.getString("payMode") ?: "Credit"
-                            val gTot = sDoc.getDouble("grandTotal") ?: 0.0
+                            val gTot = safeDouble(sDoc, "grandTotal")
+                            val (cAmt, gAmt, crAmt) = getSaleSplitAmounts(sDoc)
+                            val paidDirect = cAmt + gAmt
                             val ts = sDoc.getLong("timestamp") ?: 0L
 
                             if (isDateBeforeFrom(dStr)) {
-                                if (pMode.equals("Credit", ignoreCase = true)) {
-                                    effectiveOpBal += gTot
-                                }
+                                effectiveOpBal += crAmt
                                 continue
                             }
 
@@ -1550,26 +1596,27 @@ class ReportsHubActivity : AppCompatActivity() {
                                             ((m["bagCharge"] as? Number)?.toDouble() ?: 0.0) +
                                             ((m["weighCoolie"] as? Number)?.toDouble() ?: 0.0)
                                     val finalAmt = if (lineAmt > 0.0) lineAmt else gTot
+                                    val ratio = if (gTot > 0.0) (finalAmt / gTot).coerceIn(0.0, 1.0) else 1.0
 
                                     val tx = JSONObject()
                                     tx.put("date", dStr)
                                     tx.put("qty", qtyVal)
                                     tx.put("rate", rtVal)
                                     tx.put("amount", finalAmt)
-                                    tx.put("income", if (pMode.equals("Cash", ignoreCase = true)) finalAmt else 0.0)
+                                    tx.put("income", paidDirect * ratio)
                                     tx.put("discount", 0.0)
                                     tx.put("ts", ts + k)
                                     txList.add(tx)
                                 }
                             } else {
-                                val kgs = sDoc.getDouble("netKgs") ?: (sDoc.getLong("bags") ?: 0L).toDouble()
+                                val kgs = safeDouble(sDoc, "netKgs").let { if (it > 0.0) it else (sDoc.getLong("bags") ?: 0L).toDouble() }
                                 val rtVal = if (kgs > 0.0) gTot / kgs else 0.0
                                 val tx = JSONObject()
                                 tx.put("date", dStr)
                                 tx.put("qty", kgs)
                                 tx.put("rate", rtVal)
                                 tx.put("amount", gTot)
-                                tx.put("income", if (pMode.equals("Cash", ignoreCase = true)) gTot else 0.0)
+                                tx.put("income", paidDirect)
                                 tx.put("discount", 0.0)
                                 tx.put("ts", ts)
                                 txList.add(tx)
@@ -1582,8 +1629,8 @@ class ReportsHubActivity : AppCompatActivity() {
                             if (rCid != custId && rCname != custNameLower) continue
 
                             val dStr = rDoc.getString("date") ?: ""
-                            val incAmt = rDoc.getDouble("amount") ?: 0.0
-                            val discAmt = rDoc.getDouble("discount") ?: 0.0
+                            val incAmt = safeDouble(rDoc, "amount")
+                            val discAmt = safeDouble(rDoc, "discount")
                             val ts = rDoc.getLong("timestamp") ?: 0L
 
                             if (isDateBeforeFrom(dStr)) {
@@ -1789,9 +1836,9 @@ class ReportsHubActivity : AppCompatActivity() {
                 val party = doc.getString(partyField) ?: "Unknown"
                 if (!filterParty.startsWith("ALL", ignoreCase = true) && !party.equals(filterParty, ignoreCase = true)) continue
 
-                val tot = doc.getDouble("grandTotal") ?: 0.0
+                val tot = safeDouble(doc, "grandTotal")
                 val pMode = doc.getString("payMode") ?: "Credit"
-                val paid = if (pMode.equals("Cash", ignoreCase = true)) tot else (doc.getDouble("paidAmount") ?: 0.0)
+                val paid = if (pMode.equals("Cash", ignoreCase = true)) tot else safeDouble(doc, "paidAmount")
                 val bal = if (pMode.equals("Cash", ignoreCase = true)) 0.0 else (doc.getDouble("balanceAmount") ?: (tot - paid))
 
                 countMap[party] = (countMap[party] ?: 0) + 1
@@ -1837,9 +1884,11 @@ class ReportsHubActivity : AppCompatActivity() {
 
                 val billNo = doc.getString("billNo") ?: doc.id
                 val mode = doc.getString("payMode") ?: "Credit"
-                val tot = doc.getDouble("grandTotal") ?: 0.0
-                val paid = doc.getDouble("paidAmount") ?: 0.0
-                val bal = if (mode.equals("Cash", ignoreCase = true)) 0.0 else (doc.getDouble("balanceAmount") ?: (tot - paid))
+                val tot = safeDouble(doc, "grandTotal")
+                val paid = safeDouble(doc, "paidAmount")
+                val bal = if (doc.contains("credit")) safeDouble(doc, "credit")
+                else if (mode.equals("Cash", ignoreCase = true)) 0.0
+                else (doc.getDouble("balanceAmount") ?: (tot - paid))
 
                 grandTotal += tot
                 grandBal += bal
@@ -1883,8 +1932,8 @@ class ReportsHubActivity : AppCompatActivity() {
                 } else {
                     val iName = doc.getString("itemName") ?: continue
                     val bags = (doc.getLong("bags") ?: 0L).toInt()
-                    val kgs = doc.getDouble("netKgs") ?: doc.getDouble("kgs") ?: 0.0
-                    val amt = doc.getDouble("grandTotal") ?: 0.0
+                    val kgs = safeDouble(doc, "netKgs").let { if (it > 0.0) it else safeDouble(doc, "kgs") }
+                    val amt = safeDouble(doc, "grandTotal")
 
                     bagsMap[iName] = (bagsMap[iName] ?: 0) + bags
                     kgsMap[iName] = (kgsMap[iName] ?: 0.0) + kgs
@@ -1926,16 +1975,23 @@ class ReportsHubActivity : AppCompatActivity() {
                     if (!isDateInRange(date)) continue
 
                     val mode = doc.getString("payMode") ?: "Credit"
-                    val tot = doc.getDouble("grandTotal") ?: 0.0
+                    val tot = safeDouble(doc, "grandTotal")
                     val billNo = doc.getString("billNo") ?: doc.id
                     val ts = doc.getLong("timestamp") ?: 0L
+
+                    val paidAmt = if (billCol == "sales") {
+                        val (cAmt, gAmt, _) = getSaleSplitAmounts(doc)
+                        cAmt + gAmt
+                    } else {
+                        if (mode.equals("Cash", ignoreCase = true)) tot else 0.0
+                    }
 
                     val obj = JSONObject()
                     obj.put("date", date)
                     obj.put("ref", billNo)
                     obj.put("desc", "Bill ($mode)")
                     obj.put("debit", tot)
-                    obj.put("credit", if (mode.equals("Cash", ignoreCase = true)) tot else 0.0)
+                    obj.put("credit", paidAmt)
                     obj.put("ts", ts)
                     entriesList.put(obj)
                 }
@@ -1946,8 +2002,8 @@ class ReportsHubActivity : AppCompatActivity() {
                     val date = doc.getString("date") ?: ""
                     if (!isDateInRange(date)) continue
 
-                    val amt = doc.getDouble("amount") ?: 0.0
-                    val disc = doc.getDouble("discount") ?: 0.0
+                    val amt = safeDouble(doc, "amount")
+                    val disc = safeDouble(doc, "discount")
                     val refNo = doc.getString("receiptNo") ?: doc.getString("paymentNo") ?: doc.id
                     val mode = doc.getString("payMode") ?: "Cash"
                     val ts = doc.getLong("timestamp") ?: 0L
