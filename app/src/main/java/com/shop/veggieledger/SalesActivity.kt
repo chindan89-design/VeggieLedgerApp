@@ -2,12 +2,19 @@ package com.shop.veggieledger
 
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.content.ContentValues
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -35,7 +42,6 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.zip.ZipInputStream
@@ -45,7 +51,6 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
-    // Supplier Batch Selector, Weigh Coolie & WhatsApp Bill Button
     private lateinit var stockBatchContainer: LinearLayout
     private lateinit var spSalesStockBatch: Spinner
     private lateinit var tvSelectedBatchAvail: TextView
@@ -326,7 +331,8 @@ class SalesActivity : AppCompatActivity() {
 
             binding.btnSaveSalesBill.isEnabled = false
 
-            val whatsappMessageText = buildCurrentBillWhatsappText()
+            // Generate JPG receipt bitmap before resetting form
+            val billBitmap = generateBillReceiptBitmap()
             val targetPhone = selectedCustomerPhone
             val targetCustName = selectedCustomerName
 
@@ -447,7 +453,7 @@ class SalesActivity : AppCompatActivity() {
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
                         resetForm()
                         loadSalesForEditFilter()
-                        promptWhatsappAfterSave(billNo, targetCustName, targetPhone, whatsappMessageText)
+                        promptWhatsappJpgAfterSave(billNo, targetCustName, targetPhone, billBitmap)
                     }
                     .addOnFailureListener {
                         binding.btnSaveSalesBill.isEnabled = true
@@ -495,7 +501,7 @@ class SalesActivity : AppCompatActivity() {
                         }
                         Toast.makeText(this, "Sales Bill $billNo Saved!", Toast.LENGTH_SHORT).show()
                         resetForm()
-                        promptWhatsappAfterSave(billNo, targetCustName, targetPhone, whatsappMessageText)
+                        promptWhatsappJpgAfterSave(billNo, targetCustName, targetPhone, billBitmap)
                     }
                     .addOnFailureListener {
                         binding.btnSaveSalesBill.isEnabled = true
@@ -513,7 +519,7 @@ class SalesActivity : AppCompatActivity() {
         val insertIdx = parent.indexOfChild(binding.btnSaveSalesBill) + 1
 
         btnSendWhatsappBill = Button(this)
-        btnSendWhatsappBill.text = "SEND BILL ON WHATSAPP"
+        btnSendWhatsappBill.text = "SEND JPG BILL ON WHATSAPP"
         btnSendWhatsappBill.setBackgroundColor(Color.parseColor("#25D366"))
         btnSendWhatsappBill.setTextColor(Color.WHITE)
         btnSendWhatsappBill.setTypeface(null, Typeface.BOLD)
@@ -530,133 +536,340 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             if (billItemsArray.length() == 0) {
-                Toast.makeText(this, "Add at least one item to send bill", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Add at least one item to send JPG bill", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val msg = buildCurrentBillWhatsappText()
-            sendTextToWhatsapp(selectedCustomerPhone, msg)
+            val bmp = generateBillReceiptBitmap()
+            val billNo = binding.etSalesBillNo.text.toString().trim().ifEmpty { "BILL" }
+            shareBitmapJpgToWhatsapp(bmp, billNo, selectedCustomerPhone)
         }
 
         parent.addView(btnSendWhatsappBill, insertIdx)
     }
 
-    private fun buildCurrentBillWhatsappText(): String {
-        val billNo = binding.etSalesBillNo.text.toString().trim()
-        val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
-        val isCredit = payMode.equals("Credit", ignoreCase = true)
+    /**
+     * Generates a crisp JPG receipt image matching the THIRUVENI COCONUTS template
+     * with clean, compact font sizes.
+     */
+    private fun generateBillReceiptBitmap(): Bitmap {
+        val width = 760
+        val pad = 28f
+        val itemCount = billItemsArray.length().coerceAtLeast(1)
 
-        val sb = StringBuilder()
-        sb.append("*THIRUVENI COCONUTS*\n")
-        sb.append("Shop No B98, Periyar Vegetable Market, Koyambedu\n")
-        sb.append("--------------------------------\n")
-        sb.append("*SALES BILL / ESTIMATE*\n")
-        sb.append("Bill No : *$billNo*\n")
-        sb.append("Date    : *$selectedDateStr*\n")
-        sb.append("Customer: *$selectedCustomerName*\n")
-        sb.append("Mode    : *$payMode*\n")
-        sb.append("--------------------------------\n")
+        val height = (610 + (itemCount * 42)).coerceAtLeast(660)
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.WHITE)
 
-        var calcGrandTotal = 0.0
+        val boldType = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val regType = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        val italicBold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD_ITALIC)
+        val italicReg = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+
+        val pTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 36f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        val pSub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 20f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        val pPhoneLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 22f
+            typeface = boldType
+            textAlign = Paint.Align.LEFT
+        }
+        val pPhoneRight = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 22f
+            typeface = boldType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pBodyBold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 21f
+            typeface = boldType
+            textAlign = Paint.Align.LEFT
+        }
+        val pBodyReg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 20f
+            typeface = regType
+            textAlign = Paint.Align.LEFT
+        }
+        val pBodyRightReg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 20f
+            typeface = regType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pBodyRightBold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 21f
+            typeface = boldType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pDash = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            strokeWidth = 2f
+            style = Paint.Style.STROKE
+            pathEffect = DashPathEffect(floatArrayOf(10f, 6f), 0f)
+        }
+        val pSolid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            strokeWidth = 2.5f
+            style = Paint.Style.STROKE
+        }
+
+        val cx = width / 2f
+        var y = 46f
+
+        // 1. Header
+        canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
+        y += 28f
+        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
+        y += 24f
+        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
+        y += 30f
+        canvas.drawText("9841666651", pad, y, pPhoneLeft)
+        canvas.drawText("9840457613", width - pad, y, pPhoneRight)
+
+        y += 14f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 2. Name & Date
+        y += 28f
+        val custDisplay = selectedCustomerName.ifEmpty { "Cash Customer" }
+        canvas.drawText("Name : $custDisplay", pad, y, pBodyBold)
+        canvas.drawText("Date : $selectedDateStr", width - pad, y, pBodyRightBold)
+        canvas.drawLine(pad + 72f, y + 5f, 430f, y + 5f, pSolid)
+        canvas.drawLine(width - 175f, y + 5f, width - pad, y + 5f, pSolid)
+
+        y += 16f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 3. Table Column Headers: Item | Qty (Kgs) | Rate | Amount
+        y += 26f
+        val colItemX = pad
+        val colQtyX = 435f
+        val colRateX = 565f
+        val colAmtX = width - pad
+
+        canvas.drawText("Item", colItemX, y, pBodyBold)
+        canvas.drawText("Qty (Kgs)", colQtyX, y, pBodyRightBold)
+        canvas.drawText("Rate", colRateX, y, pBodyRightBold)
+        canvas.drawText("Amount", colAmtX, y, pBodyRightBold)
+
+        y += 12f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 4. Item Rows
+        var calcBillTotal = 0.0
         for (i in 0 until billItemsArray.length()) {
+            y += 30f
             val obj = billItemsArray.getJSONObject(i)
             val iName = obj.getString("itemName")
             val bgs = obj.getInt("bags")
             val kgs = obj.getDouble("netKgs")
             val rt = obj.getDouble("rate")
-            val bChg = obj.getDouble("bagCharge")
-            val wCoolie = obj.optDouble("weighCoolie", 0.0)
             val rowTot = obj.getDouble("rowTotal")
-            calcGrandTotal += rowTot
+            calcBillTotal += rowTot
 
-            sb.append("${i + 1}. *$iName*\n")
-            if (!iName.equals("Coconut", ignoreCase = true) && bgs > 0) {
-                sb.append("   Bags: $bgs  |  Wt: ${String.format(Locale.getDefault(), "%.2f", kgs)} Kgs\n")
+            val label = if (!iName.equals("Coconut", ignoreCase = true) && bgs > 0) {
+                "$iName ($bgs Bg)"
             } else {
-                sb.append("   Net Wt: ${String.format(Locale.getDefault(), "%.2f", kgs)} Kgs\n")
+                iName
             }
-            sb.append("   Rate: Rs. ${String.format(Locale.getDefault(), "%.2f", rt)} / Kg\n")
-            if (bChg > 0.0) {
-                sb.append("   Bag Charge: Rs. ${String.format(Locale.getDefault(), "%.2f", bChg)}\n")
-            }
-            if (wCoolie > 0.0) {
-                sb.append("   Weigh Coolie: Rs. ${String.format(Locale.getDefault(), "%.2f", wCoolie)}\n")
-            }
-            sb.append("   *Amount: Rs. ${String.format(Locale.getDefault(), "%.2f", rowTot)}*\n")
+            val effectiveRate = if (kgs > 0.0) (rowTot / kgs) else rt
+
+            canvas.drawText(label, colItemX, y, pBodyReg)
+            canvas.drawText(String.format(Locale.getDefault(), "%.2f", kgs), colQtyX, y, pBodyRightReg)
+            canvas.drawText(String.format(Locale.getDefault(), "%.2f", effectiveRate), colRateX, y, pBodyRightReg)
+            canvas.drawText(String.format(Locale.getDefault(), "%.2f", rowTot), colAmtX, y, pBodyRightReg)
         }
 
-        sb.append("--------------------------------\n")
-        sb.append("*BILL TOTAL : Rs. ${String.format(Locale.getDefault(), "%.2f", calcGrandTotal)}*\n")
+        y += 16f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        if (isCredit) {
-            val netDue = selectedCustomerBalance + calcGrandTotal
-            sb.append("Prev. Balance: Rs. ${String.format(Locale.getDefault(), "%.2f", selectedCustomerBalance)}\n")
-            sb.append("*TOTAL DUE    : Rs. ${String.format(Locale.getDefault(), "%.2f", netDue)}*\n")
-        } else {
-            sb.append("Status: *PAID ($payMode)*\n")
-            if (selectedCustomerBalance > 0.0) {
-                sb.append("Old Pending Bal: Rs. ${String.format(Locale.getDefault(), "%.2f", selectedCustomerBalance)}\n")
-            }
+        // 5. Totals & Balance Summary matching template
+        val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
+        val isCredit = payMode.equals("Credit", ignoreCase = true)
+
+        val opBal = selectedCustomerBalance
+        val docTotal = opBal + calcBillTotal
+        val receivedAmt = if (isCredit) 0.0 else calcBillTotal
+        val discountAmt = 0.0
+        val closingBal = (docTotal - receivedAmt - discountAmt).coerceAtLeast(0.0)
+
+        val labelX = 485f
+        val colonX = 505f
+        val valX = width - pad
+
+        pBodyBold.textAlign = Paint.Align.RIGHT
+        pBodyReg.textAlign = Paint.Align.RIGHT
+
+        y += 28f
+        canvas.drawText("Total", labelX, y, pBodyBold)
+        canvas.drawText(":", colonX, y, pBodyBold)
+        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", calcBillTotal), valX, y, pBodyRightBold)
+
+        y += 28f
+        canvas.drawText("Op. Bal", labelX, y, pBodyReg)
+        canvas.drawText(":", colonX, y, pBodyReg)
+        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", opBal), valX, y, pBodyRightReg)
+
+        y += 10f
+        canvas.drawLine(280f, y, width - pad, y, pSolid)
+
+        y += 26f
+        canvas.drawText("Doc Total", labelX, y, pBodyBold)
+        canvas.drawText(":", colonX, y, pBodyBold)
+        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", docTotal), valX, y, pBodyRightBold)
+
+        y += 12f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        y += 28f
+        canvas.drawText("Received Amount", labelX, y, pBodyReg)
+        canvas.drawText(":", colonX, y, pBodyReg)
+        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", receivedAmt), valX, y, pBodyRightReg)
+
+        y += 26f
+        canvas.drawText("Discount", labelX, y, pBodyReg)
+        canvas.drawText(":", colonX, y, pBodyReg)
+        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", discountAmt), valX, y, pBodyRightReg)
+
+        y += 10f
+        canvas.drawLine(pad, y, width - pad, y, pSolid)
+
+        y += 28f
+        canvas.drawText("Closing Bal", labelX, y, pBodyBold)
+        canvas.drawText(":", colonX, y, pBodyBold)
+        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", closingBal), valX, y, pBodyRightBold)
+
+        y += 12f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 6. Payment & Footer
+        y += 30f
+        val pGpay = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 24f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
         }
+        val pAcc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 19f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("GPay No : 9841666651", cx, y, pGpay)
+        y += 26f
+        canvas.drawText("A/c No : ATE TOMATO WHOLESALE MERCHANT", cx, y, pAcc)
 
-        sb.append("--------------------------------\n")
-        sb.append("Thank you for your business!")
-        return sb.toString()
+        y += 36f
+        val pThank = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 28f
+            typeface = italicBold
+            textAlign = Paint.Align.CENTER
+        }
+        val pVisit = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 22f
+            typeface = italicReg
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawLine(pad, y - 9f, cx - 125f, y - 9f, pSolid)
+        canvas.drawText("Thank You !", cx, y, pThank)
+        canvas.drawLine(cx + 125f, y - 9f, width - pad, y - 9f, pSolid)
+
+        y += 26f
+        canvas.drawText("Visit Again...", cx, y, pVisit)
+
+        return Bitmap.createBitmap(bmp, 0, 0, width, (y + 24f).toInt().coerceAtMost(height))
     }
 
-    private fun promptWhatsappAfterSave(billNo: String, custName: String, phone: String, messageText: String) {
+    private fun promptWhatsappJpgAfterSave(billNo: String, custName: String, phone: String, billBitmap: Bitmap) {
         AlertDialog.Builder(this)
             .setTitle("Bill $billNo Saved")
-            .setMessage("Send bill to $custName on WhatsApp now?")
-            .setPositiveButton("SEND WHATSAPP") { _, _ ->
-                sendTextToWhatsapp(phone, messageText)
+            .setMessage("Send JPG bill receipt to $custName on WhatsApp now?")
+            .setPositiveButton("SEND JPG BILL") { _, _ ->
+                shareBitmapJpgToWhatsapp(billBitmap, billNo, phone)
             }
             .setNegativeButton("Later", null)
             .show()
     }
 
-    private fun sendTextToWhatsapp(rawPhone: String, message: String) {
-        val digitsOnly = rawPhone.replace("[^0-9]".toRegex(), "")
-        val formattedPhone = when {
-            digitsOnly.length == 10 -> "91$digitsOnly"
-            digitsOnly.length == 11 && digitsOnly.startsWith("0") -> "91${digitsOnly.substring(1)}"
-            digitsOnly.length >= 12 -> digitsOnly
-            else -> ""
-        }
-
+    private fun shareBitmapJpgToWhatsapp(bitmap: Bitmap, billNo: String, rawPhone: String) {
         try {
-            if (formattedPhone.isNotEmpty()) {
-                val encodedMsg = URLEncoder.encode(message, "UTF-8")
-                val uri = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=$encodedMsg")
-                val waIntent = Intent(Intent.ACTION_VIEW, uri)
-                waIntent.setPackage("com.whatsapp")
-                startActivity(waIntent)
-            } else {
-                val sendIntent = Intent(Intent.ACTION_SEND)
-                sendIntent.type = "text/plain"
-                sendIntent.setPackage("com.whatsapp")
-                sendIntent.putExtra(Intent.EXTRA_TEXT, message)
-                startActivity(sendIntent)
+            val safeBill = billNo.replace("[^A-Za-z0-9_-]".toRegex(), "_")
+            val fileName = "Bill_${safeBill}_${System.currentTimeMillis()}.jpg"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VeggieBills")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val resolver = contentResolver
+            val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (imageUri == null) {
+                Toast.makeText(this, "Unable to create JPG file", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            resolver.openOutputStream(imageUri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                out.flush()
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(imageUri, values, null, null)
+            }
+
+            val digitsOnly = rawPhone.replace("[^0-9]".toRegex(), "")
+            val formattedPhone = when {
+                digitsOnly.length == 10 -> "91$digitsOnly"
+                digitsOnly.length == 11 && digitsOnly.startsWith("0") -> "91${digitsOnly.substring(1)}"
+                digitsOnly.length >= 12 -> digitsOnly
+                else -> ""
+            }
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, imageUri)
+                if (formattedPhone.isNotEmpty()) {
+                    putExtra("jid", "$formattedPhone@s.whatsapp.net")
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            try {
+                shareIntent.setPackage("com.whatsapp")
+                startActivity(shareIntent)
+            } catch (e: Exception) {
+                try {
+                    shareIntent.setPackage("com.whatsapp.w4b")
+                    startActivity(shareIntent)
+                } catch (ex: Exception) {
+                    shareIntent.setPackage(null)
+                    startActivity(Intent.createChooser(shareIntent, "Send Bill JPG"))
+                }
             }
         } catch (e: Exception) {
-            try {
-                if (formattedPhone.isNotEmpty()) {
-                    val encodedMsg = URLEncoder.encode(message, "UTF-8")
-                    val uri = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=$encodedMsg")
-                    val waBizIntent = Intent(Intent.ACTION_VIEW, uri)
-                    waBizIntent.setPackage("com.whatsapp.w4b")
-                    startActivity(waBizIntent)
-                } else {
-                    val fallbackIntent = Intent(Intent.ACTION_SEND)
-                    fallbackIntent.type = "text/plain"
-                    fallbackIntent.putExtra(Intent.EXTRA_TEXT, message)
-                    startActivity(Intent.createChooser(fallbackIntent, "Send Bill via WhatsApp"))
-                }
-            } catch (ex: Exception) {
-                val chooser = Intent(Intent.ACTION_SEND)
-                chooser.type = "text/plain"
-                chooser.putExtra(Intent.EXTRA_TEXT, message)
-                startActivity(Intent.createChooser(chooser, "Send Bill"))
-            }
+            Toast.makeText(this, "Error sharing JPG bill: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
