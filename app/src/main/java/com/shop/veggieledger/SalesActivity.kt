@@ -8,10 +8,12 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.util.Xml
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
@@ -23,7 +25,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.shop.veggieledger.databinding.ActivitySalesBinding
 import org.json.JSONArray
 import org.json.JSONObject
@@ -39,6 +40,9 @@ class SalesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
+
+    private lateinit var weighCoolieContainer: LinearLayout
+    private lateinit var etSalesWeighCoolie: EditText
 
     private val customerList = arrayListOf<CustomerItem>()
     private val editFilterCustomerList = arrayListOf<String>()
@@ -80,6 +84,8 @@ class SalesActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         supportActionBar?.title = "Sales Entry"
+
+        injectWeighCoolieFieldForOnion()
 
         binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
         binding.btnModeEditSales.setOnClickListener { switchToEditMode() }
@@ -127,6 +133,14 @@ class SalesActivity : AppCompatActivity() {
         itemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spSalesItem.adapter = itemAdapter
 
+        binding.spSalesItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                val chosenItem = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+                onSalesItemChanged(chosenItem)
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
         fetchNextBillNo()
         loadCustomers()
         loadItems()
@@ -135,27 +149,58 @@ class SalesActivity : AppCompatActivity() {
             showCustomerSearchDialog()
         }
 
+        // Auto-fill Bag Charge = Bags * 10 for Onion
+        binding.etSalesBags.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+                if (itemName.equals("Onion", ignoreCase = true)) {
+                    val bags = s?.toString()?.toIntOrNull() ?: 0
+                    val autoBagChg = bags * 10.0
+                    binding.etSalesBagCharge.setText(
+                        if (bags > 0) String.format(Locale.getDefault(), "%.2f", autoBagChg) else ""
+                    )
+                }
+                updateLineAmountPreview()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
         val lineCalcWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
-                val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
-                val bagChg = binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0
-                val lineTot = (kgs * rate) + bagChg
-                binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Item Amt: Rs. %.2f", lineTot)
+                updateLineAmountPreview()
             }
             override fun afterTextChanged(s: Editable?) {}
         }
         binding.etSalesKgs.addTextChangedListener(lineCalcWatcher)
         binding.etSalesRate.addTextChangedListener(lineCalcWatcher)
         binding.etSalesBagCharge.addTextChangedListener(lineCalcWatcher)
+        etSalesWeighCoolie.addTextChangedListener(lineCalcWatcher)
 
         binding.btnAddSalesItem.setOnClickListener {
             val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
-            val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
+            val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+            val isOnion = itemName.equals("Onion", ignoreCase = true)
+
+            val bags = if (isCoconut) 0 else (binding.etSalesBags.text.toString().toIntOrNull() ?: 0)
             val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
             val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
-            val bagChg = binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0
+
+            val bagChg = when {
+                isCoconut -> 0.0
+                isOnion -> {
+                    val typedBag = binding.etSalesBagCharge.text.toString().toDoubleOrNull()
+                    typedBag ?: (bags * 10.0)
+                }
+                else -> binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0
+            }
+
+            val weighCoolie = if (isOnion) {
+                etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0
+            } else {
+                0.0
+            }
 
             if (kgs <= 0.0 && bags <= 0) {
                 Toast.makeText(this, "Enter valid Bags or Net Kgs", Toast.LENGTH_SHORT).show()
@@ -167,7 +212,7 @@ class SalesActivity : AppCompatActivity() {
             }
 
             val baseAmt = kgs * rate
-            val rowTotal = baseAmt + bagChg
+            val rowTotal = baseAmt + bagChg + weighCoolie
 
             val rowObj = JSONObject()
             rowObj.put("itemName", itemName)
@@ -176,6 +221,7 @@ class SalesActivity : AppCompatActivity() {
             rowObj.put("rate", rate)
             rowObj.put("amount", baseAmt)
             rowObj.put("bagCharge", bagChg)
+            rowObj.put("weighCoolie", weighCoolie)
             rowObj.put("rowTotal", rowTotal)
 
             billItemsArray.put(rowObj)
@@ -185,6 +231,7 @@ class SalesActivity : AppCompatActivity() {
             binding.etSalesKgs.setText("")
             binding.etSalesRate.setText("")
             binding.etSalesBagCharge.setText("")
+            etSalesWeighCoolie.setText("")
             binding.tvLineAmountPreview.text = "Item Amt: Rs. 0.00"
         }
 
@@ -211,6 +258,7 @@ class SalesActivity : AppCompatActivity() {
             var totalBagsAll = 0
             var totalKgsAll = 0.0
             var totalBagChargesAll = 0.0
+            var totalWeighCoolieAll = 0.0
             var firstItemName = ""
 
             for (i in 0 until billItemsArray.length()) {
@@ -221,11 +269,13 @@ class SalesActivity : AppCompatActivity() {
                 val rt = obj.getDouble("rate")
                 val amt = obj.getDouble("amount")
                 val bChg = obj.getDouble("bagCharge")
+                val wCoolie = obj.optDouble("weighCoolie", 0.0)
 
                 if (i == 0) firstItemName = iName
                 totalBagsAll += bgs
                 totalKgsAll += kgs
                 totalBagChargesAll += bChg
+                totalWeighCoolieAll += wCoolie
 
                 val itemMap = hashMapOf<String, Any>(
                     "itemName" to iName,
@@ -233,7 +283,8 @@ class SalesActivity : AppCompatActivity() {
                     "netKgs" to kgs,
                     "rate" to rt,
                     "amount" to amt,
-                    "bagCharge" to bChg
+                    "bagCharge" to bChg,
+                    "weighCoolie" to wCoolie
                 )
                 itemsForDb.add(itemMap)
             }
@@ -241,7 +292,6 @@ class SalesActivity : AppCompatActivity() {
             val isCredit = payMode.equals("Credit", ignoreCase = true)
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
-                // 1. Restore old stock items first
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockFifo(
@@ -251,13 +301,11 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                // 2. Deduct new stock items
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
                     deductStockFifo(obj.getString("itemName"), obj.getInt("bags"), obj.getDouble("netKgs"))
                 }
 
-                // 3. Adjust customer balance difference
                 if (oldSalePayMode.equals("Credit", ignoreCase = true) && oldSaleCustomerId.isNotEmpty()) {
                     val oldUnpaid = (oldSaleGrandTotal - oldSalePaidAmount).coerceAtLeast(0.0)
                     adjustCustomerBalance(oldSaleCustomerId, -oldUnpaid)
@@ -286,6 +334,7 @@ class SalesActivity : AppCompatActivity() {
                     "bags" to totalBagsAll,
                     "netKgs" to totalKgsAll,
                     "totalBagCharges" to totalBagChargesAll,
+                    "totalWeighCoolie" to totalWeighCoolieAll,
                     "grandTotal" to grandTotalBill,
                     "paidAmount" to newPaid,
                     "balanceAmount" to newBal,
@@ -323,6 +372,7 @@ class SalesActivity : AppCompatActivity() {
                     "bags" to totalBagsAll,
                     "netKgs" to totalKgsAll,
                     "totalBagCharges" to totalBagChargesAll,
+                    "totalWeighCoolie" to totalWeighCoolieAll,
                     "grandTotal" to grandTotalBill,
                     "paidAmount" to if (isCredit) 0.0 else grandTotalBill,
                     "balanceAmount" to if (isCredit) grandTotalBill else 0.0,
@@ -345,7 +395,96 @@ class SalesActivity : AppCompatActivity() {
             }
         }
 
+        onSalesItemChanged(binding.spSalesItem.selectedItem?.toString() ?: "Coconut")
         refreshBillItemsGrid()
+    }
+
+    /**
+     * Dynamically injects the "Weigh Coolie (Rs)" field right after Bag Charge,
+     * shown ONLY when Onion is selected.
+     */
+    private fun injectWeighCoolieFieldForOnion() {
+        val parent = binding.etSalesBagCharge.parent as? ViewGroup ?: return
+        val insertIdx = parent.indexOfChild(binding.etSalesBagCharge) + 1
+
+        weighCoolieContainer = LinearLayout(this)
+        weighCoolieContainer.orientation = LinearLayout.VERTICAL
+        weighCoolieContainer.visibility = View.GONE
+        val boxLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        boxLp.setMargins(0, 4, 0, 8)
+        weighCoolieContainer.layoutParams = boxLp
+
+        val lblCoolie = TextView(this)
+        lblCoolie.text = "Weigh Coolie (Onion) (Rs)"
+        lblCoolie.textSize = 12.5f
+        lblCoolie.setTypeface(null, Typeface.BOLD)
+        lblCoolie.setTextColor(Color.parseColor("#E65100"))
+
+        etSalesWeighCoolie = EditText(this)
+        etSalesWeighCoolie.hint = "Enter Weigh Coolie (Rs)"
+        etSalesWeighCoolie.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        etSalesWeighCoolie.setBackgroundResource(android.R.drawable.edit_text)
+        etSalesWeighCoolie.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        weighCoolieContainer.addView(lblCoolie)
+        weighCoolieContainer.addView(etSalesWeighCoolie)
+        parent.addView(weighCoolieContainer, insertIdx)
+    }
+
+    /**
+     * Item visibility rules:
+     * - Coconut: NO Bags, NO Bag Charge, NO Weigh Coolie
+     * - Garlic: Bags + Bag Charge ONLY (NO Weigh Coolie)
+     * - Onion: Bags (Rs. 10/bag) + Bag Charge + Weigh Coolie
+     */
+    private fun onSalesItemChanged(itemName: String) {
+        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val isOnion = itemName.equals("Onion", ignoreCase = true)
+
+        if (isCoconut) {
+            binding.etSalesBags.visibility = View.GONE
+            binding.etSalesBagCharge.visibility = View.GONE
+            weighCoolieContainer.visibility = View.GONE
+            binding.etSalesBags.setText("")
+            binding.etSalesBagCharge.setText("")
+            etSalesWeighCoolie.setText("")
+        } else if (isOnion) {
+            binding.etSalesBags.visibility = View.VISIBLE
+            binding.etSalesBagCharge.visibility = View.VISIBLE
+            weighCoolieContainer.visibility = View.VISIBLE
+            val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
+            if (bags > 0) {
+                binding.etSalesBagCharge.setText(String.format(Locale.getDefault(), "%.2f", bags * 10.0))
+            }
+        } else {
+            // Garlic & other bagged items
+            binding.etSalesBags.visibility = View.VISIBLE
+            binding.etSalesBagCharge.visibility = View.VISIBLE
+            weighCoolieContainer.visibility = View.GONE
+            etSalesWeighCoolie.setText("")
+        }
+
+        updateLineAmountPreview()
+    }
+
+    private fun updateLineAmountPreview() {
+        val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val isOnion = itemName.equals("Onion", ignoreCase = true)
+
+        val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
+        val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
+        val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
+        val weighCoolie = if (isOnion) (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+
+        val lineTot = (kgs * rate) + bagChg + weighCoolie
+        binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Item Amt: Rs. %.2f", lineTot)
     }
 
     private fun switchToNewMode() {
@@ -566,6 +705,7 @@ class SalesActivity : AppCompatActivity() {
                 val rt = (m["rate"] as? Number)?.toDouble() ?: 0.0
                 val amt = (m["amount"] as? Number)?.toDouble() ?: (kgs * rt)
                 val bChg = (m["bagCharge"] as? Number)?.toDouble() ?: 0.0
+                val wCoolie = (m["weighCoolie"] as? Number)?.toDouble() ?: 0.0
 
                 val obj = JSONObject()
                 obj.put("itemName", iName)
@@ -574,7 +714,8 @@ class SalesActivity : AppCompatActivity() {
                 obj.put("rate", rt)
                 obj.put("amount", amt)
                 obj.put("bagCharge", bChg)
-                obj.put("rowTotal", amt + bChg)
+                obj.put("weighCoolie", wCoolie)
+                obj.put("rowTotal", amt + bChg + wCoolie)
                 billItemsArray.put(obj)
 
                 val oldCopy = JSONObject(obj.toString())
@@ -594,6 +735,7 @@ class SalesActivity : AppCompatActivity() {
             obj.put("rate", rt)
             obj.put("amount", tot)
             obj.put("bagCharge", 0.0)
+            obj.put("weighCoolie", 0.0)
             obj.put("rowTotal", tot)
             billItemsArray.put(obj)
             oldSaleItemsJson.put(JSONObject(obj.toString()))
@@ -775,7 +917,8 @@ class SalesActivity : AppCompatActivity() {
                             "netKgs" to netKgs,
                             "rate" to rate,
                             "amount" to amount,
-                            "bagCharge" to bagCharge
+                            "bagCharge" to bagCharge,
+                            "weighCoolie" to 0.0
                         )
 
                         val isCredit = payMode.equals("Credit", ignoreCase = true)
@@ -793,6 +936,7 @@ class SalesActivity : AppCompatActivity() {
                             "bags" to bags,
                             "netKgs" to netKgs,
                             "totalBagCharges" to bagCharge,
+                            "totalWeighCoolie" to 0.0,
                             "grandTotal" to grandTotal,
                             "paidAmount" to if (isCredit) 0.0 else grandTotal,
                             "balanceAmount" to if (isCredit) grandTotal else 0.0,
@@ -1092,17 +1236,26 @@ class SalesActivity : AppCompatActivity() {
             val kgs = obj.getDouble("netKgs")
             val rt = obj.getDouble("rate")
             val bChg = obj.getDouble("bagCharge")
+            val wCoolie = obj.optDouble("weighCoolie", 0.0)
             val rowTot = obj.getDouble("rowTotal")
             grandTotalBill += rowTot
 
             val tr = TableRow(this)
             tr.setBackgroundColor(if (i % 2 == 0) Color.WHITE else Color.parseColor("#F1F8E9"))
 
+            val bagDisplay = if (iName.equals("Coconut", ignoreCase = true) || bgs <= 0) "-" else "$bgs"
+            val extraCharges = bChg + wCoolie
+            val extraDisplay = if (wCoolie > 0.0) {
+                String.format(Locale.getDefault(), "%.0f+%.0f", bChg, wCoolie)
+            } else {
+                String.format(Locale.getDefault(), "%.2f", extraCharges)
+            }
+
             tr.addView(makeCell(iName, bold = true))
-            tr.addView(makeCell("$bgs", alignRight = true))
+            tr.addView(makeCell(bagDisplay, alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", kgs), alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rt), alignRight = true))
-            tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", bChg), alignRight = true))
+            tr.addView(makeCell(extraDisplay, alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rowTot), alignRight = true, bold = true))
 
             val delBtn = TextView(this)
@@ -1180,6 +1333,7 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesKgs.setText("")
         binding.etSalesRate.setText("")
         binding.etSalesBagCharge.setText("")
+        etSalesWeighCoolie.setText("")
         binding.btnSaveSalesBill.isEnabled = true
         if (!isEditMode) fetchNextBillNo() else binding.etSalesBillNo.setText("")
         loadCustomers()
