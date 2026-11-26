@@ -32,6 +32,7 @@
 
     <item android:title="Others">
         <menu>
+            <item android:id="@+id/nav_coconut_daybook" android:title="Coconut Day Book" />
             <item android:id="@+id/nav_daily_closing" android:title="Daily Account Closing (11 Steps)" />
             <item android:id="@+id/nav_pnl" android:title="Profit &amp; Loss" />
             <item android:id="@+id/nav_history" android:title="Transaction History" />
