@@ -1,80 +1,211 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#F5F7FA"
-    android:padding="12dp">
+package com.shop.veggieledger
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
+import android.app.AlertDialog
+import android.os.Bundle
+import android.widget.ArrayAdapter
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.firestore.FirebaseFirestore
+import com.shop.veggieledger.databinding.ActivityCustomerMasterBinding
+import java.util.Locale
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="CUSTOMER REGISTRATION FORM"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="#1B5E20"
-            android:gravity="center"
-            android:layout_marginBottom="16dp" />
+class CustomerMasterActivity : AppCompatActivity() {
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginBottom="12dp">
+    private lateinit var binding: ActivityCustomerMasterBinding
+    private val db = FirebaseFirestore.getInstance()
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Customer Name *" android:textSize="13sp" android:textStyle="bold" />
-                <EditText android:id="@+id/etCustName" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. Anbarasan" android:inputType="textPersonName" android:background="@android:drawable/edit_text" android:padding="8dp" />
-            </LinearLayout>
+    private val groups = arrayListOf("Group A", "Group B", "Group C", "Group D")
+    private val customerDisplayList = ArrayList<String>()
+    private val customerDocsList = ArrayList>()
+    private lateinit var listAdapter: ArrayAdapter<String>
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Phone Number" android:textSize="13sp" android:textStyle="bold" />
-                <EditText android:id="@+id/etCustPhone" android:layout_width="match_parent" android:layout_height="48dp" android:hint="10-digit number" android:inputType="phone" android:background="@android:drawable/edit_text" android:padding="8dp" />
-            </LinearLayout>
-        </LinearLayout>
+    private var editingCustomerId: String = ""
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginBottom="12dp">
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityCustomerMasterBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Group Name *" android:textSize="13sp" android:textStyle="bold" android:textColor="#1B5E20" />
-                <Spinner android:id="@+id/spCustGroup" android:layout_width="match_parent" android:layout_height="48dp" android:background="@android:drawable/btn_dropdown" />
-            </LinearLayout>
+        supportActionBar?.title = "Customer Master"
 
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="6dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Opening Balance (Rs)" android:textSize="13sp" android:textStyle="bold" />
-                <EditText android:id="@+id/etCustOpBal" android:layout_width="match_parent" android:layout_height="48dp" android:hint="0.00" android:inputType="numberDecimal" android:background="@android:drawable/edit_text" android:padding="8dp" />
-            </LinearLayout>
-        </LinearLayout>
+        val groupAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, groups)
+        groupAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spCustGroup.adapter = groupAdapter
 
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Area / Location" android:textSize="13sp" android:textStyle="bold" />
-        <EditText android:id="@+id/etCustArea" android:layout_width="match_parent" android:layout_height="48dp" android:hint="e.g. Koyambedu" android:background="@android:drawable/edit_text" android:padding="8dp" android:layout_marginBottom="12dp" />
+        listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, customerDisplayList)
+        binding.lvCustomers.adapter = listAdapter
 
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Permanent Address" android:textSize="13sp" android:textStyle="bold" />
-        <EditText android:id="@+id/etCustAddress" android:layout_width="match_parent" android:layout_height="72dp" android:hint="Door No, Street Name, City..." android:gravity="top|start" android:inputType="textMultiLine" android:background="@android:drawable/edit_text" android:padding="8dp" android:layout_marginBottom="16dp" />
+        binding.btnSaveCustomer.setOnClickListener {
+            saveOrUpdateCustomer()
+        }
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginBottom="16dp">
+        binding.btnCancel.setOnClickListener {
+            resetForm()
+        }
 
-            <Button android:id="@+id/btnCancel" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1" android:text="RESET / CLEAR" android:backgroundTint="#D32F2F" android:textColor="#FFFFFF" android:layout_marginEnd="6dp" />
-            <Button android:id="@+id/btnSaveCustomer" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1" android:text="SUBMIT DETAILS" android:backgroundTint="#1B5E20" android:textColor="#FFFFFF" android:layout_marginStart="6dp" />
-        </LinearLayout>
+        // Tap any customer in list to edit
+        binding.lvCustomers.setOnItemClickListener { _, _, position, _ ->
+            if (position in customerDocsList.indices) {
+                loadCustomerIntoForm(customerDocsList[position])
+            }
+        }
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Registered Customers List" android:textSize="14sp" android:textStyle="bold" android:textColor="#1B5E20" android:layout_marginBottom="8dp" />
-        <ListView android:id="@+id/lvCustomers" android:layout_width="match_parent" android:layout_height="250dp" android:background="#FFFFFF" android:divider="#E0E0E0" android:dividerHeight="1dp" />
+        // Long press any customer in list to delete
+        binding.lvCustomers.setOnItemLongClickListener { _, _, position, _ ->
+            if (position in customerDocsList.indices) {
+                val data = customerDocsList[position]
+                val docId = data["id"]?.toString() ?: ""
+                val cName = data["name"]?.toString() ?: ""
+                if (docId.isNotEmpty()) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Delete Customer")
+                        .setMessage("Are you sure you want to delete $cName?")
+                        .setPositiveButton("DELETE") { _, _ ->
+                            db.collection("customers").document(docId).delete()
+                                .addOnSuccessListener {
+                                    if (editingCustomerId == docId) resetForm()
+                                    Toast.makeText(this, "Customer Deleted!", Toast.LENGTH_SHORT).show()
+                                    loadCustomersFromDb()
+                                }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+            true
+        }
 
-    </LinearLayout>
-</ScrollView>
+        loadCustomersFromDb()
+    }
+
+    private fun saveOrUpdateCustomer() {
+        val name = binding.etCustName.text.toString().trim()
+        val phone = binding.etCustPhone.text.toString().trim()
+        val group = binding.spCustGroup.selectedItem?.toString() ?: "Group A"
+        val opBal = binding.etCustOpBal.text.toString().toDoubleOrNull() ?: 0.0
+        val area = binding.etCustArea.text.toString().trim()
+        val address = binding.etCustAddress.text.toString().trim()
+
+        if (name.isEmpty()) {
+            Toast.makeText(this, "Please enter Customer Name", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        binding.btnSaveCustomer.isEnabled = false
+
+        if (editingCustomerId.isNotEmpty()) {
+            val updateMap = hashMapOf<String, Any>(
+                "name" to name,
+                "contact" to phone,
+                "group" to group,
+                "opbal" to opBal,
+                "openingBalance" to opBal,
+                "currentBalance" to opBal,
+                "area" to area,
+                "address" to address
+            )
+            db.collection("customers").document(editingCustomerId).update(updateMap)
+                .addOnSuccessListener {
+                    Toast.makeText(this, "Customer Updated!", Toast.LENGTH_SHORT).show()
+                    resetForm()
+                    loadCustomersFromDb()
+                }
+                .addOnFailureListener {
+                    binding.btnSaveCustomer.isEnabled = true
+                    Toast.makeText(this, "Failed to update customer", Toast.LENGTH_SHORT).show()
+                }
+        } else {
+            val docId = db.collection("customers").document().id
+            val dataMap = hashMapOf<String, Any>(
+                "id" to docId,
+                "name" to name,
+                "contact" to phone,
+                "group" to group,
+                "opbal" to opBal,
+                "openingBalance" to opBal,
+                "currentBalance" to opBal,
+                "area" to area,
+                "address" to address
+            )
+            db.collection("customers").document(docId).set(dataMap)
+                .addOnSuccessListener {
+                    Toast.makeText(this, "Customer Saved!", Toast.LENGTH_SHORT).show()
+                    resetForm()
+                    loadCustomersFromDb()
+                }
+                .addOnFailureListener {
+                    binding.btnSaveCustomer.isEnabled = true
+                    Toast.makeText(this, "Failed to save customer", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private fun loadCustomersFromDb() {
+        db.collection("customers").get().addOnSuccessListener { snap ->
+            customerDisplayList.clear()
+            customerDocsList.clear()
+
+            val sortedDocs = snap.documents.sortedBy { doc ->
+                (doc.getString("name") ?: "").lowercase(Locale.getDefault())
+            }
+
+            for (doc in sortedDocs) {
+                val name = doc.getString("name") ?: ""
+                val phone = doc.getString("contact") ?: ""
+                val group = doc.getString("group") ?: "Group A"
+                val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
+                val currBal = doc.getDouble("currentBalance") ?: opBal
+                val area = doc.getString("area") ?: ""
+                val address = doc.getString("address") ?: ""
+
+                val map = hashMapOf<String, Any>(
+                    "id" to doc.id,
+                    "name" to name,
+                    "contact" to phone,
+                    "group" to group,
+                    "opbal" to opBal,
+                    "currentBalance" to currBal,
+                    "area" to area,
+                    "address" to address
+                )
+                customerDocsList.add(map)
+
+                val phPart = if (phone.isNotEmpty()) " | $phone" else ""
+                customerDisplayList.add(
+                    String.format(Locale.getDefault(), "%s%s (%s)\nBal: Rs. %.2f", name, phPart, group, currBal)
+                )
+            }
+            listAdapter.notifyDataSetChanged()
+        }
+    }
+
+    private fun loadCustomerIntoForm(data: Map<String, Any>) {
+        editingCustomerId = data["id"]?.toString() ?: ""
+        binding.etCustName.setText(data["name"]?.toString() ?: "")
+        binding.etCustPhone.setText(data["contact"]?.toString() ?: "")
+        binding.etCustArea.setText(data["area"]?.toString() ?: "")
+        binding.etCustAddress.setText(data["address"]?.toString() ?: "")
+
+        val opBal = (data["opbal"] as? Number)?.toDouble() ?: 0.0
+        binding.etCustOpBal.setText(String.format(Locale.getDefault(), "%.2f", opBal))
+
+        val grp = data["group"]?.toString() ?: "Group A"
+        val idx = groups.indexOf(grp)
+        if (idx >= 0) binding.spCustGroup.setSelection(idx)
+
+        binding.btnSaveCustomer.text = "UPDATE DETAILS"
+        Toast.makeText(this, "Editing ${data["name"]}", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun resetForm() {
+        editingCustomerId = ""
+        binding.etCustName.setText("")
+        binding.etCustPhone.setText("")
+        binding.etCustArea.setText("")
+        binding.etCustAddress.setText("")
+        binding.etCustOpBal.setText("")
+        binding.spCustGroup.setSelection(0)
+        binding.btnSaveCustomer.text = "SUBMIT DETAILS"
+        binding.btnSaveCustomer.isEnabled = true
+    }
+}
