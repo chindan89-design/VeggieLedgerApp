@@ -331,7 +331,7 @@ class SalesActivity : AppCompatActivity() {
 
             binding.btnSaveSalesBill.isEnabled = false
 
-            // Generate 3-inch thermal JPG receipt bitmap before resetting form
+            // Generate strict Portrait 3-inch thermal JPG receipt bitmap before resetting form
             val billBitmap = generateBillReceiptBitmap()
             val targetPhone = selectedCustomerPhone
             val targetCustName = selectedCustomerName
@@ -548,15 +548,19 @@ class SalesActivity : AppCompatActivity() {
     }
 
     /**
-     * Generates a 3-inch Thermal Printer ready (576px wide at 203 DPI) JPG receipt
-     * matching the THIRUVENI COCONUTS template with compact, crisp fonts.
+     * Generates a strict Portrait (Height > Width) 3-inch Thermal Printer (576px) JPG receipt
+     * so thermal printer apps and viewers never auto-rotate it to landscape.
      */
     private fun generateBillReceiptBitmap(): Bitmap {
-        val width = 576 // Standard 3-inch (80mm roll / 72mm print area) thermal width
-        val pad = 16f
+        val width = 576 // 3-inch thermal printer width (80mm roll / 72mm print area)
+        val pad = 18f
         val itemCount = billItemsArray.length().coerceAtLeast(1)
 
-        val height = (520 + (itemCount * 36)).coerceAtLeast(560)
+        // Force minimum height >= 840px (strictly taller than 576px) so it stays Portrait
+        val minPortraitHeight = 840
+        val estimatedHeight = 560 + (itemCount * 38)
+        val height = maxOf(minPortraitHeight, estimatedHeight)
+
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(Color.WHITE)
@@ -568,49 +572,49 @@ class SalesActivity : AppCompatActivity() {
 
         val pTitle = Paint().apply {
             color = Color.BLACK
-            textSize = 30f
+            textSize = 31f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
         val pSub = Paint().apply {
             color = Color.BLACK
-            textSize = 17f
+            textSize = 17.5f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
         val pPhoneLeft = Paint().apply {
             color = Color.BLACK
-            textSize = 18f
+            textSize = 18.5f
             typeface = boldType
             textAlign = Paint.Align.LEFT
         }
         val pPhoneRight = Paint().apply {
             color = Color.BLACK
-            textSize = 18f
+            textSize = 18.5f
             typeface = boldType
             textAlign = Paint.Align.RIGHT
         }
         val pBodyBold = Paint().apply {
             color = Color.BLACK
-            textSize = 17f
+            textSize = 17.5f
             typeface = boldType
             textAlign = Paint.Align.LEFT
         }
         val pBodyReg = Paint().apply {
             color = Color.BLACK
-            textSize = 16.5f
+            textSize = 17f
             typeface = regType
             textAlign = Paint.Align.LEFT
         }
         val pBodyRightReg = Paint().apply {
             color = Color.BLACK
-            textSize = 16.5f
+            textSize = 17f
             typeface = regType
             textAlign = Paint.Align.RIGHT
         }
         val pBodyRightBold = Paint().apply {
             color = Color.BLACK
-            textSize = 17f
+            textSize = 17.5f
             typeface = boldType
             textAlign = Paint.Align.RIGHT
         }
@@ -627,34 +631,34 @@ class SalesActivity : AppCompatActivity() {
         }
 
         val cx = width / 2f
-        var y = 36f
+        var y = 42f
 
         // 1. Shop Header
         canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
-        y += 23f
-        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
-        y += 20f
-        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
         y += 25f
+        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
+        y += 22f
+        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
+        y += 28f
         canvas.drawText("9841666651", pad, y, pPhoneLeft)
         canvas.drawText("9840457613", width - pad, y, pPhoneRight)
 
-        y += 11f
+        y += 14f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         // 2. Customer Name & Date
-        y += 24f
+        y += 28f
         val custDisplay = selectedCustomerName.ifEmpty { "Cash Customer" }.take(22)
         canvas.drawText("Name : $custDisplay", pad, y, pBodyBold)
         canvas.drawText("Date : $selectedDateStr", width - pad, y, pBodyRightBold)
-        canvas.drawLine(pad + 58f, y + 4f, 345f, y + 4f, pSolid)
-        canvas.drawLine(width - 142f, y + 4f, width - pad, y + 4f, pSolid)
+        canvas.drawLine(pad + 60f, y + 5f, 345f, y + 5f, pSolid)
+        canvas.drawLine(width - 145f, y + 5f, width - pad, y + 5f, pSolid)
 
-        y += 13f
+        y += 16f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         // 3. Column Headers: Item | Qty (Kgs) | Rate | Amount
-        y += 22f
+        y += 26f
         val colItemX = pad
         val colQtyX = 335f
         val colRateX = 435f
@@ -665,13 +669,13 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawText("Rate", colRateX, y, pBodyRightBold)
         canvas.drawText("Amount", colAmtX, y, pBodyRightBold)
 
-        y += 10f
+        y += 12f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         // 4. Item Rows
         var calcBillTotal = 0.0
         for (i in 0 until billItemsArray.length()) {
-            y += 26f
+            y += 30f
             val obj = billItemsArray.getJSONObject(i)
             val iName = obj.getString("itemName")
             val bgs = obj.getInt("bags")
@@ -693,7 +697,7 @@ class SalesActivity : AppCompatActivity() {
             canvas.drawText(String.format(Locale.getDefault(), "%.2f", rowTot), colAmtX, y, pBodyRightReg)
         }
 
-        y += 13f
+        y += 24f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         // 5. Totals & Balance Summary
@@ -712,98 +716,100 @@ class SalesActivity : AppCompatActivity() {
 
         val pLabelBold = Paint().apply {
             color = Color.BLACK
-            textSize = 17f
+            textSize = 17.5f
             typeface = boldType
             textAlign = Paint.Align.RIGHT
         }
         val pLabelReg = Paint().apply {
             color = Color.BLACK
-            textSize = 16.5f
+            textSize = 17f
             typeface = regType
             textAlign = Paint.Align.RIGHT
         }
 
-        y += 24f
+        y += 28f
         canvas.drawText("Total", labelX, y, pLabelBold)
         canvas.drawText(":", colonX, y, pLabelBold)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", calcBillTotal), valX, y, pBodyRightBold)
 
-        y += 23f
+        y += 27f
         canvas.drawText("Op. Bal", labelX, y, pLabelReg)
         canvas.drawText(":", colonX, y, pLabelReg)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", opBal), valX, y, pBodyRightReg)
 
-        y += 8f
+        y += 10f
         canvas.drawLine(210f, y, width - pad, y, pSolid)
 
-        y += 22f
+        y += 26f
         canvas.drawText("Doc Total", labelX, y, pLabelBold)
         canvas.drawText(":", colonX, y, pLabelBold)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", docTotal), valX, y, pBodyRightBold)
 
-        y += 10f
+        y += 14f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        y += 23f
+        y += 28f
         canvas.drawText("Received Amount", labelX, y, pLabelReg)
         canvas.drawText(":", colonX, y, pLabelReg)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", receivedAmt), valX, y, pBodyRightReg)
 
-        y += 22f
+        y += 26f
         canvas.drawText("Discount", labelX, y, pLabelReg)
         canvas.drawText(":", colonX, y, pLabelReg)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", discountAmt), valX, y, pBodyRightReg)
 
-        y += 8f
+        y += 10f
         canvas.drawLine(pad, y, width - pad, y, pSolid)
 
-        y += 23f
+        y += 28f
         canvas.drawText("Closing Bal", labelX, y, pLabelBold)
         canvas.drawText(":", colonX, y, pLabelBold)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", closingBal), valX, y, pBodyRightBold)
 
-        y += 10f
+        y += 14f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         // 6. Payment Details & Footer
-        y += 25f
+        y += 32f
         val pGpay = Paint().apply {
             color = Color.BLACK
-            textSize = 20f
+            textSize = 20.5f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
         val pAcc = Paint().apply {
             color = Color.BLACK
-            textSize = 15.5f
+            textSize = 16f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText("GPay No : 9841666651", cx, y, pGpay)
-        y += 22f
+        y += 26f
         canvas.drawText("A/c No : ATE TOMATO WHOLESALE MERCHANT", cx, y, pAcc)
 
-        y += 30f
+        y += 38f
         val pThank = Paint().apply {
             color = Color.BLACK
-            textSize = 24f
+            textSize = 25f
             typeface = italicBold
             textAlign = Paint.Align.CENTER
         }
         val pVisit = Paint().apply {
             color = Color.BLACK
-            textSize = 19f
+            textSize = 20f
             typeface = italicReg
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawLine(pad, y - 7f, cx - 95f, y - 7f, pSolid)
+        canvas.drawLine(pad, y - 8f, cx - 98f, y - 8f, pSolid)
         canvas.drawText("Thank You !", cx, y, pThank)
-        canvas.drawLine(cx + 95f, y - 7f, width - pad, y - 7f, pSolid)
+        canvas.drawLine(cx + 98f, y - 8f, width - pad, y - 8f, pSolid)
 
-        y += 22f
+        y += 26f
         canvas.drawText("Visit Again...", cx, y, pVisit)
 
-        return Bitmap.createBitmap(bmp, 0, 0, width, (y + 20f).toInt().coerceAtMost(height))
+        // Ensure final cropped height is always >= 820px (strictly Portrait: Height > Width)
+        val finalHeight = (y + 30f).toInt().coerceAtLeast(820).coerceAtMost(height)
+        return Bitmap.createBitmap(bmp, 0, 0, width, finalHeight)
     }
 
     private fun promptWhatsappJpgAfterSave(billNo: String, custName: String, phone: String, billBitmap: Bitmap) {
