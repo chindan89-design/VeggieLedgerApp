@@ -35,6 +35,7 @@ class PurchaseActivity : AppCompatActivity() {
 
     private lateinit var nosContainerLayout: LinearLayout
     private lateinit var etTotalNos: EditText
+    private lateinit var etEditableBatchId: EditText
 
     private val allSuppliers = JSONArray()
     private val filteredSupplierMap = HashMap<String, String>()
@@ -58,6 +59,8 @@ class PurchaseActivity : AppCompatActivity() {
     private var oldSupplierId: String = ""
     private var oldPayMode: String = ""
     private var oldGrandTotal: Double = 0.0
+    private var oldBatchId: String = ""
+    private val oldCartItemsJson = JSONArray()
 
     private var suppressKudumiAutoCalc: Boolean = false
 
@@ -70,6 +73,7 @@ class PurchaseActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Purchase Entry"
 
+        injectEditableBatchIdBox()
         injectTotalNosFieldBeforeTotalKgs()
 
         binding.btnModeNewPurchase.setOnClickListener { switchToNewMode() }
@@ -229,7 +233,13 @@ class PurchaseActivity : AppCompatActivity() {
             updateLotIdPreview()
 
             val billNo = binding.etBillNo.text.toString().trim()
-            val batchId = binding.tvGeneratedBatchId.text.toString().trim()
+            val batchId = if (isEditMode && editingPurchaseDocId.isNotEmpty()) {
+                etEditableBatchId.text.toString().trim().uppercase(Locale.getDefault()).ifEmpty {
+                    binding.tvGeneratedBatchId.text.toString().trim()
+                }
+            } else {
+                binding.tvGeneratedBatchId.text.toString().trim()
+            }
             val payMode = binding.spPayMode.selectedItem.toString()
 
             val itemsForDb = ArrayList<Any>()
@@ -297,6 +307,41 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Adds an editable Stock / Lot ID box right below tvGeneratedBatchId so
+     * existing saved purchases can have their Stock ID modified cleanly in Edit Mode.
+     */
+    private fun injectEditableBatchIdBox() {
+        val parent = binding.tvGeneratedBatchId.parent as? ViewGroup ?: return
+        val insertIdx = parent.indexOfChild(binding.tvGeneratedBatchId) + 1
+
+        etEditableBatchId = EditText(this)
+        etEditableBatchId.hint = "Edit Stock / Lot ID (e.g. MUR-26-0)"
+        etEditableBatchId.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        etEditableBatchId.setBackgroundResource(android.R.drawable.edit_text)
+        etEditableBatchId.setTextColor(Color.parseColor("#E65100"))
+        etEditableBatchId.setTypeface(null, Typeface.BOLD)
+        etEditableBatchId.visibility = View.GONE
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 4, 0, 8)
+        etEditableBatchId.layoutParams = lp
+
+        etEditableBatchId.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (isEditMode && editingPurchaseDocId.isNotEmpty()) {
+                    binding.tvGeneratedBatchId.text = s?.toString()?.trim()?.uppercase(Locale.getDefault()) ?: ""
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        parent.addView(etEditableBatchId, insertIdx)
+    }
+
     private fun injectTotalNosFieldBeforeTotalKgs() {
         val parent = binding.etNetKgs.parent as? ViewGroup ?: return
         var insertIndex = parent.indexOfChild(binding.etNetKgs)
@@ -337,7 +382,11 @@ class PurchaseActivity : AppCompatActivity() {
     private fun switchToNewMode() {
         isEditMode = false
         editingPurchaseDocId = ""
+        oldBatchId = ""
+        clearJsonArray(oldCartItemsJson)
         binding.layoutEditPurchasePanel.visibility = View.GONE
+        etEditableBatchId.visibility = View.GONE
+        binding.tvGeneratedBatchId.visibility = View.VISIBLE
         binding.btnModeNewPurchase.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
         binding.btnModeEditPurchase.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
         binding.tvPurchaseHeader.text = "PURCHASE BILL ENTRY FORM"
@@ -349,7 +398,10 @@ class PurchaseActivity : AppCompatActivity() {
     private fun switchToEditMode() {
         isEditMode = true
         editingPurchaseDocId = ""
+        oldBatchId = ""
+        clearJsonArray(oldCartItemsJson)
         binding.layoutEditPurchasePanel.visibility = View.VISIBLE
+        etEditableBatchId.visibility = View.VISIBLE
         binding.btnModeEditPurchase.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E65100"))
         binding.btnModeNewPurchase.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#78909C"))
         binding.tvPurchaseHeader.text = "EDIT / DELETE PURCHASE BILL"
@@ -401,7 +453,7 @@ class PurchaseActivity : AppCompatActivity() {
                     rowCard.layoutParams = cardLp
 
                     val infoTv = TextView(this)
-                    infoTv.text = "$billNo ($lotId) | $supName\n$pMode | Rs. %.2f".format(total)
+                    infoTv.text = "$billNo | Stock ID: $lotId\n$supName | $pMode | Rs. %.2f".format(total)
                     infoTv.setTextColor(Color.parseColor("#1565C0"))
                     infoTv.setTypeface(null, Typeface.BOLD)
                     infoTv.textSize = 13f
@@ -515,22 +567,24 @@ class PurchaseActivity : AppCompatActivity() {
         oldSupplierId = data["supplierId"]?.toString() ?: ""
         oldPayMode = data["payMode"]?.toString() ?: "Credit"
         oldGrandTotal = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
+        oldBatchId = data["batchId"]?.toString() ?: ""
 
         val bNo = data["billNo"]?.toString() ?: ""
         val sName = data["supplierName"]?.toString() ?: ""
         val bDate = data["date"]?.toString() ?: editFilterDateStr
-        val bLotId = data["batchId"]?.toString() ?: ""
 
         selectedDateStr = bDate
         if (bDate.length >= 2) selectedDayStr = bDate.substring(0, 2)
         binding.etPurchaseDate.setText(bDate)
         binding.etBillNo.setText(bNo)
-        binding.tvGeneratedBatchId.text = bLotId
+        binding.tvGeneratedBatchId.text = oldBatchId
+        etEditableBatchId.setText(oldBatchId)
 
         val payIdx = payModes.indexOfFirst { it.equals(oldPayMode, ignoreCase = true) }
         if (payIdx >= 0) binding.spPayMode.setSelection(payIdx)
 
         clearJsonArray(cartItems)
+        clearJsonArray(oldCartItemsJson)
         val rawItems = data["items"] as? List<*>
         var firstItemName = "Onion"
         if (rawItems != null) {
@@ -550,6 +604,7 @@ class PurchaseActivity : AppCompatActivity() {
                 obj.put("ratePerKg", (map["ratePerKg"] as? Number)?.toDouble() ?: 0.0)
                 obj.put("lineTotal", (map["lineTotal"] as? Number)?.toDouble() ?: 0.0)
                 cartItems.put(obj)
+                oldCartItemsJson.put(JSONObject(obj.toString()))
             }
         }
 
@@ -562,7 +617,7 @@ class PurchaseActivity : AppCompatActivity() {
         binding.actvSupplier.setText(sName, false)
 
         refreshCartGrid()
-        Toast.makeText(this, "Loaded $bNo for editing", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Loaded $bNo (Stock ID: $oldBatchId) for editing", Toast.LENGTH_SHORT).show()
     }
 
     private fun loadGridRowIntoFormForEdit(index: Int) {
@@ -705,7 +760,6 @@ class PurchaseActivity : AppCompatActivity() {
                 binding.etBillNo.setText(String.format(Locale.getDefault(), "PUR-%03d", nextNum))
             }
 
-            // Index starts at 0 (0..9 single digit, 10+ two digits) for the selected date
             var sameDayCount = 0
             for (doc in snap) {
                 if ((doc.getString("date") ?: "").trim() == selectedDateStr) {
@@ -717,12 +771,8 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Format: SUPPLIER_FIRST_3_CHARS - DATE_ONLY (dd) - INDEX_NO (0, 1, ..., 9, 10, 11)
-     * Example: MUR-26-0
-     */
     private fun updateLotIdPreview() {
-        if (isEditMode && editingPurchaseDocId.isNotEmpty() && binding.tvGeneratedBatchId.text.toString().isNotEmpty()) {
+        if (isEditMode && editingPurchaseDocId.isNotEmpty()) {
             return
         }
         val supplierName = binding.actvSupplier.text.toString()
@@ -896,6 +946,7 @@ class PurchaseActivity : AppCompatActivity() {
         selectedSupplierName = ""
 
         binding.actvSupplier.setText("")
+        etEditableBatchId.setText("")
         etTotalNos.setText("")
         binding.etBags.setText("")
         binding.etBagRate.setText("10")
@@ -908,7 +959,10 @@ class PurchaseActivity : AppCompatActivity() {
         binding.btnAddItem.text = "+ ADD ITEM TO PURCHASE BILL"
 
         refreshCartGrid()
-        if (!isEditMode) fetchNextBillNumber() else binding.etBillNo.setText("")
+        if (!isEditMode) fetchNextBillNumber() else {
+            binding.etBillNo.setText("")
+            binding.tvGeneratedBatchId.text = ""
+        }
         updateLotIdPreview()
 
         binding.btnSavePurchase.isEnabled = true
@@ -952,28 +1006,93 @@ class PurchaseActivity : AppCompatActivity() {
         resetFormForFreshEntry()
     }
 
+    /**
+     * Updates Stock ID (batchId), supplier info, and net quantity deltas in stock_batches
+     * while preserving any quantity already sold from this batch.
+     */
     private fun reconcileStockAndSupplierOnEdit(purchaseId: String, newBatchId: String, newPayMode: String) {
         db.collection("stock_batches").whereEqualTo("purchaseId", purchaseId).get()
             .addOnSuccessListener { bSnap ->
-                for (bDoc in bSnap) bDoc.reference.delete()
-                for (i in 0 until cartItems.length()) {
-                    val row = cartItems.getJSONObject(i)
-                    val nos = row.optInt("nos", 0)
-                    val bags = row.getInt("bags")
-                    val batchDoc = db.collection("stock_batches").document()
-                    val batchData = hashMapOf(
-                        "purchaseId" to purchaseId,
-                        "batchId" to newBatchId,
-                        "supplierId" to selectedSupplierId,
-                        "supplierName" to selectedSupplierName,
-                        "itemName" to row.getString("itemName"),
-                        "availableBags" to if (bags > 0) bags else nos,
-                        "availableNos" to nos,
-                        "availableKgs" to row.getDouble("netKgs"),
-                        "purchaseRate" to row.getDouble("ratePerKg"),
-                        "timestamp" to System.currentTimeMillis()
-                    )
-                    batchDoc.set(batchData)
+                if (!bSnap.isEmpty) {
+                    val existingDocs = bSnap.documents
+                    for (i in 0 until cartItems.length()) {
+                        val row = cartItems.getJSONObject(i)
+                        val newItemName = row.getString("itemName")
+                        val newNos = row.optInt("nos", 0)
+                        val newBags = row.getInt("bags")
+                        val newEffectiveBags = if (newBags > 0) newBags else newNos
+                        val newNetKgs = row.getDouble("netKgs")
+                        val newRate = row.getDouble("ratePerKg")
+
+                        if (i < existingDocs.size) {
+                            val bDoc = existingDocs[i]
+                            val curAvailBags = (bDoc.getLong("availableBags") ?: 0L).toInt()
+                            val curAvailNos = (bDoc.getLong("availableNos") ?: 0L).toInt()
+                            val curAvailKgs = bDoc.getDouble("availableKgs") ?: 0.0
+
+                            var oldEffectiveBags = 0
+                            var oldNos = 0
+                            var oldNetKgs = 0.0
+                            if (i < oldCartItemsJson.length()) {
+                                val oldRow = oldCartItemsJson.getJSONObject(i)
+                                oldNos = oldRow.optInt("nos", 0)
+                                val ob = oldRow.optInt("bags", 0)
+                                oldEffectiveBags = if (ob > 0) ob else oldNos
+                                oldNetKgs = oldRow.optDouble("netKgs", 0.0)
+                            }
+
+                            val updatedAvailBags = (curAvailBags + (newEffectiveBags - oldEffectiveBags)).coerceAtLeast(0)
+                            val updatedAvailNos = (curAvailNos + (newNos - oldNos)).coerceAtLeast(0)
+                            val updatedAvailKgs = (curAvailKgs + (newNetKgs - oldNetKgs)).coerceAtLeast(0.0)
+
+                            bDoc.reference.update(
+                                hashMapOf<String, Any>(
+                                    "batchId" to newBatchId,
+                                    "supplierId" to selectedSupplierId,
+                                    "supplierName" to selectedSupplierName,
+                                    "itemName" to newItemName,
+                                    "availableBags" to updatedAvailBags,
+                                    "availableNos" to updatedAvailNos,
+                                    "availableKgs" to updatedAvailKgs,
+                                    "purchaseRate" to newRate
+                                )
+                            )
+                        } else {
+                            val batchDoc = db.collection("stock_batches").document()
+                            batchDoc.set(
+                                hashMapOf(
+                                    "purchaseId" to purchaseId,
+                                    "batchId" to newBatchId,
+                                    "supplierId" to selectedSupplierId,
+                                    "supplierName" to selectedSupplierName,
+                                    "itemName" to newItemName,
+                                    "availableBags" to newEffectiveBags,
+                                    "availableNos" to newNos,
+                                    "availableKgs" to newNetKgs,
+                                    "purchaseRate" to newRate,
+                                    "timestamp" to System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                    if (existingDocs.size > cartItems.length()) {
+                        for (j in cartItems.length() until existingDocs.size) {
+                            existingDocs[j].reference.delete()
+                        }
+                    }
+                } else if (oldBatchId.isNotEmpty()) {
+                    db.collection("stock_batches").whereEqualTo("batchId", oldBatchId).get()
+                        .addOnSuccessListener { fallbackSnap ->
+                            for (fDoc in fallbackSnap) {
+                                fDoc.reference.update(
+                                    hashMapOf<String, Any>(
+                                        "batchId" to newBatchId,
+                                        "supplierId" to selectedSupplierId,
+                                        "supplierName" to selectedSupplierName
+                                    )
+                                )
+                            }
+                        }
                 }
             }
 
@@ -1006,8 +1125,10 @@ class PurchaseActivity : AppCompatActivity() {
             }
         }
 
-        Toast.makeText(this, "Purchase Bill Updated Successfully!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Purchase Bill & Stock ID ($newBatchId) Updated!", Toast.LENGTH_SHORT).show()
         editingPurchaseDocId = ""
+        oldBatchId = ""
+        clearJsonArray(oldCartItemsJson)
         resetFormForFreshEntry()
         loadPurchasesForEditFilter()
     }
