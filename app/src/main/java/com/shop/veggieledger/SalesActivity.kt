@@ -111,9 +111,7 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        replacePayModeWithThreeBoxes()
-        injectStockBatchSelectorAfterItem()
-        injectWeighCoolieFieldForOnion()
+        arrangeSalesEntryOrder()
         injectWhatsappButtonAfterSave()
 
         binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
@@ -538,11 +536,76 @@ class SalesActivity : AppCompatActivity() {
         refreshBillItemsGrid()
     }
 
-    private fun replacePayModeWithThreeBoxes() {
-        val parent = binding.spSalesPayMode.parent as? ViewGroup ?: return
-        val insertIdx = parent.indexOfChild(binding.spSalesPayMode)
+    /**
+     * Arranges exact visual order requested:
+     * 1. Date
+     * 2. BillNo (Auto-generated & hidden)
+     * 3. Select Item dropdown
+     * 4. Supplier Available Stock
+     * 5. Customer Name + Previous Balance
+     * 6. Payment Split (Cash / GPay / Credit + Cash Payer Name)
+     * 7. Coconut -> Kgs, Rate, Amount | Other than Coconut -> Bags, Kgs, Rate, Amount
+     */
+    private fun arrangeSalesEntryOrder() {
+        // Hide Bill No field & its label if inside a wrapper/table
+        binding.etSalesBillNo.visibility = View.GONE
+        val billParent = binding.etSalesBillNo.parent as? ViewGroup
+        if (billParent != null && billParent != binding.etSalesDate.parent) {
+            billParent.visibility = View.GONE
+        } else if (billParent != null) {
+            val billIdx = billParent.indexOfChild(binding.etSalesBillNo)
+            if (billIdx > 0) {
+                val prevChild = billParent.getChildAt(billIdx - 1)
+                if (prevChild is TextView && prevChild.text.toString().contains("Bill", ignoreCase = true)) {
+                    prevChild.visibility = View.GONE
+                }
+            }
+        }
+
         binding.spSalesPayMode.visibility = View.GONE
 
+        // Build Supplier Available Stock box
+        stockBatchContainer = LinearLayout(this)
+        stockBatchContainer.orientation = LinearLayout.VERTICAL
+        stockBatchContainer.setBackgroundColor(Color.parseColor("#E8F5E9"))
+        stockBatchContainer.setPadding(16, 12, 16, 12)
+        val boxLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        boxLp.setMargins(0, 6, 0, 10)
+        stockBatchContainer.layoutParams = boxLp
+
+        val lblStock = TextView(this)
+        lblStock.text = "Supplier Available Stock (Lot / Batch) *"
+        lblStock.textSize = 12.5f
+        lblStock.setTypeface(null, Typeface.BOLD)
+        lblStock.setTextColor(Color.parseColor("#1B5E20"))
+
+        spSalesStockBatch = Spinner(this)
+        spSalesStockBatch.setBackgroundResource(android.R.drawable.btn_dropdown)
+        val spLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (46 * resources.displayMetrics.density).toInt()
+        )
+        spSalesStockBatch.layoutParams = spLp
+
+        batchSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
+        batchSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spSalesStockBatch.adapter = batchSpinnerAdapter
+
+        tvSelectedBatchAvail = TextView(this)
+        tvSelectedBatchAvail.text = "Loading available stock..."
+        tvSelectedBatchAvail.textSize = 12f
+        tvSelectedBatchAvail.setTypeface(null, Typeface.BOLD)
+        tvSelectedBatchAvail.setTextColor(Color.parseColor("#D84315"))
+        tvSelectedBatchAvail.setPadding(4, 4, 4, 0)
+
+        stockBatchContainer.addView(lblStock)
+        stockBatchContainer.addView(spSalesStockBatch)
+        stockBatchContainer.addView(tvSelectedBatchAvail)
+
+        // Build Payment Split container (Cash / GPay / Credit + Cash Payer Name)
         splitPayContainer = LinearLayout(this)
         splitPayContainer.orientation = LinearLayout.VERTICAL
         splitPayContainer.setBackgroundColor(Color.parseColor("#E3F2FD"))
@@ -551,7 +614,7 @@ class SalesActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        cLp.setMargins(0, 6, 0, 10)
+        cLp.setMargins(0, 8, 0, 10)
         splitPayContainer.layoutParams = cLp
 
         val headerRow = LinearLayout(this)
@@ -625,7 +688,6 @@ class SalesActivity : AppCompatActivity() {
         row.addView(credCol)
         splitPayContainer.addView(row)
 
-        // Extra TextBox that appears when Cash > 0 to save Payer's Name
         cashPayerBox = LinearLayout(this)
         cashPayerBox.orientation = LinearLayout.VERTICAL
         cashPayerBox.visibility = View.GONE
@@ -658,7 +720,92 @@ class SalesActivity : AppCompatActivity() {
         etSplitCash.addTextChangedListener(splitWatcher)
         etSplitGpay.addTextChangedListener(splitWatcher)
 
-        parent.addView(splitPayContainer, insertIdx)
+        // Build Weigh Coolie box for Onion
+        weighCoolieContainer = LinearLayout(this)
+        weighCoolieContainer.orientation = LinearLayout.VERTICAL
+        weighCoolieContainer.visibility = View.GONE
+        val wLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        wLp.setMargins(0, 4, 0, 8)
+        weighCoolieContainer.layoutParams = wLp
+
+        val lblCoolie = TextView(this)
+        lblCoolie.text = "Weigh Coolie (Onion) (Rs)"
+        lblCoolie.textSize = 12.5f
+        lblCoolie.setTypeface(null, Typeface.BOLD)
+        lblCoolie.setTextColor(Color.parseColor("#E65100"))
+
+        etSalesWeighCoolie = EditText(this)
+        etSalesWeighCoolie.hint = "Enter Weigh Coolie (Rs)"
+        etSalesWeighCoolie.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        etSalesWeighCoolie.setBackgroundResource(android.R.drawable.edit_text)
+        etSalesWeighCoolie.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        weighCoolieContainer.addView(lblCoolie)
+        weighCoolieContainer.addView(etSalesWeighCoolie)
+
+        // Reorder views inside the main form LinearLayout:
+        // Date -> Select Item -> Supplier Stock -> Customer Name -> Split Pay -> Bags/Kgs/Rate/Amount
+        val formContainer = binding.spSalesItem.parent as? ViewGroup
+        if (formContainer != null && formContainer == binding.etSalesCustomer.parent) {
+            val itemIdx = formContainer.indexOfChild(binding.spSalesItem)
+            val custIdx = formContainer.indexOfChild(binding.etSalesCustomer)
+
+            if (custIdx < itemIdx) {
+                // Find optional label right above Customer Name
+                var custLabelView: View? = null
+                if (custIdx > 0) {
+                    val prev = formContainer.getChildAt(custIdx - 1)
+                    if (prev is TextView && prev.text.toString().contains("Customer", ignoreCase = true)) {
+                        custLabelView = prev
+                    }
+                }
+                val balView: View? = if (binding.tvSalesCustBalance.parent == formContainer) binding.tvSalesCustBalance else null
+
+                if (custLabelView != null) formContainer.removeView(custLabelView)
+                formContainer.removeView(binding.etSalesCustomer)
+                if (balView != null) formContainer.removeView(balView)
+
+                // Now spSalesItem is right after Date; insert Stock -> Customer -> Balance -> SplitPay
+                var insertPos = formContainer.indexOfChild(binding.spSalesItem) + 1
+                formContainer.addView(stockBatchContainer, insertPos++)
+                if (custLabelView != null) formContainer.addView(custLabelView, insertPos++)
+                formContainer.addView(binding.etSalesCustomer, insertPos++)
+                if (balView != null) formContainer.addView(balView, insertPos++)
+                formContainer.addView(splitPayContainer, insertPos)
+            } else {
+                val stockPos = itemIdx + 1
+                formContainer.addView(stockBatchContainer, stockPos)
+                val afterCust = if (binding.tvSalesCustBalance.parent == formContainer) {
+                    formContainer.indexOfChild(binding.tvSalesCustBalance) + 1
+                } else {
+                    formContainer.indexOfChild(binding.etSalesCustomer) + 1
+                }
+                formContainer.addView(splitPayContainer, afterCust)
+            }
+        } else {
+            // Fallback if Customer and Item are in different parent cards
+            (binding.spSalesItem.parent as? ViewGroup)?.let { p ->
+                p.addView(stockBatchContainer, p.indexOfChild(binding.spSalesItem) + 1)
+            }
+            val anchor: View = if (binding.tvSalesCustBalance.parent == binding.etSalesCustomer.parent) {
+                binding.tvSalesCustBalance
+            } else {
+                binding.etSalesCustomer
+            }
+            (anchor.parent as? ViewGroup)?.let { p ->
+                p.addView(splitPayContainer, p.indexOfChild(anchor) + 1)
+            }
+        }
+
+        (binding.etSalesBagCharge.parent as? ViewGroup)?.let { p ->
+            p.addView(weighCoolieContainer, p.indexOfChild(binding.etSalesBagCharge) + 1)
+        }
     }
 
     private fun recalculateSplitCredit() {
@@ -667,7 +814,6 @@ class SalesActivity : AppCompatActivity() {
         val paidSum = cashVal + gpayVal
         val creditBal = (grandTotalBill - paidSum).coerceAtLeast(0.0)
 
-        // Show extra Payer Name textbox only when Cash > 0
         cashPayerBox.visibility = if (cashVal > 0.005) View.VISIBLE else View.GONE
 
         etSplitCredit.setText(String.format(Locale.getDefault(), "%.2f", creditBal))
@@ -1059,52 +1205,6 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    private fun injectStockBatchSelectorAfterItem() {
-        val parent = binding.spSalesItem.parent as? ViewGroup ?: return
-        val insertIdx = parent.indexOfChild(binding.spSalesItem) + 1
-
-        stockBatchContainer = LinearLayout(this)
-        stockBatchContainer.orientation = LinearLayout.VERTICAL
-        stockBatchContainer.setBackgroundColor(Color.parseColor("#E8F5E9"))
-        stockBatchContainer.setPadding(16, 12, 16, 12)
-        val boxLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        boxLp.setMargins(0, 6, 0, 10)
-        stockBatchContainer.layoutParams = boxLp
-
-        val lblStock = TextView(this)
-        lblStock.text = "Select Supplier Available Stock (Lot / Batch) *"
-        lblStock.textSize = 12.5f
-        lblStock.setTypeface(null, Typeface.BOLD)
-        lblStock.setTextColor(Color.parseColor("#1B5E20"))
-
-        spSalesStockBatch = Spinner(this)
-        spSalesStockBatch.setBackgroundResource(android.R.drawable.btn_dropdown)
-        val spLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            (46 * resources.displayMetrics.density).toInt()
-        )
-        spSalesStockBatch.layoutParams = spLp
-
-        batchSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, batchDisplayList)
-        batchSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spSalesStockBatch.adapter = batchSpinnerAdapter
-
-        tvSelectedBatchAvail = TextView(this)
-        tvSelectedBatchAvail.text = "Loading available stock..."
-        tvSelectedBatchAvail.textSize = 12f
-        tvSelectedBatchAvail.setTypeface(null, Typeface.BOLD)
-        tvSelectedBatchAvail.setTextColor(Color.parseColor("#D84315"))
-        tvSelectedBatchAvail.setPadding(4, 4, 4, 0)
-
-        stockBatchContainer.addView(lblStock)
-        stockBatchContainer.addView(spSalesStockBatch)
-        stockBatchContainer.addView(tvSelectedBatchAvail)
-        parent.addView(stockBatchContainer, insertIdx)
-    }
-
     private fun loadAvailableStockBatches() {
         db.collection("stock_batches").get().addOnSuccessListener { snap ->
             while (allStockBatchesJson.length() > 0) allStockBatchesJson.remove(0)
@@ -1206,40 +1306,6 @@ class SalesActivity : AppCompatActivity() {
         } else {
             String.format(Locale.getDefault(), "Supplier: %s (%s) | Avail: %d Bags / %.2f Kgs%s", sup, bId, remBags, remKgs, rateHint)
         }
-    }
-
-    private fun injectWeighCoolieFieldForOnion() {
-        val parent = binding.etSalesBagCharge.parent as? ViewGroup ?: return
-        val insertIdx = parent.indexOfChild(binding.etSalesBagCharge) + 1
-
-        weighCoolieContainer = LinearLayout(this)
-        weighCoolieContainer.orientation = LinearLayout.VERTICAL
-        weighCoolieContainer.visibility = View.GONE
-        val boxLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        boxLp.setMargins(0, 4, 0, 8)
-        weighCoolieContainer.layoutParams = boxLp
-
-        val lblCoolie = TextView(this)
-        lblCoolie.text = "Weigh Coolie (Onion) (Rs)"
-        lblCoolie.textSize = 12.5f
-        lblCoolie.setTypeface(null, Typeface.BOLD)
-        lblCoolie.setTextColor(Color.parseColor("#E65100"))
-
-        etSalesWeighCoolie = EditText(this)
-        etSalesWeighCoolie.hint = "Enter Weigh Coolie (Rs)"
-        etSalesWeighCoolie.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        etSalesWeighCoolie.setBackgroundResource(android.R.drawable.edit_text)
-        etSalesWeighCoolie.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-
-        weighCoolieContainer.addView(lblCoolie)
-        weighCoolieContainer.addView(etSalesWeighCoolie)
-        parent.addView(weighCoolieContainer, insertIdx)
     }
 
     private fun onSalesItemChanged(itemName: String) {
