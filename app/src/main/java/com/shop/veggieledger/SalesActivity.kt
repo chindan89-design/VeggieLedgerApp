@@ -21,6 +21,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.Spinner
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
@@ -157,12 +158,12 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        spSalesStockBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        spSalesStockBatch.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 updateSelectedBatchAvailabilityBanner()
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
+        })
 
         fetchNextBillNo()
         loadCustomers()
@@ -325,7 +326,6 @@ class SalesActivity : AppCompatActivity() {
 
             binding.btnSaveSalesBill.isEnabled = false
 
-            // Capture current bill text & phone before resetting form after save
             val whatsappMessageText = buildCurrentBillWhatsappText()
             val targetPhone = selectedCustomerPhone
             val targetCustName = selectedCustomerName
@@ -508,9 +508,6 @@ class SalesActivity : AppCompatActivity() {
         refreshBillItemsGrid()
     }
 
-    /**
-     * Adds a dedicated green "SEND BILL ON WHATSAPP" button right below the Save button.
-     */
     private fun injectWhatsappButtonAfterSave() {
         val parent = binding.btnSaveSalesBill.parent as? ViewGroup ?: return
         val insertIdx = parent.indexOfChild(binding.btnSaveSalesBill) + 1
@@ -543,9 +540,6 @@ class SalesActivity : AppCompatActivity() {
         parent.addView(btnSendWhatsappBill, insertIdx)
     }
 
-    /**
-     * Formats the complete Sales Bill receipt for WhatsApp sharing.
-     */
     private fun buildCurrentBillWhatsappText(): String {
         val billNo = binding.etSalesBillNo.text.toString().trim()
         val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
@@ -620,10 +614,6 @@ class SalesActivity : AppCompatActivity() {
             .show()
     }
 
-    /**
-     * Opens WhatsApp directly to the customer's phone number (+91) if available,
-     * or falls back to WhatsApp contact picker / chooser if no phone is saved.
-     */
     private fun sendTextToWhatsapp(rawPhone: String, message: String) {
         val digitsOnly = rawPhone.replace("[^0-9]".toRegex(), "")
         val formattedPhone = when {
@@ -648,7 +638,6 @@ class SalesActivity : AppCompatActivity() {
                 startActivity(sendIntent)
             }
         } catch (e: Exception) {
-            // Fallback for WhatsApp Business or standard share sheet
             try {
                 if (formattedPhone.isNotEmpty()) {
                     val encodedMsg = URLEncoder.encode(message, "UTF-8")
