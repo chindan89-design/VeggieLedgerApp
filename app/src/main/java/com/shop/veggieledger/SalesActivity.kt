@@ -555,9 +555,10 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesBillNo.visibility = View.GONE
         binding.spSalesPayMode.visibility = View.GONE
 
-        val dateParent = binding.etSalesDate.parent as? ViewGroup
-        val custParent = binding.etSalesCustomer.parent as? ViewGroup
-        val payParent = binding.spSalesPayMode.parent as? ViewGroup
+        val oldDateParent = binding.etSalesDate.parent as? ViewGroup
+        val oldBillParent = binding.etSalesBillNo.parent as? ViewGroup
+        val oldCustParent = binding.etSalesCustomer.parent as? ViewGroup
+        val oldPayParent = binding.spSalesPayMode.parent as? ViewGroup
 
         fun detachView(v: View) {
             (v.parent as? ViewGroup)?.removeView(v)
@@ -575,21 +576,20 @@ class SalesActivity : AppCompatActivity() {
         detachView(binding.tvLineAmountPreview)
         detachView(binding.btnAddSalesItem)
 
-        listOfNotNull(dateParent, custParent, payParent).forEach { p ->
+        listOfNotNull(oldDateParent, oldBillParent, oldCustParent, oldPayParent).forEach { p ->
             if (p != addBtnParent && p.id != binding.root.id) {
-                val grandParent = p.parent as? ViewGroup
-                if (grandParent != null && grandParent != addBtnParent && grandParent.id != binding.root.id) {
-                    grandParent.visibility = View.GONE
-                } else {
-                    p.visibility = View.GONE
+                p.visibility = View.GONE
+                val gp = p.parent as? ViewGroup
+                if (gp != null && gp != addBtnParent && gp.id != binding.root.id) {
+                    gp.visibility = View.GONE
                 }
             }
         }
 
         for (i in 0 until addBtnParent.childCount) {
             val child = addBtnParent.getChildAt(i)
-            val containsModeBtn = (child as? ViewGroup)?.findViewById<View>(binding.btnModeNewSales.id) != null
-            if (!containsModeBtn &&
+            val hasModeBtn = (child as? ViewGroup)?.findViewById<View>(binding.btnModeNewSales.id) != null
+            if (!hasModeBtn &&
                 child.id != binding.tvSalesHeader.id &&
                 child.id != binding.layoutEditSalesPanel.id &&
                 child.id != binding.btnImportSalesCsv.id &&
@@ -779,16 +779,16 @@ class SalesActivity : AppCompatActivity() {
         rowCashPayer.visibility = View.GONE
 
         val gridIdx = addBtnParent.indexOfChild(binding.tlSalesItemsGrid)
-        val targetPos = if (gridIdx >= 0) gridIdx else addBtnParent.childCount
-        addBtnParent.addView(formTable, targetPos)
+        val tablePos = if (gridIdx >= 0) gridIdx else addBtnParent.childCount
+        addBtnParent.addView(formTable, tablePos)
 
         val addBtnLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        addBtnLp.setMargins(0, 4, 0, 12)
+        addBtnLp.setMargins(0, 6, 0, 12)
         binding.btnAddSalesItem.layoutParams = addBtnLp
-        addBtnParent.addView(binding.btnAddSalesItem, targetPos + 1)
+        addBtnParent.addView(binding.btnAddSalesItem, tablePos + 1)
     }
 
     private fun recalculateSplitCredit() {
