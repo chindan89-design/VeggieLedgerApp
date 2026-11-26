@@ -22,11 +22,11 @@ class CustomerMasterActivity : AppCompatActivity() {
 
     private lateinit var spCustItem: Spinner
     private lateinit var itemAdapter: ArrayAdapter<String>
-    private val itemNames = arrayListOf("Coconut", "Onion", "Garlic")
+    private val itemNames: MutableList<String> = mutableListOf("Coconut", "Onion", "Garlic")
 
-    private val groups = arrayListOf("Group A", "Group B", "Group C", "Group D")
-    private val customerDisplayList = ArrayList<String>()
-    private val customerDocsList = ArrayList>()
+    private val groups: MutableList<String> = mutableListOf("Group A", "Group B", "Group C", "Group D")
+    private val customerDisplayList: MutableList<String> = mutableListOf()
+    private val customerDocsList: MutableList> = mutableListOf()
     private lateinit var listAdapter: ArrayAdapter<String>
 
     private var editingCustomerId: String = ""
@@ -55,14 +55,12 @@ class CustomerMasterActivity : AppCompatActivity() {
             resetForm()
         }
 
-        // Tap any customer in list to edit
         binding.lvCustomers.setOnItemClickListener { _, _, position, _ ->
             if (position in customerDocsList.indices) {
                 loadCustomerIntoForm(customerDocsList[position])
             }
         }
 
-        // Long press any customer in list to delete
         binding.lvCustomers.setOnItemLongClickListener { _, _, position, _ ->
             if (position in customerDocsList.indices) {
                 val data = customerDocsList[position]
@@ -91,10 +89,6 @@ class CustomerMasterActivity : AppCompatActivity() {
         loadCustomersFromDb()
     }
 
-    /**
-     * Dynamically inserts the "Item Name *" Drop-down (Spinner) right below Area / Location
-     * without requiring any edits to activity_customer_master.xml.
-     */
     private fun injectItemDropdownField() {
         val parent = binding.etCustArea.parent as? ViewGroup ?: return
         val insertIndex = parent.indexOfChild(binding.etCustArea) + 1
@@ -133,7 +127,7 @@ class CustomerMasterActivity : AppCompatActivity() {
 
     private fun loadItemsFromDb() {
         db.collection("items").get().addOnSuccessListener { snap ->
-            val fetched = ArrayList<String>()
+            val fetched = mutableListOf<String>()
             for (doc in snap) {
                 val n = (doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item") ?: "").trim()
                 if (n.isNotEmpty() && fetched.none { it.equals(n, ignoreCase = true) }) {
