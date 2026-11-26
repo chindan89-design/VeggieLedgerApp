@@ -2,6 +2,7 @@ package com.shop.veggieledger
 
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -16,10 +17,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
-import android.widget.Spinner
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
@@ -33,6 +34,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.zip.ZipInputStream
@@ -42,12 +44,13 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
-    // Supplier Batch Selector & Weigh Coolie UI
+    // Supplier Batch Selector, Weigh Coolie & WhatsApp Bill Button
     private lateinit var stockBatchContainer: LinearLayout
     private lateinit var spSalesStockBatch: Spinner
     private lateinit var tvSelectedBatchAvail: TextView
     private lateinit var weighCoolieContainer: LinearLayout
     private lateinit var etSalesWeighCoolie: EditText
+    private lateinit var btnSendWhatsappBill: Button
 
     private val allStockBatchesJson = JSONArray()
     private val filteredBatchesJson = JSONArray()
@@ -64,6 +67,7 @@ class SalesActivity : AppCompatActivity() {
     private var editFilterDateStr: String = ""
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
+    private var selectedCustomerPhone: String = ""
     private var selectedCustomerBalance: Double = 0.0
     private var grandTotalBill: Double = 0.0
 
@@ -78,7 +82,7 @@ class SalesActivity : AppCompatActivity() {
 
     private val payModes = arrayListOf("Credit", "Cash", "GPay / UPI")
 
-    data class CustomerItem(val id: String, val name: String, val balance: Double)
+    data class CustomerItem(val id: String, val name: String, val phone: String, val balance: Double)
 
     private val pickSalesFileLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -97,6 +101,7 @@ class SalesActivity : AppCompatActivity() {
 
         injectStockBatchSelectorAfterItem()
         injectWeighCoolieFieldForOnion()
+        injectWhatsappButtonAfterSave()
 
         binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
         binding.btnModeEditSales.setOnClickListener { switchToEditMode() }
@@ -202,7 +207,6 @@ class SalesActivity : AppCompatActivity() {
             val isCoconut = itemName.equals("Coconut", ignoreCase = true)
             val isOnion = itemName.equals("Onion", ignoreCase = true)
 
-            // Validate selected supplier stock batch
             val batchPos = spSalesStockBatch.selectedItemPosition
             if (filteredBatchesJson.length() == 0 || batchPos < 0 || batchPos >= filteredBatchesJson.length()) {
                 Toast.makeText(this, "No available stock batch for $itemName! Add Purchase first.", Toast.LENGTH_LONG).show()
@@ -216,7 +220,6 @@ class SalesActivity : AppCompatActivity() {
             val availBags = selectedBatchObj.optInt("availableBags", 0)
             val availKgs = selectedBatchObj.optDouble("availableKgs", 0.0)
 
-            // Calculate how much from this exact batch is already in the current bill grid
             var alreadyUsedBags = 0
             var alreadyUsedKgs = 0.0
             for (k in 0 until billItemsArray.length()) {
@@ -243,7 +246,6 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Strict stock limit check against selected supplier batch
             if (kgs > remainingKgs + 0.01) {
                 Toast.makeText(
                     this,
@@ -323,6 +325,11 @@ class SalesActivity : AppCompatActivity() {
 
             binding.btnSaveSalesBill.isEnabled = false
 
+            // Capture current bill text & phone before resetting form after save
+            val whatsappMessageText = buildCurrentBillWhatsappText()
+            val targetPhone = selectedCustomerPhone
+            val targetCustName = selectedCustomerName
+
             val itemsForDb = arrayListOf<Any>()
             var totalBagsAll = 0
             var totalKgsAll = 0.0
@@ -374,7 +381,6 @@ class SalesActivity : AppCompatActivity() {
             val isCredit = payMode.equals("Credit", ignoreCase = true)
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
-                // 1. Restore old stock items to their exact supplier batches
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockToSpecificBatch(
@@ -386,7 +392,6 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                // 2. Deduct new stock items from their selected supplier batches
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
                     deductStockFromSpecificBatch(
@@ -398,7 +403,6 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                // 3. Adjust customer balance
                 if (oldSalePayMode.equals("Credit", ignoreCase = true) && oldSaleCustomerId.isNotEmpty()) {
                     val oldUnpaid = (oldSaleGrandTotal - oldSalePaidAmount).coerceAtLeast(0.0)
                     adjustCustomerBalance(oldSaleCustomerId, -oldUnpaid)
@@ -443,13 +447,13 @@ class SalesActivity : AppCompatActivity() {
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
                         resetForm()
                         loadSalesForEditFilter()
+                        promptWhatsappAfterSave(billNo, targetCustName, targetPhone, whatsappMessageText)
                     }
                     .addOnFailureListener {
                         binding.btnSaveSalesBill.isEnabled = true
                         Toast.makeText(this, "Failed to update bill", Toast.LENGTH_SHORT).show()
                     }
             } else {
-                // Deduct from exact selected supplier stock batches
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
                     deductStockFromSpecificBatch(
@@ -491,6 +495,7 @@ class SalesActivity : AppCompatActivity() {
                         }
                         Toast.makeText(this, "Sales Bill $billNo Saved!", Toast.LENGTH_SHORT).show()
                         resetForm()
+                        promptWhatsappAfterSave(billNo, targetCustName, targetPhone, whatsappMessageText)
                     }
                     .addOnFailureListener {
                         binding.btnSaveSalesBill.isEnabled = true
@@ -504,9 +509,168 @@ class SalesActivity : AppCompatActivity() {
     }
 
     /**
-     * Places the Supplier Available Stock Batch dropdown right below the Item Spinner
-     * so every sale is strictly linked to the supplier whose stock is being sold.
+     * Adds a dedicated green "SEND BILL ON WHATSAPP" button right below the Save button.
      */
+    private fun injectWhatsappButtonAfterSave() {
+        val parent = binding.btnSaveSalesBill.parent as? ViewGroup ?: return
+        val insertIdx = parent.indexOfChild(binding.btnSaveSalesBill) + 1
+
+        btnSendWhatsappBill = Button(this)
+        btnSendWhatsappBill.text = "SEND BILL ON WHATSAPP"
+        btnSendWhatsappBill.setBackgroundColor(Color.parseColor("#25D366"))
+        btnSendWhatsappBill.setTextColor(Color.WHITE)
+        btnSendWhatsappBill.setTypeface(null, Typeface.BOLD)
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 8, 0, 12)
+        btnSendWhatsappBill.layoutParams = lp
+
+        btnSendWhatsappBill.setOnClickListener {
+            if (selectedCustomerName.isEmpty()) {
+                Toast.makeText(this, "Please select a Customer first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (billItemsArray.length() == 0) {
+                Toast.makeText(this, "Add at least one item to send bill", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val msg = buildCurrentBillWhatsappText()
+            sendTextToWhatsapp(selectedCustomerPhone, msg)
+        }
+
+        parent.addView(btnSendWhatsappBill, insertIdx)
+    }
+
+    /**
+     * Formats the complete Sales Bill receipt for WhatsApp sharing.
+     */
+    private fun buildCurrentBillWhatsappText(): String {
+        val billNo = binding.etSalesBillNo.text.toString().trim()
+        val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
+        val isCredit = payMode.equals("Credit", ignoreCase = true)
+
+        val sb = StringBuilder()
+        sb.append("*THIRUVENI COCONUTS*\n")
+        sb.append("Shop No B98, Periyar Vegetable Market, Koyambedu\n")
+        sb.append("--------------------------------\n")
+        sb.append("*SALES BILL / ESTIMATE*\n")
+        sb.append("Bill No : *$billNo*\n")
+        sb.append("Date    : *$selectedDateStr*\n")
+        sb.append("Customer: *$selectedCustomerName*\n")
+        sb.append("Mode    : *$payMode*\n")
+        sb.append("--------------------------------\n")
+
+        var calcGrandTotal = 0.0
+        for (i in 0 until billItemsArray.length()) {
+            val obj = billItemsArray.getJSONObject(i)
+            val iName = obj.getString("itemName")
+            val bgs = obj.getInt("bags")
+            val kgs = obj.getDouble("netKgs")
+            val rt = obj.getDouble("rate")
+            val bChg = obj.getDouble("bagCharge")
+            val wCoolie = obj.optDouble("weighCoolie", 0.0)
+            val rowTot = obj.getDouble("rowTotal")
+            calcGrandTotal += rowTot
+
+            sb.append("${i + 1}. *$iName*\n")
+            if (!iName.equals("Coconut", ignoreCase = true) && bgs > 0) {
+                sb.append("   Bags: $bgs  |  Wt: ${String.format(Locale.getDefault(), "%.2f", kgs)} Kgs\n")
+            } else {
+                sb.append("   Net Wt: ${String.format(Locale.getDefault(), "%.2f", kgs)} Kgs\n")
+            }
+            sb.append("   Rate: Rs. ${String.format(Locale.getDefault(), "%.2f", rt)} / Kg\n")
+            if (bChg > 0.0) {
+                sb.append("   Bag Charge: Rs. ${String.format(Locale.getDefault(), "%.2f", bChg)}\n")
+            }
+            if (wCoolie > 0.0) {
+                sb.append("   Weigh Coolie: Rs. ${String.format(Locale.getDefault(), "%.2f", wCoolie)}\n")
+            }
+            sb.append("   *Amount: Rs. ${String.format(Locale.getDefault(), "%.2f", rowTot)}*\n")
+        }
+
+        sb.append("--------------------------------\n")
+        sb.append("*BILL TOTAL : Rs. ${String.format(Locale.getDefault(), "%.2f", calcGrandTotal)}*\n")
+
+        if (isCredit) {
+            val netDue = selectedCustomerBalance + calcGrandTotal
+            sb.append("Prev. Balance: Rs. ${String.format(Locale.getDefault(), "%.2f", selectedCustomerBalance)}\n")
+            sb.append("*TOTAL DUE    : Rs. ${String.format(Locale.getDefault(), "%.2f", netDue)}*\n")
+        } else {
+            sb.append("Status: *PAID ($payMode)*\n")
+            if (selectedCustomerBalance > 0.0) {
+                sb.append("Old Pending Bal: Rs. ${String.format(Locale.getDefault(), "%.2f", selectedCustomerBalance)}\n")
+            }
+        }
+
+        sb.append("--------------------------------\n")
+        sb.append("Thank you for your business!")
+        return sb.toString()
+    }
+
+    private fun promptWhatsappAfterSave(billNo: String, custName: String, phone: String, messageText: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Bill $billNo Saved")
+            .setMessage("Send bill to $custName on WhatsApp now?")
+            .setPositiveButton("SEND WHATSAPP") { _, _ ->
+                sendTextToWhatsapp(phone, messageText)
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    /**
+     * Opens WhatsApp directly to the customer's phone number (+91) if available,
+     * or falls back to WhatsApp contact picker / chooser if no phone is saved.
+     */
+    private fun sendTextToWhatsapp(rawPhone: String, message: String) {
+        val digitsOnly = rawPhone.replace("[^0-9]".toRegex(), "")
+        val formattedPhone = when {
+            digitsOnly.length == 10 -> "91$digitsOnly"
+            digitsOnly.length == 11 && digitsOnly.startsWith("0") -> "91${digitsOnly.substring(1)}"
+            digitsOnly.length >= 12 -> digitsOnly
+            else -> ""
+        }
+
+        try {
+            if (formattedPhone.isNotEmpty()) {
+                val encodedMsg = URLEncoder.encode(message, "UTF-8")
+                val uri = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=$encodedMsg")
+                val waIntent = Intent(Intent.ACTION_VIEW, uri)
+                waIntent.setPackage("com.whatsapp")
+                startActivity(waIntent)
+            } else {
+                val sendIntent = Intent(Intent.ACTION_SEND)
+                sendIntent.type = "text/plain"
+                sendIntent.setPackage("com.whatsapp")
+                sendIntent.putExtra(Intent.EXTRA_TEXT, message)
+                startActivity(sendIntent)
+            }
+        } catch (e: Exception) {
+            // Fallback for WhatsApp Business or standard share sheet
+            try {
+                if (formattedPhone.isNotEmpty()) {
+                    val encodedMsg = URLEncoder.encode(message, "UTF-8")
+                    val uri = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=$encodedMsg")
+                    val waBizIntent = Intent(Intent.ACTION_VIEW, uri)
+                    waBizIntent.setPackage("com.whatsapp.w4b")
+                    startActivity(waBizIntent)
+                } else {
+                    val fallbackIntent = Intent(Intent.ACTION_SEND)
+                    fallbackIntent.type = "text/plain"
+                    fallbackIntent.putExtra(Intent.EXTRA_TEXT, message)
+                    startActivity(Intent.createChooser(fallbackIntent, "Send Bill via WhatsApp"))
+                }
+            } catch (ex: Exception) {
+                val chooser = Intent(Intent.ACTION_SEND)
+                chooser.type = "text/plain"
+                chooser.putExtra(Intent.EXTRA_TEXT, message)
+                startActivity(Intent.createChooser(chooser, "Send Bill"))
+            }
+        }
+    }
+
     private fun injectStockBatchSelectorAfterItem() {
         val parent = binding.spSalesItem.parent as? ViewGroup ?: return
         val insertIdx = parent.indexOfChild(binding.spSalesItem) + 1
@@ -563,7 +727,6 @@ class SalesActivity : AppCompatActivity() {
                 val availBags = (doc.getLong("availableBags") ?: 0L).toInt()
                 val availKgs = doc.getDouble("availableKgs") ?: 0.0
 
-                // Only include batches that still have positive available stock
                 if (iName.isNotEmpty() && (availKgs > 0.001 || availBags > 0)) {
                     val obj = JSONObject()
                     obj.put("docId", doc.id)
@@ -933,6 +1096,7 @@ class SalesActivity : AppCompatActivity() {
 
         val foundCust = customerList.find { c -> c.id == oldSaleCustomerId || c.name.equals(cName, ignoreCase = true) }
         selectedCustomerBalance = foundCust?.balance ?: 0.0
+        selectedCustomerPhone = foundCust?.phone ?: ""
         if (selectedCustomerId.isEmpty() && foundCust != null) {
             selectedCustomerId = foundCust.id
         }
@@ -1020,9 +1184,6 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Deducts sold Bags & Kgs directly from the exact selected Supplier Stock Batch.
-     */
     private fun deductStockFromSpecificBatch(
         stockDocId: String,
         batchId: String,
@@ -1053,13 +1214,9 @@ class SalesActivity : AppCompatActivity() {
             return
         }
 
-        // Fallback by batchId or FIFO if docId is empty
         deductStockFifo(itemName, bagsToDeduct, kgsToDeduct)
     }
 
-    /**
-     * Restores Bags & Kgs back to the exact Supplier Stock Batch when a sale is edited or deleted.
-     */
     private fun restoreStockToSpecificBatch(
         stockDocId: String,
         batchId: String,
@@ -1527,9 +1684,16 @@ class SalesActivity : AppCompatActivity() {
             val chosen = filtered[pos]
             selectedCustomerId = chosen.id
             selectedCustomerName = chosen.name
+            selectedCustomerPhone = chosen.phone
             selectedCustomerBalance = chosen.balance
             binding.etSalesCustomer.setText(chosen.name)
-            binding.tvSalesCustBalance.text = String.format(Locale.getDefault(), "Previous Balance: Rs. %.2f", chosen.balance)
+            val phInfo = if (chosen.phone.isNotEmpty()) "  |  Ph: ${chosen.phone}" else ""
+            binding.tvSalesCustBalance.text = String.format(
+                Locale.getDefault(),
+                "Previous Balance: Rs. %.2f%s",
+                chosen.balance,
+                phInfo
+            )
             dialog.dismiss()
         }
 
@@ -1635,8 +1799,9 @@ class SalesActivity : AppCompatActivity() {
 
             for (doc in snap) {
                 val name = doc.getString("name") ?: continue
+                val phone = doc.getString("contact") ?: doc.getString("phone") ?: ""
                 val bal = doc.getDouble("currentBalance") ?: 0.0
-                customerList.add(CustomerItem(doc.id, name, bal))
+                customerList.add(CustomerItem(doc.id, name, phone, bal))
                 editFilterCustomerList.add(name)
             }
             customerList.sortBy { c -> c.name.lowercase(Locale.getDefault()) }
@@ -1668,6 +1833,7 @@ class SalesActivity : AppCompatActivity() {
     private fun resetForm() {
         selectedCustomerId = ""
         selectedCustomerName = ""
+        selectedCustomerPhone = ""
         selectedCustomerBalance = 0.0
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
         refreshBillItemsGrid()
