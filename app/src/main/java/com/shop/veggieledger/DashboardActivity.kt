@@ -261,10 +261,14 @@ class DashboardActivity : AppCompatActivity() {
             R.id.nav_sal_cust_statement -> openReportHub("SAL_STATEMENT")
             R.id.nav_cust_out -> startActivity(Intent(this, CustomerOutstandingActivity::class.java))
 
-            // Others Sub-Menu
+
+                        // Others Sub-Menu
+            R.id.nav_coconut_daybook -> startActivity(Intent(this, CoconutDayBookActivity::class.java))
             R.id.nav_daily_closing -> openReportHub("DAILY_CLOSING")
             R.id.nav_pnl -> startActivity(Intent(this, ProfitLossActivity::class.java))
             R.id.nav_history -> startActivity(Intent(this, TransactionHistoryActivity::class.java))
+            
+            
         }
         return super.onOptionsItemSelected(item)
     }
