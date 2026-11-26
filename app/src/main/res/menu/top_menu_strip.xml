@@ -22,6 +22,7 @@
     <item android:title="Sales Reports">
         <menu>
             <item android:id="@+id/nav_sal_customer_rep" android:title="Customer Sales Report" />
+            <item android:id="@+id/nav_pur_wise_sales" android:title="Purchase-wise Sales Report" />
             <item android:id="@+id/nav_sal_details" android:title="Sales Bill Details" />
             <item android:id="@+id/nav_sal_itemwise" android:title="Itemwise Sales" />
             <item android:id="@+id/nav_sal_cust_statement" android:title="Customer Statement" />
