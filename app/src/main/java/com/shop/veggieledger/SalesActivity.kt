@@ -45,6 +45,7 @@ import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.zip.ZipInputStream
+import kotlin.math.abs
 
 class SalesActivity : AppCompatActivity() {
 
@@ -57,6 +58,13 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var weighCoolieContainer: LinearLayout
     private lateinit var etSalesWeighCoolie: EditText
     private lateinit var btnSendWhatsappBill: Button
+
+    // 3 Split Payment Boxes: cash, gpay, credit
+    private lateinit var splitPayContainer: LinearLayout
+    private lateinit var etSplitCash: EditText
+    private lateinit var etSplitGpay: EditText
+    private lateinit var etSplitCredit: EditText
+    private lateinit var tvAutoSaleTypeBadge: TextView
 
     private val allStockBatchesJson = JSONArray()
     private val filteredBatchesJson = JSONArray()
@@ -81,12 +89,8 @@ class SalesActivity : AppCompatActivity() {
     private var isEditMode: Boolean = false
     private var editingSaleDocId: String = ""
     private var oldSaleCustomerId: String = ""
-    private var oldSalePayMode: String = "Credit"
-    private var oldSaleGrandTotal: Double = 0.0
-    private var oldSalePaidAmount: Double = 0.0
+    private var oldSaleCreditBalance: Double = 0.0
     private val oldSaleItemsJson = JSONArray()
-
-    private val payModes = arrayListOf("Credit", "Cash", "GPay / UPI")
 
     data class CustomerItem(val id: String, val name: String, val phone: String, val balance: Double)
 
@@ -105,6 +109,7 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
+        replacePayModeWithThreeBoxes()
         injectStockBatchSelectorAfterItem()
         injectWeighCoolieFieldForOnion()
         injectWhatsappButtonAfterSave()
@@ -147,10 +152,6 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        val modeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, payModes)
-        modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spSalesPayMode.adapter = modeAdapter
-
         itemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
         itemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spSalesItem.adapter = itemAdapter
@@ -179,7 +180,6 @@ class SalesActivity : AppCompatActivity() {
             showCustomerSearchDialog()
         }
 
-        // Auto-fill Bag Charge = Bags * 10 for Onion
         binding.etSalesBags.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -314,7 +314,6 @@ class SalesActivity : AppCompatActivity() {
 
         binding.btnSaveSalesBill.setOnClickListener {
             val billNo = binding.etSalesBillNo.text.toString().trim()
-            val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
 
             if (selectedCustomerId.isEmpty() && selectedCustomerName.isEmpty()) {
                 Toast.makeText(this, "Please select a Customer", Toast.LENGTH_SHORT).show()
@@ -329,9 +328,31 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
+            val gpayPaid = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
+            val totalPaid = cashPaid + gpayPaid
+
+            if (totalPaid > grandTotalBill + 0.01) {
+                Toast.makeText(
+                    this,
+                    String.format(Locale.getDefault(), "Cash + GPay (%.2f) cannot exceed Bill Total (%.2f)!", totalPaid, grandTotalBill),
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
+
+            val creditBal = (grandTotalBill - totalPaid).coerceAtLeast(0.0)
+            // Payable == Paid -> Cash Sales; Any balance remaining -> Credit Sales
+            val isCreditSale = creditBal > 0.005
+            val computedPayMode = if (isCreditSale) "Credit" else "Cash"
+            val status = if (isCreditSale) {
+                if (totalPaid > 0.005) "Partial" else "Unpaid"
+            } else {
+                "Paid"
+            }
+
             binding.btnSaveSalesBill.isEnabled = false
 
-            // Generate strict Portrait 3-inch thermal JPG receipt bitmap before resetting form
             val billBitmap = generateBillReceiptBitmap()
             val targetPhone = selectedCustomerPhone
             val targetCustName = selectedCustomerName
@@ -384,8 +405,6 @@ class SalesActivity : AppCompatActivity() {
                 itemsForDb.add(itemMap)
             }
 
-            val isCredit = payMode.equals("Credit", ignoreCase = true)
-
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
@@ -409,29 +428,25 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                if (oldSalePayMode.equals("Credit", ignoreCase = true) && oldSaleCustomerId.isNotEmpty()) {
-                    val oldUnpaid = (oldSaleGrandTotal - oldSalePaidAmount).coerceAtLeast(0.0)
-                    adjustCustomerBalance(oldSaleCustomerId, -oldUnpaid)
+                if (oldSaleCustomerId.isNotEmpty() && oldSaleCreditBalance > 0.0) {
+                    adjustCustomerBalance(oldSaleCustomerId, -oldSaleCreditBalance)
                 }
-                if (isCredit && selectedCustomerId.isNotEmpty()) {
-                    val newUnpaid = (grandTotalBill - oldSalePaidAmount).coerceAtLeast(0.0)
-                    adjustCustomerBalance(selectedCustomerId, newUnpaid)
+                if (selectedCustomerId.isNotEmpty() && creditBal > 0.0) {
+                    adjustCustomerBalance(selectedCustomerId, creditBal)
                 }
 
-                val newPaid = if (isCredit) oldSalePaidAmount else grandTotalBill
-                val newBal = if (isCredit) (grandTotalBill - oldSalePaidAmount).coerceAtLeast(0.0) else 0.0
-                val status = when {
-                    newBal <= 0.01 -> "Paid"
-                    newPaid > 0.01 -> "Partial"
-                    else -> "Unpaid"
-                }
-
+                // Store exact 3 fields: cash, gpay, credit in database
                 val updateData = hashMapOf<String, Any>(
                     "billNo" to billNo,
                     "date" to selectedDateStr,
                     "customerId" to selectedCustomerId,
                     "customerName" to selectedCustomerName,
-                    "payMode" to payMode,
+                    "payMode" to computedPayMode,
+                    "cash" to cashPaid,
+                    "gpay" to gpayPaid,
+                    "credit" to creditBal,
+                    "cashAmount" to cashPaid,
+                    "gpayAmount" to gpayPaid,
                     "items" to itemsForDb,
                     "itemName" to firstItemName,
                     "batchId" to firstBatchId,
@@ -441,15 +456,16 @@ class SalesActivity : AppCompatActivity() {
                     "totalBagCharges" to totalBagChargesAll,
                     "totalWeighCoolie" to totalWeighCoolieAll,
                     "grandTotal" to grandTotalBill,
-                    "paidAmount" to newPaid,
-                    "balanceAmount" to newBal,
+                    "paidAmount" to totalPaid,
+                    "balanceAmount" to creditBal,
                     "paymentStatus" to status
                 )
 
                 db.collection("sales").document(editingSaleDocId).update(updateData)
                     .addOnSuccessListener {
-                        Toast.makeText(this, "Sales Bill $billNo Updated!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Sales Bill $billNo Updated ($computedPayMode Sales)!", Toast.LENGTH_SHORT).show()
                         editingSaleDocId = ""
+                        oldSaleCreditBalance = 0.0
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
                         resetForm()
                         loadSalesForEditFilter()
@@ -471,6 +487,7 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
+                // Store exact 3 fields: cash, gpay, credit in database
                 val saleId = db.collection("sales").document().id
                 val saleData = hashMapOf<String, Any>(
                     "id" to saleId,
@@ -478,7 +495,12 @@ class SalesActivity : AppCompatActivity() {
                     "date" to selectedDateStr,
                     "customerId" to selectedCustomerId,
                     "customerName" to selectedCustomerName,
-                    "payMode" to payMode,
+                    "payMode" to computedPayMode,
+                    "cash" to cashPaid,
+                    "gpay" to gpayPaid,
+                    "credit" to creditBal,
+                    "cashAmount" to cashPaid,
+                    "gpayAmount" to gpayPaid,
                     "items" to itemsForDb,
                     "itemName" to firstItemName,
                     "batchId" to firstBatchId,
@@ -488,18 +510,18 @@ class SalesActivity : AppCompatActivity() {
                     "totalBagCharges" to totalBagChargesAll,
                     "totalWeighCoolie" to totalWeighCoolieAll,
                     "grandTotal" to grandTotalBill,
-                    "paidAmount" to if (isCredit) 0.0 else grandTotalBill,
-                    "balanceAmount" to if (isCredit) grandTotalBill else 0.0,
-                    "paymentStatus" to if (isCredit) "Unpaid" else "Paid",
+                    "paidAmount" to totalPaid,
+                    "balanceAmount" to creditBal,
+                    "paymentStatus" to status,
                     "timestamp" to System.currentTimeMillis()
                 )
 
                 db.collection("sales").document(saleId).set(saleData)
                     .addOnSuccessListener {
-                        if (isCredit && selectedCustomerId.isNotEmpty()) {
-                            adjustCustomerBalance(selectedCustomerId, grandTotalBill)
+                        if (selectedCustomerId.isNotEmpty() && creditBal > 0.0) {
+                            adjustCustomerBalance(selectedCustomerId, creditBal)
                         }
-                        Toast.makeText(this, "Sales Bill $billNo Saved!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Saved as $computedPayMode Sales ($billNo)!", Toast.LENGTH_SHORT).show()
                         resetForm()
                         promptWhatsappJpgAfterSave(billNo, targetCustName, targetPhone, billBitmap)
                     }
@@ -512,6 +534,126 @@ class SalesActivity : AppCompatActivity() {
 
         onSalesItemChanged(binding.spSalesItem.selectedItem?.toString() ?: "Coconut")
         refreshBillItemsGrid()
+    }
+
+    private fun replacePayModeWithThreeBoxes() {
+        val parent = binding.spSalesPayMode.parent as? ViewGroup ?: return
+        val insertIdx = parent.indexOfChild(binding.spSalesPayMode)
+        binding.spSalesPayMode.visibility = View.GONE
+
+        splitPayContainer = LinearLayout(this)
+        splitPayContainer.orientation = LinearLayout.VERTICAL
+        splitPayContainer.setBackgroundColor(Color.parseColor("#E3F2FD"))
+        splitPayContainer.setPadding(14, 12, 14, 12)
+        val cLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        cLp.setMargins(0, 6, 0, 10)
+        splitPayContainer.layoutParams = cLp
+
+        val headerRow = LinearLayout(this)
+        headerRow.orientation = LinearLayout.HORIZONTAL
+        headerRow.gravity = Gravity.CENTER_VERTICAL
+        headerRow.setPadding(0, 0, 0, 6)
+
+        val tvHdr = TextView(this)
+        tvHdr.text = "Payment Split (Cash / GPay / Credit)"
+        tvHdr.textSize = 12.5f
+        tvHdr.setTypeface(null, Typeface.BOLD)
+        tvHdr.setTextColor(Color.parseColor("#0D47A1"))
+        tvHdr.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+        tvAutoSaleTypeBadge = TextView(this)
+        tvAutoSaleTypeBadge.text = "CASH SALES"
+        tvAutoSaleTypeBadge.textSize = 11.5f
+        tvAutoSaleTypeBadge.setTypeface(null, Typeface.BOLD)
+        tvAutoSaleTypeBadge.setTextColor(Color.WHITE)
+        tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#1B5E20"))
+        tvAutoSaleTypeBadge.setPadding(14, 5, 14, 5)
+
+        headerRow.addView(tvHdr)
+        headerRow.addView(tvAutoSaleTypeBadge)
+        splitPayContainer.addView(headerRow)
+
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.weightSum = 3f
+
+        fun buildBox(label: String, hintStr: String, readOnly: Boolean): Pair<LinearLayout, EditText> {
+            val col = LinearLayout(this)
+            col.orientation = LinearLayout.VERTICAL
+            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            lp.setMargins(3, 0, 3, 0)
+            col.layoutParams = lp
+
+            val lbl = TextView(this)
+            lbl.text = label
+            lbl.textSize = 11.5f
+            lbl.setTypeface(null, Typeface.BOLD)
+            lbl.setTextColor(Color.BLACK)
+
+            val et = EditText(this)
+            et.hint = hintStr
+            et.textSize = 13.5f
+            et.setTypeface(null, Typeface.BOLD)
+            et.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            et.setBackgroundResource(android.R.drawable.edit_text)
+            if (readOnly) {
+                et.isFocusable = false
+                et.isClickable = false
+                et.setTextColor(Color.parseColor("#D84315"))
+                et.setText("0.00")
+            }
+            col.addView(lbl)
+            col.addView(et)
+            return Pair(col, et)
+        }
+
+        val (cashCol, cashEt) = buildBox("Cash", "0.00", false)
+        val (gpayCol, gpayEt) = buildBox("GPay", "0.00", false)
+        val (credCol, credEt) = buildBox("Credit", "0.00", true)
+
+        etSplitCash = cashEt
+        etSplitGpay = gpayEt
+        etSplitCredit = credEt
+
+        row.addView(cashCol)
+        row.addView(gpayCol)
+        row.addView(credCol)
+        splitPayContainer.addView(row)
+
+        val splitWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                recalculateSplitCredit()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        }
+        etSplitCash.addTextChangedListener(splitWatcher)
+        etSplitGpay.addTextChangedListener(splitWatcher)
+
+        parent.addView(splitPayContainer, insertIdx)
+    }
+
+    private fun recalculateSplitCredit() {
+        val cashVal = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
+        val gpayVal = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
+        val paidSum = cashVal + gpayVal
+        val creditBal = (grandTotalBill - paidSum).coerceAtLeast(0.0)
+
+        etSplitCredit.setText(String.format(Locale.getDefault(), "%.2f", creditBal))
+
+        if (grandTotalBill > 0.0 && abs(paidSum - grandTotalBill) <= 0.005) {
+            tvAutoSaleTypeBadge.text = "CASH SALES (FULL PAID)"
+            tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#1B5E20"))
+        } else if (creditBal > 0.005) {
+            tvAutoSaleTypeBadge.text = "CREDIT SALES (BAL: Rs. ${String.format(Locale.getDefault(), "%.2f", creditBal)})"
+            tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#D84315"))
+        } else {
+            tvAutoSaleTypeBadge.text = "CASH SALES"
+            tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#1B5E20"))
+        }
     }
 
     private fun injectWhatsappButtonAfterSave() {
@@ -547,18 +689,13 @@ class SalesActivity : AppCompatActivity() {
         parent.addView(btnSendWhatsappBill, insertIdx)
     }
 
-    /**
-     * Generates a strict Portrait (Height > Width) 3-inch Thermal Printer (576px) JPG receipt
-     * so thermal printer apps and viewers never auto-rotate it to landscape.
-     */
     private fun generateBillReceiptBitmap(): Bitmap {
-        val width = 576 // 3-inch thermal printer width (80mm roll / 72mm print area)
+        val width = 576
         val pad = 18f
         val itemCount = billItemsArray.length().coerceAtLeast(1)
 
-        // Force minimum height >= 840px (strictly taller than 576px) so it stays Portrait
-        val minPortraitHeight = 840
-        val estimatedHeight = 560 + (itemCount * 38)
+        val minPortraitHeight = 860
+        val estimatedHeight = 590 + (itemCount * 38)
         val height = maxOf(minPortraitHeight, estimatedHeight)
 
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -633,7 +770,6 @@ class SalesActivity : AppCompatActivity() {
         val cx = width / 2f
         var y = 42f
 
-        // 1. Shop Header
         canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
         y += 25f
         canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
@@ -646,7 +782,6 @@ class SalesActivity : AppCompatActivity() {
         y += 14f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 2. Customer Name & Date
         y += 28f
         val custDisplay = selectedCustomerName.ifEmpty { "Cash Customer" }.take(22)
         canvas.drawText("Name : $custDisplay", pad, y, pBodyBold)
@@ -657,7 +792,6 @@ class SalesActivity : AppCompatActivity() {
         y += 16f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 3. Column Headers: Item | Qty (Kgs) | Rate | Amount
         y += 26f
         val colItemX = pad
         val colQtyX = 335f
@@ -672,7 +806,6 @@ class SalesActivity : AppCompatActivity() {
         y += 12f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 4. Item Rows
         var calcBillTotal = 0.0
         for (i in 0 until billItemsArray.length()) {
             y += 30f
@@ -697,16 +830,14 @@ class SalesActivity : AppCompatActivity() {
             canvas.drawText(String.format(Locale.getDefault(), "%.2f", rowTot), colAmtX, y, pBodyRightReg)
         }
 
-        y += 24f
+        y += 22f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 5. Totals & Balance Summary
-        val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
-        val isCredit = payMode.equals("Credit", ignoreCase = true)
-
+        val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
+        val gpayPaid = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
+        val receivedAmt = cashPaid + gpayPaid
         val opBal = selectedCustomerBalance
         val docTotal = opBal + calcBillTotal
-        val receivedAmt = if (isCredit) 0.0 else calcBillTotal
         val discountAmt = 0.0
         val closingBal = (docTotal - receivedAmt - discountAmt).coerceAtLeast(0.0)
 
@@ -732,7 +863,7 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawText(":", colonX, y, pLabelBold)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", calcBillTotal), valX, y, pBodyRightBold)
 
-        y += 27f
+        y += 26f
         canvas.drawText("Op. Bal", labelX, y, pLabelReg)
         canvas.drawText(":", colonX, y, pLabelReg)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", opBal), valX, y, pBodyRightReg)
@@ -748,12 +879,19 @@ class SalesActivity : AppCompatActivity() {
         y += 14f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        y += 28f
-        canvas.drawText("Received Amount", labelX, y, pLabelReg)
+        y += 26f
+        val recBreakdown = if (cashPaid > 0.0 && gpayPaid > 0.0) {
+            "Rec (C:${cashPaid.toInt()}+G:${gpayPaid.toInt()})"
+        } else if (gpayPaid > 0.0) {
+            "Received (GPay)"
+        } else {
+            "Received Amount"
+        }
+        canvas.drawText(recBreakdown, labelX, y, pLabelReg)
         canvas.drawText(":", colonX, y, pLabelReg)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", receivedAmt), valX, y, pBodyRightReg)
 
-        y += 26f
+        y += 25f
         canvas.drawText("Discount", labelX, y, pLabelReg)
         canvas.drawText(":", colonX, y, pLabelReg)
         canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", discountAmt), valX, y, pBodyRightReg)
@@ -769,8 +907,7 @@ class SalesActivity : AppCompatActivity() {
         y += 14f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 6. Payment Details & Footer
-        y += 32f
+        y += 30f
         val pGpay = Paint().apply {
             color = Color.BLACK
             textSize = 20.5f
@@ -784,10 +921,10 @@ class SalesActivity : AppCompatActivity() {
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText("GPay No : 9841666651", cx, y, pGpay)
-        y += 26f
+        y += 25f
         canvas.drawText("A/c No : ATE TOMATO WHOLESALE MERCHANT", cx, y, pAcc)
 
-        y += 38f
+        y += 36f
         val pThank = Paint().apply {
             color = Color.BLACK
             textSize = 25f
@@ -804,11 +941,10 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawText("Thank You !", cx, y, pThank)
         canvas.drawLine(cx + 98f, y - 8f, width - pad, y - 8f, pSolid)
 
-        y += 26f
+        y += 25f
         canvas.drawText("Visit Again...", cx, y, pVisit)
 
-        // Ensure final cropped height is always >= 820px (strictly Portrait: Height > Width)
-        val finalHeight = (y + 30f).toInt().coerceAtLeast(820).coerceAtMost(height)
+        val finalHeight = (y + 30f).toInt().coerceAtLeast(840).coerceAtMost(height)
         return Bitmap.createBitmap(bmp, 0, 0, width, finalHeight)
     }
 
@@ -1120,6 +1256,7 @@ class SalesActivity : AppCompatActivity() {
     private fun switchToNewMode() {
         isEditMode = false
         editingSaleDocId = ""
+        oldSaleCreditBalance = 0.0
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
         binding.layoutEditSalesPanel.visibility = View.GONE
         binding.btnImportSalesCsv.visibility = View.VISIBLE
@@ -1134,6 +1271,7 @@ class SalesActivity : AppCompatActivity() {
     private fun switchToEditMode() {
         isEditMode = true
         editingSaleDocId = ""
+        oldSaleCreditBalance = 0.0
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
         binding.layoutEditSalesPanel.visibility = View.VISIBLE
         binding.btnImportSalesCsv.visibility = View.GONE
@@ -1257,6 +1395,9 @@ class SalesActivity : AppCompatActivity() {
         val pMode = data["payMode"]?.toString() ?: "Credit"
         val grandTot = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
         val paidAmt = (data["paidAmount"] as? Number)?.toDouble() ?: 0.0
+        val storedBal = (data["credit"] as? Number)?.toDouble()
+            ?: (data["balanceAmount"] as? Number)?.toDouble()
+            ?: (if (pMode.equals("Credit", ignoreCase = true)) (grandTot - paidAmt).coerceAtLeast(0.0) else 0.0)
         val rawItems = data["items"] as? List<*>
 
         db.collection("sales").document(docId).delete()
@@ -1279,9 +1420,8 @@ class SalesActivity : AppCompatActivity() {
                     restoreStockToSpecificBatch("", bId, iName, bgs, kgs)
                 }
 
-                if (pMode.equals("Credit", ignoreCase = true) && custId.isNotEmpty()) {
-                    val unpaidRev = (grandTot - paidAmt).coerceAtLeast(0.0)
-                    adjustCustomerBalance(custId, -unpaidRev)
+                if (custId.isNotEmpty() && storedBal > 0.0) {
+                    adjustCustomerBalance(custId, -storedBal)
                 }
 
                 if (editingSaleDocId == docId) {
@@ -1300,9 +1440,20 @@ class SalesActivity : AppCompatActivity() {
     private fun populateFormFromSaleDoc(docId: String, data: Map<String, Any>) {
         editingSaleDocId = docId
         oldSaleCustomerId = data["customerId"]?.toString() ?: ""
-        oldSalePayMode = data["payMode"]?.toString() ?: "Credit"
-        oldSaleGrandTotal = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
-        oldSalePaidAmount = (data["paidAmount"] as? Number)?.toDouble() ?: 0.0
+        val oldPayMode = data["payMode"]?.toString() ?: "Credit"
+        val oldGrandTotal = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
+        val oldPaidAmount = (data["paidAmount"] as? Number)?.toDouble() ?: 0.0
+
+        val savedCash = (data["cash"] as? Number)?.toDouble()
+            ?: (data["cashAmount"] as? Number)?.toDouble()
+            ?: (if (oldPayMode.equals("Cash", ignoreCase = true)) oldPaidAmount else 0.0)
+        val savedGpay = (data["gpay"] as? Number)?.toDouble()
+            ?: (data["gpayAmount"] as? Number)?.toDouble()
+            ?: (if (oldPayMode.contains("GPay", ignoreCase = true) || oldPayMode.contains("UPI", ignoreCase = true)) oldPaidAmount else 0.0)
+
+        oldSaleCreditBalance = (data["credit"] as? Number)?.toDouble()
+            ?: (data["balanceAmount"] as? Number)?.toDouble()
+            ?: (if (oldPayMode.equals("Credit", ignoreCase = true)) (oldGrandTotal - oldPaidAmount).coerceAtLeast(0.0) else 0.0)
 
         val bNo = data["billNo"]?.toString() ?: ""
         val cName = data["customerName"]?.toString() ?: ""
@@ -1324,8 +1475,8 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesCustomer.setText(cName)
         binding.tvSalesCustBalance.text = String.format(Locale.getDefault(), "Previous Balance: Rs. %.2f", selectedCustomerBalance)
 
-        val modeIdx = payModes.indexOfFirst { m -> m.equals(oldSalePayMode, ignoreCase = true) }
-        if (modeIdx >= 0) binding.spSalesPayMode.setSelection(modeIdx)
+        etSplitCash.setText(if (savedCash > 0.0) String.format(Locale.getDefault(), "%.2f", savedCash) else "")
+        etSplitGpay.setText(if (savedGpay > 0.0) String.format(Locale.getDefault(), "%.2f", savedGpay) else "")
 
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -1368,8 +1519,7 @@ class SalesActivity : AppCompatActivity() {
             val sName = data["supplierName"]?.toString() ?: ""
             val bgs = (data["bags"] as? Number)?.toInt() ?: 0
             val kgs = (data["netKgs"] as? Number)?.toDouble() ?: 0.0
-            val tot = oldSaleGrandTotal
-            val rt = if (kgs > 0.0) tot / kgs else 0.0
+            val rt = if (kgs > 0.0) oldGrandTotal / kgs else 0.0
 
             val obj = JSONObject()
             obj.put("itemName", iName)
@@ -1379,10 +1529,10 @@ class SalesActivity : AppCompatActivity() {
             obj.put("bags", bgs)
             obj.put("netKgs", kgs)
             obj.put("rate", rt)
-            obj.put("amount", tot)
+            obj.put("amount", oldGrandTotal)
             obj.put("bagCharge", 0.0)
             obj.put("weighCoolie", 0.0)
-            obj.put("rowTotal", tot)
+            obj.put("rowTotal", oldGrandTotal)
             billItemsArray.put(obj)
             oldSaleItemsJson.put(JSONObject(obj.toString()))
         }
@@ -1638,6 +1788,12 @@ class SalesActivity : AppCompatActivity() {
                         )
 
                         val isCredit = payMode.equals("Credit", ignoreCase = true)
+                        val isGpay = payMode.contains("GPay", ignoreCase = true) || payMode.contains("UPI", ignoreCase = true)
+                        val cashAmt = if (!isCredit && !isGpay) grandTotal else 0.0
+                        val gpayAmt = if (isGpay) grandTotal else 0.0
+                        val creditAmt = if (isCredit) grandTotal else 0.0
+                        val finalMode = if (isCredit) "Credit" else "Cash"
+
                         val docId = db.collection("sales").document().id
                         val saleData = hashMapOf<String, Any>(
                             "id" to docId,
@@ -1645,7 +1801,12 @@ class SalesActivity : AppCompatActivity() {
                             "billNo" to billNo,
                             "customerId" to custId,
                             "customerName" to custName,
-                            "payMode" to payMode,
+                            "payMode" to finalMode,
+                            "cash" to cashAmt,
+                            "gpay" to gpayAmt,
+                            "credit" to creditAmt,
+                            "cashAmount" to cashAmt,
+                            "gpayAmount" to gpayAmt,
                             "items" to arrayListOf(itemEntry),
                             "itemName" to itemName,
                             "stockId" to stockIdInput,
@@ -1654,8 +1815,8 @@ class SalesActivity : AppCompatActivity() {
                             "totalBagCharges" to bagCharge,
                             "totalWeighCoolie" to 0.0,
                             "grandTotal" to grandTotal,
-                            "paidAmount" to if (isCredit) 0.0 else grandTotal,
-                            "balanceAmount" to if (isCredit) grandTotal else 0.0,
+                            "paidAmount" to (cashAmt + gpayAmt),
+                            "balanceAmount" to creditAmt,
                             "paymentStatus" to if (isCredit) "Unpaid" else "Paid",
                             "timestamp" to (System.currentTimeMillis() + i)
                         )
@@ -1950,6 +2111,7 @@ class SalesActivity : AppCompatActivity() {
             emptyRow.addView(tv)
             binding.tlSalesItemsGrid.addView(emptyRow)
             binding.tvSalesGrandTotal.text = "Grand Total: Rs. 0.00"
+            recalculateSplitCredit()
             return
         }
 
@@ -2001,6 +2163,7 @@ class SalesActivity : AppCompatActivity() {
         }
 
         binding.tvSalesGrandTotal.text = String.format(Locale.getDefault(), "Grand Total: Rs. %.2f", grandTotalBill)
+        recalculateSplitCredit()
     }
 
     private fun fetchNextBillNo() {
@@ -2053,6 +2216,9 @@ class SalesActivity : AppCompatActivity() {
         selectedCustomerName = ""
         selectedCustomerPhone = ""
         selectedCustomerBalance = 0.0
+        etSplitCash.setText("")
+        etSplitGpay.setText("")
+        etSplitCredit.setText("0.00")
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
         refreshBillItemsGrid()
 
