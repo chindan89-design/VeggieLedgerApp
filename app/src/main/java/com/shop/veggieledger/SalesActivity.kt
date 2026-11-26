@@ -29,7 +29,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.Spinner
-import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
@@ -59,9 +58,8 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var btnSendWhatsappBill: Button
 
     // TableLayout rows for dynamic visibility (Non-Coconut fields & Cash Payer)
-    private lateinit var rowBags: TableRow
-    private lateinit var rowBagRate: TableRow
     private lateinit var rowWeighCoolie: TableRow
+    private lateinit var rowPayMode: TableRow
     private lateinit var rowCashPayer: TableRow
 
     // 6. Pay Mode (Single-line Cash | GPay | Credit)
@@ -113,8 +111,8 @@ class SalesActivity : AppCompatActivity() {
 
         supportActionBar?.title = "Sales Entry"
 
-        buildAllInputsAsTableLayout()
-        injectWhatsappButtonAfterSave()
+        populateFormTableRows()
+        enforceBottomOrderForSaveAndJpg()
 
         binding.btnModeNewSales.setOnClickListener { switchToNewMode() }
         binding.btnModeEditSales.setOnClickListener { switchToEditMode() }
@@ -317,12 +315,13 @@ class SalesActivity : AppCompatActivity() {
         binding.btnSaveSalesBill.setOnClickListener {
             val billNo = binding.etSalesBillNo.text.toString().trim()
 
-            if (selectedCustomerId.isEmpty() && selectedCustomerName.isEmpty()) {
-                Toast.makeText(this, "Please select a Customer", Toast.LENGTH_SHORT).show()
+            // Must add item(s) to the Grid View first before saving bill
+            if (billItemsArray.length() == 0) {
+                Toast.makeText(this, "Add item(s) to the bill grid first using + ADD ITEM TO BILL!", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            if (billItemsArray.length() == 0) {
-                Toast.makeText(this, "Add at least one item to the bill", Toast.LENGTH_SHORT).show()
+            if (selectedCustomerId.isEmpty() && selectedCustomerName.isEmpty()) {
+                Toast.makeText(this, "Please select a Customer", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (isEditMode && editingSaleDocId.isEmpty()) {
@@ -538,68 +537,8 @@ class SalesActivity : AppCompatActivity() {
         refreshBillItemsGrid()
     }
 
-    /**
-     * Converts the entire Sales Entry form into a clean bordered TableLayout
-     * in exact order:
-     * 1. Bill Date (Bill No hidden)
-     * 2. Select Item
-     * 3. Select Stock
-     * 4. Select Name (+ Previous Balance)
-     * 5. Coconut -> Kgs, Rate, Amount | Other than Coconut -> Bags, Kgs, Rate, Bag Rate, Weigh Coolie, Total Amount
-     * 6. Pay Mode (Cash | GPay | Credit in single line + Cash Given By)
-     * Followed by + ADD ITEM TO BILL button right below the table.
-     */
-    private fun buildAllInputsAsTableLayout() {
-        val addBtnParent = binding.btnAddSalesItem.parent as? ViewGroup ?: return
-
-        binding.etSalesBillNo.visibility = View.GONE
-        binding.spSalesPayMode.visibility = View.GONE
-
-        val oldDateParent = binding.etSalesDate.parent as? ViewGroup
-        val oldBillParent = binding.etSalesBillNo.parent as? ViewGroup
-        val oldCustParent = binding.etSalesCustomer.parent as? ViewGroup
-        val oldPayParent = binding.spSalesPayMode.parent as? ViewGroup
-
-        fun detachView(v: View) {
-            (v.parent as? ViewGroup)?.removeView(v)
-            v.visibility = View.VISIBLE
-        }
-
-        detachView(binding.etSalesDate)
-        detachView(binding.spSalesItem)
-        detachView(binding.etSalesCustomer)
-        detachView(binding.tvSalesCustBalance)
-        detachView(binding.etSalesBags)
-        detachView(binding.etSalesKgs)
-        detachView(binding.etSalesRate)
-        detachView(binding.etSalesBagCharge)
-        detachView(binding.tvLineAmountPreview)
-        detachView(binding.btnAddSalesItem)
-
-        listOfNotNull(oldDateParent, oldBillParent, oldCustParent, oldPayParent).forEach { p ->
-            if (p != addBtnParent && p.id != binding.root.id) {
-                p.visibility = View.GONE
-                val gp = p.parent as? ViewGroup
-                if (gp != null && gp != addBtnParent && gp.id != binding.root.id) {
-                    gp.visibility = View.GONE
-                }
-            }
-        }
-
-        for (i in 0 until addBtnParent.childCount) {
-            val child = addBtnParent.getChildAt(i)
-            val hasModeBtn = (child as? ViewGroup)?.findViewById<View>(binding.btnModeNewSales.id) != null
-            if (!hasModeBtn &&
-                child.id != binding.tvSalesHeader.id &&
-                child.id != binding.layoutEditSalesPanel.id &&
-                child.id != binding.btnImportSalesCsv.id &&
-                child.id != binding.tlSalesItemsGrid.id &&
-                child.id != binding.tvSalesGrandTotal.id &&
-                child.id != binding.btnSaveSalesBill.id
-            ) {
-                child.visibility = View.GONE
-            }
-        }
+    private fun populateFormTableRows() {
+        val formTable = binding.tlSalesEntryForm
 
         spSalesStockBatch = Spinner(this)
         spSalesStockBatch.setBackgroundResource(android.R.drawable.btn_dropdown)
@@ -659,18 +598,7 @@ class SalesActivity : AppCompatActivity() {
         etSplitCash.addTextChangedListener(splitWatcher)
         etSplitGpay.addTextChangedListener(splitWatcher)
 
-        val formTable = TableLayout(this)
-        formTable.setBackgroundColor(Color.parseColor("#BDBDBD"))
-        formTable.setPadding(1, 1, 1, 1)
-        formTable.setColumnStretchable(1, true)
-        val tableLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        tableLp.setMargins(0, 6, 0, 10)
-        formTable.layoutParams = tableLp
-
-        fun addFormRow(labelText: String, inputView: View, labelBgHex: String = "#F1F8E9"): TableRow {
+        fun createTableRow(labelText: String, contentView: View, labelBgHex: String = "#F1F8E9"): TableRow {
             val tr = TableRow(this)
             tr.setBackgroundColor(Color.parseColor("#BDBDBD"))
 
@@ -681,7 +609,7 @@ class SalesActivity : AppCompatActivity() {
             lbl.setTextColor(Color.parseColor("#1B5E20"))
             lbl.setBackgroundColor(Color.parseColor(labelBgHex))
             lbl.gravity = Gravity.CENTER_VERTICAL
-            lbl.setPadding(14, 14, 14, 14)
+            lbl.setPadding(12, 12, 12, 12)
             val lLp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT)
             lLp.setMargins(1, 1, 1, 1)
             lbl.layoutParams = lLp
@@ -690,105 +618,114 @@ class SalesActivity : AppCompatActivity() {
             rightCell.orientation = LinearLayout.VERTICAL
             rightCell.setBackgroundColor(Color.WHITE)
             rightCell.gravity = Gravity.CENTER_VERTICAL
-            rightCell.setPadding(10, 6, 10, 6)
+            rightCell.setPadding(6, 6, 6, 6)
             val rLp = TableRow.LayoutParams(0, TableRow.LayoutParams.MATCH_PARENT, 1f)
             rLp.setMargins(1, 1, 1, 1)
             rightCell.layoutParams = rLp
 
-            inputView.layoutParams = LinearLayout.LayoutParams(
+            contentView.layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            rightCell.addView(inputView)
+            rightCell.addView(contentView)
 
             tr.addView(lbl)
             tr.addView(rightCell)
-            formTable.addView(tr)
             return tr
         }
 
-        // 1. Bill Date
-        addFormRow("1. Bill Date", binding.etSalesDate)
-
-        // 2. Select Item
-        addFormRow("2. Select Item", binding.spSalesItem)
-
-        // 3. Select Stock
-        val stockCellBox = LinearLayout(this)
-        stockCellBox.orientation = LinearLayout.VERTICAL
+        // 3. Select Stock row right after 2. Select Item (index 2)
+        val stockBox = LinearLayout(this)
+        stockBox.orientation = LinearLayout.VERTICAL
         spSalesStockBatch.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             (42 * resources.displayMetrics.density).toInt()
         )
         tvSelectedBatchAvail.setPadding(4, 2, 4, 2)
-        stockCellBox.addView(spSalesStockBatch)
-        stockCellBox.addView(tvSelectedBatchAvail)
-        addFormRow("3. Select Stock", stockCellBox)
+        stockBox.addView(spSalesStockBatch)
+        stockBox.addView(tvSelectedBatchAvail)
+        val rowStock = createTableRow("3. Select Stock", stockBox)
+        formTable.addView(rowStock, 2)
 
-        // 4. Select Name
-        val custCellBox = LinearLayout(this)
-        custCellBox.orientation = LinearLayout.VERTICAL
-        binding.etSalesCustomer.hint = "Tap to select customer..."
-        binding.etSalesCustomer.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        binding.tvSalesCustBalance.textSize = 12f
-        binding.tvSalesCustBalance.setPadding(4, 2, 4, 2)
-        custCellBox.addView(binding.etSalesCustomer)
-        custCellBox.addView(binding.tvSalesCustBalance)
-        addFormRow("4. Select Name", custCellBox)
+        // Weigh Coolie row right after trSalesBagRate
+        rowWeighCoolie = createTableRow("Weigh Coolie", etSalesWeighCoolie, "#FFFDE7")
+        rowWeighCoolie.visibility = View.GONE
+        val bagRateIdx = formTable.indexOfChild(binding.trSalesBagRate)
+        if (bagRateIdx >= 0) {
+            formTable.addView(rowWeighCoolie, bagRateIdx + 1)
+        } else {
+            formTable.addView(rowWeighCoolie)
+        }
 
-        // 5A. Bags (Non-Coconut only)
-        binding.etSalesBags.hint = "Enter Bags"
-        rowBags = addFormRow("Bags", binding.etSalesBags, "#FFFDE7")
-
-        // 5B. Net Kgs
-        binding.etSalesKgs.hint = "Enter Kgs"
-        addFormRow("Kgs", binding.etSalesKgs)
-
-        // 5C. Rate
-        binding.etSalesRate.hint = "Enter Rate"
-        addFormRow("Rate (Rs)", binding.etSalesRate)
-
-        // 5D. Bag Rate (Non-Coconut only)
-        binding.etSalesBagCharge.hint = "Enter Bag Rate"
-        rowBagRate = addFormRow("Bag Rate (Rs)", binding.etSalesBagCharge, "#FFFDE7")
-
-        // 5E. Weigh Coolie (Non-Coconut only)
-        rowWeighCoolie = addFormRow("Weigh Coolie", etSalesWeighCoolie, "#FFFDE7")
-
-        // 5F. Amount Preview
-        binding.tvLineAmountPreview.textSize = 15f
-        binding.tvLineAmountPreview.setTypeface(null, Typeface.BOLD)
-        binding.tvLineAmountPreview.setTextColor(Color.parseColor("#D84315"))
-        binding.tvLineAmountPreview.setPadding(6, 10, 6, 10)
-        addFormRow("Amount", binding.tvLineAmountPreview, "#FFF9C4")
-
-        // 6. Pay Mode (Single line Cash | GPay | Credit)
+        // 6. Pay Mode row right after Amount row (tvLineAmountPreview)
         val paySingleLine = LinearLayout(this)
         paySingleLine.orientation = LinearLayout.HORIZONTAL
         paySingleLine.weightSum = 3f
         paySingleLine.addView(etSplitCash)
         paySingleLine.addView(etSplitGpay)
         paySingleLine.addView(etSplitCredit)
-        addFormRow("6. Pay Mode", paySingleLine, "#E3F2FD")
+        rowPayMode = createTableRow("6. Pay Mode", paySingleLine, "#E3F2FD")
 
-        // 6B. Cash Given By (Visible only when Cash > 0)
-        rowCashPayer = addFormRow("Cash Given By", etCashPayerName, "#E3F2FD")
+        rowCashPayer = createTableRow("Cash Given By", etCashPayerName, "#E3F2FD")
         rowCashPayer.visibility = View.GONE
 
-        val gridIdx = addBtnParent.indexOfChild(binding.tlSalesItemsGrid)
-        val tablePos = if (gridIdx >= 0) gridIdx else addBtnParent.childCount
-        addBtnParent.addView(formTable, tablePos)
+        var amountRowIdx = -1
+        for (i in 0 until formTable.childCount) {
+            val child = formTable.getChildAt(i)
+            if (child is ViewGroup && child.findViewById<View>(binding.tvLineAmountPreview.id) != null) {
+                amountRowIdx = i
+                break
+            }
+        }
+        if (amountRowIdx >= 0) {
+            formTable.addView(rowPayMode, amountRowIdx + 1)
+            formTable.addView(rowCashPayer, amountRowIdx + 2)
+        } else {
+            formTable.addView(rowPayMode)
+            formTable.addView(rowCashPayer)
+        }
+    }
 
-        val addBtnLp = LinearLayout.LayoutParams(
+    /**
+     * Ensures bottom order is always:
+     * Form Table -> + ADD ITEM TO BILL -> Grid View -> Grand Total -> SAVE SALES BILL -> SEND JPG BILL
+     */
+    private fun enforceBottomOrderForSaveAndJpg() {
+        val rootCol = binding.llSalesRootColumn
+
+        btnSendWhatsappBill = Button(this)
+        btnSendWhatsappBill.text = "SEND JPG BILL (3-INCH THERMAL / WHATSAPP)"
+        btnSendWhatsappBill.setBackgroundColor(Color.parseColor("#25D366"))
+        btnSendWhatsappBill.setTextColor(Color.WHITE)
+        btnSendWhatsappBill.setTypeface(null, Typeface.BOLD)
+        val lp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        addBtnLp.setMargins(0, 6, 0, 12)
-        binding.btnAddSalesItem.layoutParams = addBtnLp
-        addBtnParent.addView(binding.btnAddSalesItem, tablePos + 1)
+        lp.setMargins(0, 8, 0, 16)
+        btnSendWhatsappBill.layoutParams = lp
+
+        btnSendWhatsappBill.setOnClickListener {
+            if (billItemsArray.length() == 0) {
+                Toast.makeText(this, "Add item(s) to the grid first using + ADD ITEM TO BILL!", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            if (selectedCustomerName.isEmpty()) {
+                Toast.makeText(this, "Please select a Customer first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val bmp = generateBillReceiptBitmap()
+            val billNo = binding.etSalesBillNo.text.toString().trim().ifEmpty { "BILL" }
+            shareBitmapJpgToWhatsapp(bmp, billNo, selectedCustomerPhone)
+        }
+
+        // Move Grand Total, SAVE SALES BILL, and SEND JPG BILL to the very bottom of llSalesRootColumn
+        (binding.tvSalesGrandTotal.parent as? ViewGroup)?.removeView(binding.tvSalesGrandTotal)
+        (binding.btnSaveSalesBill.parent as? ViewGroup)?.removeView(binding.btnSaveSalesBill)
+
+        rootCol.addView(binding.tvSalesGrandTotal)
+        rootCol.addView(binding.btnSaveSalesBill)
+        rootCol.addView(btnSendWhatsappBill)
     }
 
     private fun recalculateSplitCredit() {
@@ -811,39 +748,6 @@ class SalesActivity : AppCompatActivity() {
 
         rowCashPayer.visibility = if (cashVal > 0.005) View.VISIBLE else View.GONE
         etSplitCredit.setText(String.format(Locale.getDefault(), "Cr: %.2f", creditBal))
-    }
-
-    private fun injectWhatsappButtonAfterSave() {
-        val parent = binding.btnSaveSalesBill.parent as? ViewGroup ?: return
-        val insertIdx = parent.indexOfChild(binding.btnSaveSalesBill) + 1
-
-        btnSendWhatsappBill = Button(this)
-        btnSendWhatsappBill.text = "SEND JPG BILL (3-INCH THERMAL / WHATSAPP)"
-        btnSendWhatsappBill.setBackgroundColor(Color.parseColor("#25D366"))
-        btnSendWhatsappBill.setTextColor(Color.WHITE)
-        btnSendWhatsappBill.setTypeface(null, Typeface.BOLD)
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        lp.setMargins(0, 8, 0, 12)
-        btnSendWhatsappBill.layoutParams = lp
-
-        btnSendWhatsappBill.setOnClickListener {
-            if (selectedCustomerName.isEmpty()) {
-                Toast.makeText(this, "Please select a Customer first", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (billItemsArray.length() == 0) {
-                Toast.makeText(this, "Add at least one item to send JPG bill", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            val bmp = generateBillReceiptBitmap()
-            val billNo = binding.etSalesBillNo.text.toString().trim().ifEmpty { "BILL" }
-            shareBitmapJpgToWhatsapp(bmp, billNo, selectedCustomerPhone)
-        }
-
-        parent.addView(btnSendWhatsappBill, insertIdx)
     }
 
     private fun generateBillReceiptBitmap(): Bitmap {
@@ -1298,15 +1202,15 @@ class SalesActivity : AppCompatActivity() {
         filterBatchesForSelectedItem(itemName)
 
         if (isCoconut) {
-            rowBags.visibility = View.GONE
-            rowBagRate.visibility = View.GONE
+            binding.trSalesBags.visibility = View.GONE
+            binding.trSalesBagRate.visibility = View.GONE
             rowWeighCoolie.visibility = View.GONE
             binding.etSalesBags.setText("")
             binding.etSalesBagCharge.setText("")
             etSalesWeighCoolie.setText("")
         } else {
-            rowBags.visibility = View.VISIBLE
-            rowBagRate.visibility = View.VISIBLE
+            binding.trSalesBags.visibility = View.VISIBLE
+            binding.trSalesBagRate.visibility = View.VISIBLE
             rowWeighCoolie.visibility = View.VISIBLE
             if (isOnion) {
                 val bags = binding.etSalesBags.text.toString().toIntOrNull() ?: 0
@@ -2185,7 +2089,7 @@ class SalesActivity : AppCompatActivity() {
             val emptyRow = TableRow(this)
             emptyRow.setBackgroundColor(Color.WHITE)
             val tv = TextView(this)
-            tv.text = "No items added to bill yet."
+            tv.text = "No items added to bill yet. Tap + ADD ITEM TO BILL above."
             tv.setTextColor(Color.GRAY)
             tv.setPadding(16, 16, 16, 16)
             val lp = TableRow.LayoutParams()
