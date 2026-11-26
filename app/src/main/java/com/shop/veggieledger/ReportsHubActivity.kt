@@ -173,7 +173,6 @@ class ReportsHubActivity : AppCompatActivity() {
         mainCol.orientation = LinearLayout.VERTICAL
         rootScroll.addView(mainCol)
 
-        // Quick Shortcut Row: Daily Closing & Purchase-wise Sales Report
         val quickBtnRow = LinearLayout(this)
         quickBtnRow.orientation = LinearLayout.HORIZONTAL
         quickBtnRow.weightSum = 2f
@@ -692,9 +691,6 @@ class ReportsHubActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // PURCHASE-WISE SALES REPORT (Shows which customers bought each Purchase Lot)
-    // =========================================================================
     private fun loadPurchaseWiseSalesReport(selectedLotFilter: String) {
         val isAllLots = selectedLotFilter.equals("ALL PURCHASE LOTS", ignoreCase = true)
         val filterBatchId = if (isAllLots) "" else (partyIdMap[selectedLotFilter] ?: selectedLotFilter.substringBefore("|").trim())
@@ -966,9 +962,6 @@ class ReportsHubActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // 11-STEP DAILY ACCOUNT CLOSING REPORT
-    // =========================================================================
     private fun addClosingTwoColCard(title: String, rows: List<Pair<String, String>>, highlightLast: Boolean = false) {
         val card = LinearLayout(this)
         card.orientation = LinearLayout.VERTICAL
@@ -1128,7 +1121,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                 db.collection("customers").get().addOnSuccessListener { custSnap ->
                                     db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
 
-                                        // 1. PURCHASE DETAILS
                                         val purchaseLineRows = arrayListOf<Pair<String, String>>()
                                         val purHtmlRows = StringBuilder()
 
@@ -1198,7 +1190,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                         purchaseLineRows.add("Today Total Purchase Amount" to fmtVal(todayPurchaseTot))
                                         purHtmlRows.append("<tr class='hi'><td>Today Total Purchase Amount</td><td class='r'>${fmtVal(todayPurchaseTot)}</td></tr>")
 
-                                        // 2. SUPPLIER OUTSTANDING
                                         var supMasterOp = 0.0
                                         for (doc in supSnap) {
                                             supMasterOp += safeDouble(doc, "opbal").let { if (it != 0.0) it else safeDouble(doc, "openingBalance") }
@@ -1218,7 +1209,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                         }
                                         val supplierClosingOut = (supMasterOp + totalPurAll - totalSupPaid).coerceAtLeast(0.0)
 
-                                        // 3. CREDIT BILL RECEIVED (Cash & GPay)
                                         var creditRecCash = 0.0
                                         var creditRecGpay = 0.0
                                         var todayCustDiscount = 0.0
@@ -1239,7 +1229,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
 
-                                        // 4. TODAY SALES (Reads `cash`, `gpay`, `credit` fields directly)
                                         var cashSales = 0.0
                                         var gpaySales = 0.0
                                         var creditSales = 0.0
@@ -1253,11 +1242,8 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
                                         val todaySalesTotal = cashSales + gpaySales + creditSales
-
-                                        // 5. CASH RECEIVED
                                         val cashReceivedTotal = cashSales + creditRecCash
 
-                                        // 6. EXPENSES (A. Other, B. Shop, C. Vehicle) & Other Income
                                         var otherExp = 0.0
                                         var shopExp = 0.0
                                         var vehicleExp = 0.0
@@ -1282,12 +1268,9 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
                                         val totalExpenses = otherExp + shopExp + vehicleExp
-
-                                        // 7. COLLECTION & TODAY CLOSING BALANCE
                                         val collectionTotal = cashSales + creditRecCash + otherCashIncome
                                         val todayClosingBalance = collectionTotal - totalExpenses
 
-                                        // 8. STOCK INQUIRY
                                         val stockMap = HashMap<String, Pair<Int, Double>>()
                                         for (doc in stockSnap) {
                                             val iName = doc.getString("itemName") ?: continue
@@ -1297,10 +1280,8 @@ class ReportsHubActivity : AppCompatActivity() {
                                             stockMap[iName] = Pair(curr.first + bgs, curr.second + kgs)
                                         }
 
-                                        // 9. INCOME DETAILS
                                         val incomeDetailsTotal = cashSales + gpaySales + creditRecCash + creditRecGpay
 
-                                        // 10. CUSTOMER OUTSTANDING (Vertical)
                                         var custMasterOp = 0.0
                                         for (doc in custSnap) {
                                             custMasterOp += safeDouble(doc, "opbal").let { if (it != 0.0) it else safeDouble(doc, "openingBalance") }
@@ -1333,7 +1314,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                         val vertOpOut = (custMasterOp + prevSalesAll - prevIncAll - prevDiscAll).coerceAtLeast(0.0)
                                         val vertClosingOut = (vertOpOut + todaySalesTotal - incomeDetailsTotal - todayCustDiscount).coerceAtLeast(0.0)
 
-                                        // 11. PROFIT & LOSS
                                         val netProfitLoss = todaySalesTotal - todayPurchaseTot - totalExpenses - todayCustDiscount
 
                                         tvSummary.text = String.format(
