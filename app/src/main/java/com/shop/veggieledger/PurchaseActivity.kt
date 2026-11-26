@@ -46,6 +46,7 @@ class PurchaseActivity : AppCompatActivity() {
     private var selectedDateStr: String = ""
     private var selectedDayStr: String = ""
     private var editFilterDateStr: String = ""
+    private var dailyPurchaseIndex: Int = 0
 
     private val itemNames = arrayListOf("Onion", "Garlic", "Coconut")
     private var selectedItemName: String = "Onion"
@@ -83,7 +84,7 @@ class PurchaseActivity : AppCompatActivity() {
             DatePickerDialog(this, { _, y, m, d ->
                 cal.set(y, m, d)
                 updateSelectedDate(cal)
-                updateLotIdPreview()
+                fetchNextBillNumber()
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
@@ -296,10 +297,6 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Places integer "Total Nos" field right before Total Kgs (etNetKgs),
-     * visible ONLY when item is Coconut.
-     */
     private fun injectTotalNosFieldBeforeTotalKgs() {
         val parent = binding.etNetKgs.parent as? ViewGroup ?: return
         var insertIndex = parent.indexOfChild(binding.etNetKgs)
@@ -704,11 +701,30 @@ class PurchaseActivity : AppCompatActivity() {
     private fun fetchNextBillNumber() {
         db.collection("purchases").get().addOnSuccessListener { snap ->
             val nextNum = snap.size() + 1
-            binding.etBillNo.setText(String.format("PUR-%03d", nextNum))
+            if (!isEditMode) {
+                binding.etBillNo.setText(String.format(Locale.getDefault(), "PUR-%03d", nextNum))
+            }
+
+            // Index starts at 0 (0..9 single digit, 10+ two digits) for the selected date
+            var sameDayCount = 0
+            for (doc in snap) {
+                if ((doc.getString("date") ?: "").trim() == selectedDateStr) {
+                    sameDayCount++
+                }
+            }
+            dailyPurchaseIndex = sameDayCount
+            updateLotIdPreview()
         }
     }
 
+    /**
+     * Format: SUPPLIER_FIRST_3_CHARS - DATE_ONLY (dd) - INDEX_NO (0, 1, ..., 9, 10, 11)
+     * Example: MUR-26-0
+     */
     private fun updateLotIdPreview() {
+        if (isEditMode && editingPurchaseDocId.isNotEmpty() && binding.tvGeneratedBatchId.text.toString().isNotEmpty()) {
+            return
+        }
         val supplierName = binding.actvSupplier.text.toString()
         val cleanName = supplierName.replace("[^A-Za-z]".toRegex(), "").uppercase(Locale.getDefault())
         val prefix = when {
@@ -717,22 +733,12 @@ class PurchaseActivity : AppCompatActivity() {
             else -> "SUP"
         }
 
-        var totalCount = 0
-        for (i in 0 until cartItems.length()) {
-            val itemObj = cartItems.getJSONObject(i)
-            val b = itemObj.getInt("bags")
-            val n = itemObj.optInt("nos", 0)
-            totalCount += if (b > 0) b else n
+        val dayOnly = selectedDayStr.ifEmpty {
+            selectedDateStr.substringBefore("-").padStart(2, '0')
         }
-        val currentTypingBags = if (selectedItemName.equals("Onion", ignoreCase = true)) {
-            (binding.etBags.text.toString().toIntOrNull() ?: 0)
-        } else 0
-        val currentTypingNos = if (selectedItemName.equals("Coconut", ignoreCase = true)) {
-            (etTotalNos.text.toString().toIntOrNull() ?: 0)
-        } else 0
-        totalCount += (currentTypingBags + currentTypingNos)
+        val indexStr = dailyPurchaseIndex.toString()
 
-        binding.tvGeneratedBatchId.text = "$prefix-$selectedDayStr-$totalCount"
+        binding.tvGeneratedBatchId.text = "$prefix-$dayOnly-$indexStr"
     }
 
     private fun loadItemsFromDb() {
