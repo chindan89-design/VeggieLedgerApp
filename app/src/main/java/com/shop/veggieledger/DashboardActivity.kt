@@ -255,6 +255,7 @@ class DashboardActivity : AppCompatActivity() {
 
             // Sales Reports Sub-Menu
             R.id.nav_sal_customer_rep -> openReportHub("SAL_CUSTOMER")
+            R.id.nav_pur_wise_sales -> openReportHub("PUR_WISE_SALES")
             R.id.nav_sal_details -> openReportHub("SAL_DETAILS")
             R.id.nav_sal_itemwise -> openReportHub("SAL_ITEMWISE")
             R.id.nav_sal_cust_statement -> openReportHub("SAL_STATEMENT")
