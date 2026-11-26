@@ -1,6 +1,3 @@
-.LENGTH_SHORT).show()
-    }
-}
 package com.shop.veggieledger
 
 import android.app.DatePickerDialog
