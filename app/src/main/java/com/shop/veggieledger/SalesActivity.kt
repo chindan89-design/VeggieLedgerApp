@@ -59,12 +59,11 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var etSalesWeighCoolie: EditText
     private lateinit var btnSendWhatsappBill: Button
 
-    // 3 Split Payment Boxes + Extra Cash Payer Name Box
+    // 3 Split Payment Boxes in Single Line + Extra Cash Payer Name Box
     private lateinit var splitPayContainer: LinearLayout
     private lateinit var etSplitCash: EditText
     private lateinit var etSplitGpay: EditText
     private lateinit var etSplitCredit: EditText
-    private lateinit var tvAutoSaleTypeBadge: TextView
     private lateinit var cashPayerBox: LinearLayout
     private lateinit var etCashPayerName: EditText
 
@@ -537,17 +536,16 @@ class SalesActivity : AppCompatActivity() {
     }
 
     /**
-     * Arranges exact visual order requested:
-     * 1. Date
-     * 2. BillNo (Auto-generated & hidden)
-     * 3. Select Item dropdown
-     * 4. Supplier Available Stock
-     * 5. Customer Name + Previous Balance
-     * 6. Payment Split (Cash / GPay / Credit + Cash Payer Name)
-     * 7. Coconut -> Kgs, Rate, Amount | Other than Coconut -> Bags, Kgs, Rate, Amount
+     * Exact visual layout:
+     * 1. Date (BillNo hidden)
+     * 2. Select Item dropdown
+     * 3. Supplier Available Stock
+     * 4. Customer Name + Previous Balance
+     * 5. Bags / Net Kgs / Rate / Amount
+     * 6. Payment Split (Cash | GPay | Credit in ONE single line) right below Net Kgs / Rate / Amount
      */
     private fun arrangeSalesEntryOrder() {
-        // Hide Bill No field & its label if inside a wrapper/table
+        // Hide Bill No field & its label
         binding.etSalesBillNo.visibility = View.GONE
         val billParent = binding.etSalesBillNo.parent as? ViewGroup
         if (billParent != null && billParent != binding.etSalesDate.parent) {
@@ -564,7 +562,7 @@ class SalesActivity : AppCompatActivity() {
 
         binding.spSalesPayMode.visibility = View.GONE
 
-        // Build Supplier Available Stock box
+        // 1. Supplier Available Stock box
         stockBatchContainer = LinearLayout(this)
         stockBatchContainer.orientation = LinearLayout.VERTICAL
         stockBatchContainer.setBackgroundColor(Color.parseColor("#E8F5E9"))
@@ -605,108 +603,65 @@ class SalesActivity : AppCompatActivity() {
         stockBatchContainer.addView(spSalesStockBatch)
         stockBatchContainer.addView(tvSelectedBatchAvail)
 
-        // Build Payment Split container (Cash / GPay / Credit + Cash Payer Name)
+        // 2. Single-line Payment Split container (Cash | GPay | Credit)
         splitPayContainer = LinearLayout(this)
         splitPayContainer.orientation = LinearLayout.VERTICAL
         splitPayContainer.setBackgroundColor(Color.parseColor("#E3F2FD"))
-        splitPayContainer.setPadding(14, 12, 14, 12)
+        splitPayContainer.setPadding(10, 8, 10, 8)
         val cLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        cLp.setMargins(0, 8, 0, 10)
+        cLp.setMargins(0, 6, 0, 8)
         splitPayContainer.layoutParams = cLp
 
-        val headerRow = LinearLayout(this)
-        headerRow.orientation = LinearLayout.HORIZONTAL
-        headerRow.gravity = Gravity.CENTER_VERTICAL
-        headerRow.setPadding(0, 0, 0, 6)
+        val singleRow = LinearLayout(this)
+        singleRow.orientation = LinearLayout.HORIZONTAL
+        singleRow.gravity = Gravity.CENTER_VERTICAL
+        singleRow.weightSum = 3f
 
-        val tvHdr = TextView(this)
-        tvHdr.text = "Payment Split (Cash / GPay / Credit)"
-        tvHdr.textSize = 12.5f
-        tvHdr.setTypeface(null, Typeface.BOLD)
-        tvHdr.setTextColor(Color.parseColor("#0D47A1"))
-        tvHdr.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-
-        tvAutoSaleTypeBadge = TextView(this)
-        tvAutoSaleTypeBadge.text = "CASH SALES"
-        tvAutoSaleTypeBadge.textSize = 11.5f
-        tvAutoSaleTypeBadge.setTypeface(null, Typeface.BOLD)
-        tvAutoSaleTypeBadge.setTextColor(Color.WHITE)
-        tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#1B5E20"))
-        tvAutoSaleTypeBadge.setPadding(14, 5, 14, 5)
-
-        headerRow.addView(tvHdr)
-        headerRow.addView(tvAutoSaleTypeBadge)
-        splitPayContainer.addView(headerRow)
-
-        val row = LinearLayout(this)
-        row.orientation = LinearLayout.HORIZONTAL
-        row.weightSum = 3f
-
-        fun buildBox(label: String, hintStr: String, readOnly: Boolean): Pair<LinearLayout, EditText> {
-            val col = LinearLayout(this)
-            col.orientation = LinearLayout.VERTICAL
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            lp.setMargins(3, 0, 3, 0)
-            col.layoutParams = lp
-
-            val lbl = TextView(this)
-            lbl.text = label
-            lbl.textSize = 11.5f
-            lbl.setTypeface(null, Typeface.BOLD)
-            lbl.setTextColor(Color.BLACK)
-
+        fun buildInlineBox(hintLabel: String, readOnly: Boolean): EditText {
             val et = EditText(this)
-            et.hint = hintStr
+            et.hint = hintLabel
             et.textSize = 13.5f
             et.setTypeface(null, Typeface.BOLD)
             et.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             et.setBackgroundResource(android.R.drawable.edit_text)
+            et.setSingleLine(true)
+            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            lp.setMargins(3, 0, 3, 0)
+            et.layoutParams = lp
             if (readOnly) {
                 et.isFocusable = false
                 et.isClickable = false
                 et.setTextColor(Color.parseColor("#D84315"))
-                et.setText("0.00")
+                et.setText("Cr: 0.00")
             }
-            col.addView(lbl)
-            col.addView(et)
-            return Pair(col, et)
+            return et
         }
 
-        val (cashCol, cashEt) = buildBox("Cash", "0.00", false)
-        val (gpayCol, gpayEt) = buildBox("GPay", "0.00", false)
-        val (credCol, credEt) = buildBox("Credit", "0.00", true)
+        etSplitCash = buildInlineBox("Cash", false)
+        etSplitGpay = buildInlineBox("GPay", false)
+        etSplitCredit = buildInlineBox("Credit", true)
 
-        etSplitCash = cashEt
-        etSplitGpay = gpayEt
-        etSplitCredit = credEt
+        singleRow.addView(etSplitCash)
+        singleRow.addView(etSplitGpay)
+        singleRow.addView(etSplitCredit)
+        splitPayContainer.addView(singleRow)
 
-        row.addView(cashCol)
-        row.addView(gpayCol)
-        row.addView(credCol)
-        splitPayContainer.addView(row)
-
+        // Conditional Payer Name box right underneath when Cash > 0
         cashPayerBox = LinearLayout(this)
         cashPayerBox.orientation = LinearLayout.VERTICAL
         cashPayerBox.visibility = View.GONE
-        cashPayerBox.setPadding(3, 6, 3, 2)
-
-        val lblPayer = TextView(this)
-        lblPayer.text = "Cash Given By (Person Name)"
-        lblPayer.textSize = 11.5f
-        lblPayer.setTypeface(null, Typeface.BOLD)
-        lblPayer.setTextColor(Color.parseColor("#1B5E20"))
+        cashPayerBox.setPadding(3, 4, 3, 2)
 
         etCashPayerName = EditText(this)
-        etCashPayerName.hint = "Enter name of person giving cash..."
-        etCashPayerName.textSize = 13.5f
+        etCashPayerName.hint = "Cash Given By (Person Name)"
+        etCashPayerName.textSize = 13f
         etCashPayerName.setSingleLine(true)
         etCashPayerName.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
         etCashPayerName.setBackgroundResource(android.R.drawable.edit_text)
 
-        cashPayerBox.addView(lblPayer)
         cashPayerBox.addView(etCashPayerName)
         splitPayContainer.addView(cashPayerBox)
 
@@ -720,7 +675,7 @@ class SalesActivity : AppCompatActivity() {
         etSplitCash.addTextChangedListener(splitWatcher)
         etSplitGpay.addTextChangedListener(splitWatcher)
 
-        // Build Weigh Coolie box for Onion
+        // 3. Weigh Coolie box for Onion
         weighCoolieContainer = LinearLayout(this)
         weighCoolieContainer.orientation = LinearLayout.VERTICAL
         weighCoolieContainer.visibility = View.GONE
@@ -749,15 +704,13 @@ class SalesActivity : AppCompatActivity() {
         weighCoolieContainer.addView(lblCoolie)
         weighCoolieContainer.addView(etSalesWeighCoolie)
 
-        // Reorder views inside the main form LinearLayout:
-        // Date -> Select Item -> Supplier Stock -> Customer Name -> Split Pay -> Bags/Kgs/Rate/Amount
+        // Place Item -> Stock -> Customer -> Bags/Kgs/Rate/Amount -> Single-line Payment Split
         val formContainer = binding.spSalesItem.parent as? ViewGroup
         if (formContainer != null && formContainer == binding.etSalesCustomer.parent) {
             val itemIdx = formContainer.indexOfChild(binding.spSalesItem)
             val custIdx = formContainer.indexOfChild(binding.etSalesCustomer)
 
             if (custIdx < itemIdx) {
-                // Find optional label right above Customer Name
                 var custLabelView: View? = null
                 if (custIdx > 0) {
                     val prev = formContainer.getChildAt(custIdx - 1)
@@ -771,40 +724,32 @@ class SalesActivity : AppCompatActivity() {
                 formContainer.removeView(binding.etSalesCustomer)
                 if (balView != null) formContainer.removeView(balView)
 
-                // Now spSalesItem is right after Date; insert Stock -> Customer -> Balance -> SplitPay
                 var insertPos = formContainer.indexOfChild(binding.spSalesItem) + 1
                 formContainer.addView(stockBatchContainer, insertPos++)
                 if (custLabelView != null) formContainer.addView(custLabelView, insertPos++)
                 formContainer.addView(binding.etSalesCustomer, insertPos++)
-                if (balView != null) formContainer.addView(balView, insertPos++)
-                formContainer.addView(splitPayContainer, insertPos)
+                if (balView != null) formContainer.addView(balView, insertPos)
             } else {
-                val stockPos = itemIdx + 1
-                formContainer.addView(stockBatchContainer, stockPos)
-                val afterCust = if (binding.tvSalesCustBalance.parent == formContainer) {
-                    formContainer.indexOfChild(binding.tvSalesCustBalance) + 1
-                } else {
-                    formContainer.indexOfChild(binding.etSalesCustomer) + 1
-                }
-                formContainer.addView(splitPayContainer, afterCust)
+                formContainer.addView(stockBatchContainer, itemIdx + 1)
             }
         } else {
-            // Fallback if Customer and Item are in different parent cards
             (binding.spSalesItem.parent as? ViewGroup)?.let { p ->
                 p.addView(stockBatchContainer, p.indexOfChild(binding.spSalesItem) + 1)
             }
-            val anchor: View = if (binding.tvSalesCustBalance.parent == binding.etSalesCustomer.parent) {
-                binding.tvSalesCustBalance
-            } else {
-                binding.etSalesCustomer
-            }
-            (anchor.parent as? ViewGroup)?.let { p ->
-                p.addView(splitPayContainer, p.indexOfChild(anchor) + 1)
-            }
         }
 
+        // Insert Weigh Coolie after Bag Charge, and Single-Line PayMode right below Net Kgs / Rate / Amount
         (binding.etSalesBagCharge.parent as? ViewGroup)?.let { p ->
             p.addView(weighCoolieContainer, p.indexOfChild(binding.etSalesBagCharge) + 1)
+        }
+
+        val amountAnchor: View = if (binding.tvLineAmountPreview.parent != null) {
+            binding.tvLineAmountPreview
+        } else {
+            binding.etSalesRate
+        }
+        (amountAnchor.parent as? ViewGroup)?.let { p ->
+            p.addView(splitPayContainer, p.indexOfChild(amountAnchor) + 1)
         }
     }
 
@@ -812,22 +757,24 @@ class SalesActivity : AppCompatActivity() {
         val cashVal = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
         val gpayVal = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
         val paidSum = cashVal + gpayVal
-        val creditBal = (grandTotalBill - paidSum).coerceAtLeast(0.0)
+
+        // Compare against current bill total OR live typed line preview before clicking Add Item
+        val liveLineAmt = run {
+            val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+            val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+            val isOnion = itemName.equals("Onion", ignoreCase = true)
+            val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
+            val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
+            val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
+            val wCoolie = if (isOnion) (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
+            (kgs * rate) + bagChg + wCoolie
+        }
+
+        val effectiveTarget = if (grandTotalBill > 0.0) grandTotalBill else liveLineAmt
+        val creditBal = (effectiveTarget - paidSum).coerceAtLeast(0.0)
 
         cashPayerBox.visibility = if (cashVal > 0.005) View.VISIBLE else View.GONE
-
-        etSplitCredit.setText(String.format(Locale.getDefault(), "%.2f", creditBal))
-
-        if (grandTotalBill > 0.0 && abs(paidSum - grandTotalBill) <= 0.005) {
-            tvAutoSaleTypeBadge.text = "CASH SALES (FULL PAID)"
-            tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#1B5E20"))
-        } else if (creditBal > 0.005) {
-            tvAutoSaleTypeBadge.text = "CREDIT SALES (BAL: Rs. ${String.format(Locale.getDefault(), "%.2f", creditBal)})"
-            tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#D84315"))
-        } else {
-            tvAutoSaleTypeBadge.text = "CASH SALES"
-            tvAutoSaleTypeBadge.setBackgroundColor(Color.parseColor("#1B5E20"))
-        }
+        etSplitCredit.setText(String.format(Locale.getDefault(), "Cr: %.2f", creditBal))
     }
 
     private fun injectWhatsappButtonAfterSave() {
@@ -1351,6 +1298,7 @@ class SalesActivity : AppCompatActivity() {
 
         val lineTot = (kgs * rate) + bagChg + weighCoolie
         binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Item Amt: Rs. %.2f", lineTot)
+        recalculateSplitCredit()
     }
 
     private fun switchToNewMode() {
@@ -2321,7 +2269,7 @@ class SalesActivity : AppCompatActivity() {
         selectedCustomerBalance = 0.0
         etSplitCash.setText("")
         etSplitGpay.setText("")
-        etSplitCredit.setText("0.00")
+        etSplitCredit.setText("Cr: 0.00")
         etCashPayerName.setText("")
         cashPayerBox.visibility = View.GONE
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
