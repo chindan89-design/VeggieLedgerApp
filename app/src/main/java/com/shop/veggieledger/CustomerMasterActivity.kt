@@ -13,6 +13,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
 import com.shop.veggieledger.databinding.ActivityCustomerMasterBinding
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
 
 class CustomerMasterActivity : AppCompatActivity() {
@@ -22,11 +24,11 @@ class CustomerMasterActivity : AppCompatActivity() {
 
     private lateinit var spCustItem: Spinner
     private lateinit var itemAdapter: ArrayAdapter<String>
-    private val itemNames: MutableList<String> = mutableListOf("Coconut", "Onion", "Garlic")
+    private val itemNames = arrayListOf("Coconut", "Onion", "Garlic")
 
-    private val groups: MutableList<String> = mutableListOf("Group A", "Group B", "Group C", "Group D")
-    private val customerDisplayList: MutableList<String> = mutableListOf()
-    private val customerDocsList: MutableList> = mutableListOf()
+    private val groups = arrayListOf("Group A", "Group B", "Group C", "Group D")
+    private val customerDisplayList = arrayListOf<String>()
+    private val customerDocsJson = JSONArray()
     private lateinit var listAdapter: ArrayAdapter<String>
 
     private var editingCustomerId: String = ""
@@ -56,16 +58,16 @@ class CustomerMasterActivity : AppCompatActivity() {
         }
 
         binding.lvCustomers.setOnItemClickListener { _, _, position, _ ->
-            if (position in customerDocsList.indices) {
-                loadCustomerIntoForm(customerDocsList[position])
+            if (position >= 0 && position < customerDocsJson.length()) {
+                loadCustomerIntoForm(customerDocsJson.getJSONObject(position))
             }
         }
 
         binding.lvCustomers.setOnItemLongClickListener { _, _, position, _ ->
-            if (position in customerDocsList.indices) {
-                val data = customerDocsList[position]
-                val docId = data["id"]?.toString() ?: ""
-                val cName = data["name"]?.toString() ?: ""
+            if (position >= 0 && position < customerDocsJson.length()) {
+                val obj = customerDocsJson.getJSONObject(position)
+                val docId = obj.optString("id", "")
+                val cName = obj.optString("name", "")
                 if (docId.isNotEmpty()) {
                     AlertDialog.Builder(this)
                         .setTitle("Delete Customer")
@@ -127,7 +129,7 @@ class CustomerMasterActivity : AppCompatActivity() {
 
     private fun loadItemsFromDb() {
         db.collection("items").get().addOnSuccessListener { snap ->
-            val fetched = mutableListOf<String>()
+            val fetched = arrayListOf<String>()
             for (doc in snap) {
                 val n = (doc.getString("name") ?: doc.getString("itemName") ?: doc.getString("item") ?: "").trim()
                 if (n.isNotEmpty() && fetched.none { it.equals(n, ignoreCase = true) }) {
@@ -215,7 +217,7 @@ class CustomerMasterActivity : AppCompatActivity() {
     private fun loadCustomersFromDb() {
         db.collection("customers").get().addOnSuccessListener { snap ->
             customerDisplayList.clear()
-            customerDocsList.clear()
+            while (customerDocsJson.length() > 0) customerDocsJson.remove(0)
 
             val sortedDocs = snap.documents.sortedBy { doc ->
                 (doc.getString("name") ?: "").lowercase(Locale.getDefault())
@@ -231,18 +233,17 @@ class CustomerMasterActivity : AppCompatActivity() {
                 val area = doc.getString("area") ?: ""
                 val address = doc.getString("address") ?: ""
 
-                val map = hashMapOf<String, Any>(
-                    "id" to doc.id,
-                    "name" to name,
-                    "contact" to phone,
-                    "group" to group,
-                    "itemName" to itemName,
-                    "opbal" to opBal,
-                    "currentBalance" to currBal,
-                    "area" to area,
-                    "address" to address
-                )
-                customerDocsList.add(map)
+                val obj = JSONObject()
+                obj.put("id", doc.id)
+                obj.put("name", name)
+                obj.put("contact", phone)
+                obj.put("group", group)
+                obj.put("itemName", itemName)
+                obj.put("opbal", opBal)
+                obj.put("currentBalance", currBal)
+                obj.put("area", area)
+                obj.put("address", address)
+                customerDocsJson.put(obj)
 
                 val phPart = if (phone.isNotEmpty()) " | $phone" else ""
                 customerDisplayList.add(
@@ -253,26 +254,26 @@ class CustomerMasterActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadCustomerIntoForm(data: Map<String, Any>) {
-        editingCustomerId = data["id"]?.toString() ?: ""
-        binding.etCustName.setText(data["name"]?.toString() ?: "")
-        binding.etCustPhone.setText(data["contact"]?.toString() ?: "")
-        binding.etCustArea.setText(data["area"]?.toString() ?: "")
-        binding.etCustAddress.setText(data["address"]?.toString() ?: "")
+    private fun loadCustomerIntoForm(obj: JSONObject) {
+        editingCustomerId = obj.optString("id", "")
+        binding.etCustName.setText(obj.optString("name", ""))
+        binding.etCustPhone.setText(obj.optString("contact", ""))
+        binding.etCustArea.setText(obj.optString("area", ""))
+        binding.etCustAddress.setText(obj.optString("address", ""))
 
-        val opBal = (data["opbal"] as? Number)?.toDouble() ?: 0.0
+        val opBal = obj.optDouble("opbal", 0.0)
         binding.etCustOpBal.setText(String.format(Locale.getDefault(), "%.2f", opBal))
 
-        val grp = data["group"]?.toString() ?: "Group A"
+        val grp = obj.optString("group", "Group A")
         val idx = groups.indexOf(grp)
         if (idx >= 0) binding.spCustGroup.setSelection(idx)
 
-        val iName = data["itemName"]?.toString() ?: "Coconut"
+        val iName = obj.optString("itemName", "Coconut")
         val itemIdx = itemNames.indexOfFirst { it.equals(iName, ignoreCase = true) }
         if (itemIdx >= 0) spCustItem.setSelection(itemIdx)
 
         binding.btnSaveCustomer.text = "UPDATE DETAILS"
-        Toast.makeText(this, "Editing ${data["name"]}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Editing ${obj.optString("name", "")}", Toast.LENGTH_SHORT).show()
     }
 
     private fun resetForm() {
