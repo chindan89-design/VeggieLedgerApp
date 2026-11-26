@@ -59,12 +59,14 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var etSalesWeighCoolie: EditText
     private lateinit var btnSendWhatsappBill: Button
 
-    // 3 Split Payment Boxes: cash, gpay, credit
+    // 3 Split Payment Boxes + Extra Cash Payer Name Box
     private lateinit var splitPayContainer: LinearLayout
     private lateinit var etSplitCash: EditText
     private lateinit var etSplitGpay: EditText
     private lateinit var etSplitCredit: EditText
     private lateinit var tvAutoSaleTypeBadge: TextView
+    private lateinit var cashPayerBox: LinearLayout
+    private lateinit var etCashPayerName: EditText
 
     private val allStockBatchesJson = JSONArray()
     private val filteredBatchesJson = JSONArray()
@@ -330,6 +332,7 @@ class SalesActivity : AppCompatActivity() {
 
             val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
             val gpayPaid = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
+            val cashPayerName = if (cashPaid > 0.0) etCashPayerName.text.toString().trim() else ""
             val totalPaid = cashPaid + gpayPaid
 
             if (totalPaid > grandTotalBill + 0.01) {
@@ -342,7 +345,6 @@ class SalesActivity : AppCompatActivity() {
             }
 
             val creditBal = (grandTotalBill - totalPaid).coerceAtLeast(0.0)
-            // Payable == Paid -> Cash Sales; Any balance remaining -> Credit Sales
             val isCreditSale = creditBal > 0.005
             val computedPayMode = if (isCreditSale) "Credit" else "Cash"
             val status = if (isCreditSale) {
@@ -435,7 +437,6 @@ class SalesActivity : AppCompatActivity() {
                     adjustCustomerBalance(selectedCustomerId, creditBal)
                 }
 
-                // Store exact 3 fields: cash, gpay, credit in database
                 val updateData = hashMapOf<String, Any>(
                     "billNo" to billNo,
                     "date" to selectedDateStr,
@@ -445,6 +446,7 @@ class SalesActivity : AppCompatActivity() {
                     "cash" to cashPaid,
                     "gpay" to gpayPaid,
                     "credit" to creditBal,
+                    "cashPersonName" to cashPayerName,
                     "cashAmount" to cashPaid,
                     "gpayAmount" to gpayPaid,
                     "items" to itemsForDb,
@@ -487,7 +489,6 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                // Store exact 3 fields: cash, gpay, credit in database
                 val saleId = db.collection("sales").document().id
                 val saleData = hashMapOf<String, Any>(
                     "id" to saleId,
@@ -499,6 +500,7 @@ class SalesActivity : AppCompatActivity() {
                     "cash" to cashPaid,
                     "gpay" to gpayPaid,
                     "credit" to creditBal,
+                    "cashPersonName" to cashPayerName,
                     "cashAmount" to cashPaid,
                     "gpayAmount" to gpayPaid,
                     "items" to itemsForDb,
@@ -623,6 +625,29 @@ class SalesActivity : AppCompatActivity() {
         row.addView(credCol)
         splitPayContainer.addView(row)
 
+        // Extra TextBox that appears when Cash > 0 to save Payer's Name
+        cashPayerBox = LinearLayout(this)
+        cashPayerBox.orientation = LinearLayout.VERTICAL
+        cashPayerBox.visibility = View.GONE
+        cashPayerBox.setPadding(3, 6, 3, 2)
+
+        val lblPayer = TextView(this)
+        lblPayer.text = "Cash Given By (Person Name)"
+        lblPayer.textSize = 11.5f
+        lblPayer.setTypeface(null, Typeface.BOLD)
+        lblPayer.setTextColor(Color.parseColor("#1B5E20"))
+
+        etCashPayerName = EditText(this)
+        etCashPayerName.hint = "Enter name of person giving cash..."
+        etCashPayerName.textSize = 13.5f
+        etCashPayerName.setSingleLine(true)
+        etCashPayerName.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        etCashPayerName.setBackgroundResource(android.R.drawable.edit_text)
+
+        cashPayerBox.addView(lblPayer)
+        cashPayerBox.addView(etCashPayerName)
+        splitPayContainer.addView(cashPayerBox)
+
         val splitWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -641,6 +666,9 @@ class SalesActivity : AppCompatActivity() {
         val gpayVal = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
         val paidSum = cashVal + gpayVal
         val creditBal = (grandTotalBill - paidSum).coerceAtLeast(0.0)
+
+        // Show extra Payer Name textbox only when Cash > 0
+        cashPayerBox.visibility = if (cashVal > 0.005) View.VISIBLE else View.GONE
 
         etSplitCredit.setText(String.format(Locale.getDefault(), "%.2f", creditBal))
 
@@ -695,7 +723,7 @@ class SalesActivity : AppCompatActivity() {
         val itemCount = billItemsArray.length().coerceAtLeast(1)
 
         val minPortraitHeight = 860
-        val estimatedHeight = 590 + (itemCount * 38)
+        val estimatedHeight = 610 + (itemCount * 38)
         val height = maxOf(minPortraitHeight, estimatedHeight)
 
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -789,6 +817,13 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawLine(pad + 60f, y + 5f, 345f, y + 5f, pSolid)
         canvas.drawLine(width - 145f, y + 5f, width - pad, y + 5f, pSolid)
 
+        val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
+        val payerName = if (cashPaid > 0.0) etCashPayerName.text.toString().trim() else ""
+        if (payerName.isNotEmpty()) {
+            y += 24f
+            canvas.drawText("Cash By : $payerName", pad, y, pBodyReg)
+        }
+
         y += 16f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
@@ -833,7 +868,6 @@ class SalesActivity : AppCompatActivity() {
         y += 22f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
         val gpayPaid = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
         val receivedAmt = cashPaid + gpayPaid
         val opBal = selectedCustomerBalance
@@ -1450,6 +1484,7 @@ class SalesActivity : AppCompatActivity() {
         val savedGpay = (data["gpay"] as? Number)?.toDouble()
             ?: (data["gpayAmount"] as? Number)?.toDouble()
             ?: (if (oldPayMode.contains("GPay", ignoreCase = true) || oldPayMode.contains("UPI", ignoreCase = true)) oldPaidAmount else 0.0)
+        val savedPayerName = data["cashPersonName"]?.toString() ?: ""
 
         oldSaleCreditBalance = (data["credit"] as? Number)?.toDouble()
             ?: (data["balanceAmount"] as? Number)?.toDouble()
@@ -1477,6 +1512,7 @@ class SalesActivity : AppCompatActivity() {
 
         etSplitCash.setText(if (savedCash > 0.0) String.format(Locale.getDefault(), "%.2f", savedCash) else "")
         etSplitGpay.setText(if (savedGpay > 0.0) String.format(Locale.getDefault(), "%.2f", savedGpay) else "")
+        etCashPayerName.setText(savedPayerName)
 
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -1805,6 +1841,7 @@ class SalesActivity : AppCompatActivity() {
                             "cash" to cashAmt,
                             "gpay" to gpayAmt,
                             "credit" to creditAmt,
+                            "cashPersonName" to "",
                             "cashAmount" to cashAmt,
                             "gpayAmount" to gpayAmt,
                             "items" to arrayListOf(itemEntry),
@@ -2219,6 +2256,8 @@ class SalesActivity : AppCompatActivity() {
         etSplitCash.setText("")
         etSplitGpay.setText("")
         etSplitCredit.setText("0.00")
+        etCashPayerName.setText("")
+        cashPayerBox.visibility = View.GONE
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
         refreshBillItemsGrid()
 
