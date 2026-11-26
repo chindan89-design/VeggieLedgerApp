@@ -9,9 +9,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.shop.veggieledger.databinding.ActivityDashboardBinding
 import java.text.SimpleDateFormat
 import java.util.*
@@ -21,6 +21,7 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDashboardBinding
     private val db = FirebaseFirestore.getInstance()
     private var selectedDateStr: String = ""
+    private var liveStockListener: ListenerRegistration? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,25 +32,26 @@ class DashboardActivity : AppCompatActivity() {
         supportActionBar?.title = "Mandi ($role)"
         binding.tvWelcome.text = "Veggie Mandi Live Summary"
 
+        // Date Picker Setup (Defaults to Today)
         val cal = Calendar.getInstance()
         selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
         binding.etDashDate.setText(selectedDateStr)
-
-        // Automatically convert any Excel serial dates (e.g., 46351 -> "25-11-2026") in Firestore
-        fixSerialDatesInFirestore()
 
         binding.etDashDate.setOnClickListener {
             DatePickerDialog(this, { _, y, m, d ->
                 cal.set(y, m, d)
                 selectedDateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(cal.time)
                 binding.etDashDate.setText(selectedDateStr)
+                loadDateAndBalanceSummary()
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
         }
 
+        // View Button Click refreshes data for chosen date
         binding.btnDashViewDate.setOnClickListener {
-            loadLiveSummary()
+            loadDateAndBalanceSummary()
         }
 
+        // Quick Strip Bar Clicks
         binding.stripSales.setOnClickListener { startActivity(Intent(this, SalesActivity::class.java)) }
         binding.stripPurchase.setOnClickListener { startActivity(Intent(this, PurchaseActivity::class.java)) }
         binding.stripReceipt.setOnClickListener { startActivity(Intent(this, SalesReceiptActivity::class.java)) }
@@ -58,118 +60,120 @@ class DashboardActivity : AppCompatActivity() {
         binding.stripHistory.setOnClickListener { startActivity(Intent(this, TransactionHistoryActivity::class.java)) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        attachLiveStockListener()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        liveStockListener?.remove()
+        liveStockListener = null
+    }
+
     override fun onResume() {
         super.onResume()
-        loadLiveSummary()
+        loadDateAndBalanceSummary()
     }
 
-    private fun fixSerialDatesInFirestore() {
-        val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-        val baseCal = Calendar.getInstance().apply {
-            set(1899, Calendar.DECEMBER, 30, 0, 0, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
+    /**
+     * Real-time Firestore listener for Onion (Bags | Kgs) & Coconut (Kgs only).
+     */
+    private fun attachLiveStockListener() {
+        liveStockListener?.remove()
+        liveStockListener = db.collection("stock_batches")
+            .addSnapshotListener { snap, error ->
+                if (error != null || snap == null) return@addSnapshotListener
 
-        val collections = listOf("sales", "purchases", "receipts", "payments", "expenses")
+                val itemBagsMap = HashMap<String, Int>()
+                val itemKgsMap = HashMap<String, Double>()
 
-        for (colName in collections) {
-            db.collection(colName).get().addOnSuccessListener { snapshot ->
-                val batch = db.batch()
-                var updatedCount = 0
+                for (doc in snap.documents) {
+                    val rawName = (doc.getString("itemName") ?: "").trim()
+                    if (rawName.isEmpty()) continue
 
-                for (doc in snapshot.documents) {
-                    val rawDate = doc.get("date")?.toString()?.trim() ?: continue
-                    val serial = rawDate.toDoubleOrNull()?.toInt()
+                    val normalizedKey = when {
+                        rawName.equals("onion", ignoreCase = true) -> "Onion"
+                        rawName.equals("coconut", ignoreCase = true) -> "Coconut"
+                        else -> rawName
+                    }
 
-                    // Detect Excel serial date numbers (e.g., 46351 -> 25-11-2026)
-                    if (serial != null && serial in 40000..60000) {
-                        val cal = baseCal.clone() as Calendar
-                        cal.add(Calendar.DAY_OF_YEAR, serial)
-                        val formattedDate = sdf.format(cal.time)
+                    val bags = (doc.getLong("availableBags") ?: 0L).toInt()
+                    val kgs = doc.getDouble("availableKgs") ?: 0.0
 
-                        batch.update(doc.reference, "date", formattedDate)
-                        updatedCount++
+                    if (bags > 0 || kgs > 0.001) {
+                        itemBagsMap[normalizedKey] = (itemBagsMap[normalizedKey] ?: 0) + bags
+                        itemKgsMap[normalizedKey] = (itemKgsMap[normalizedKey] ?: 0.0) + kgs
                     }
                 }
 
-                if (updatedCount > 0) {
-                    batch.commit().addOnSuccessListener {
-                        Toast.makeText(
-                            this,
-                            "Fixed $updatedCount serial dates in $colName!",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        loadLiveSummary()
+                binding.llDashStockItems.removeAllViews()
+                var hasAnyStock = false
+
+                val allKeys = (itemKgsMap.keys + itemBagsMap.keys).toMutableSet()
+                val orderedItems = ArrayList<String>()
+                if (allKeys.remove("Onion")) orderedItems.add("Onion")
+                if (allKeys.remove("Coconut")) orderedItems.add("Coconut")
+                orderedItems.addAll(allKeys.sorted())
+
+                for (item in orderedItems) {
+                    val totalBags = itemBagsMap[item] ?: 0
+                    val totalKgs = itemKgsMap[item] ?: 0.0
+
+                    if (totalBags > 0 || totalKgs > 0.001) {
+                        hasAnyStock = true
+                        val rowTv = TextView(this)
+
+                        // Coconut: Kgs only (no Nos); Onion / others: Bags | Kgs
+                        val bagPrefix = if (!item.equals("Coconut", ignoreCase = true) && totalBags > 0) {
+                            "$totalBags Bags  |  "
+                        } else {
+                            ""
+                        }
+
+                        rowTv.text = String.format(
+                            Locale.getDefault(),
+                            "%s :  %s%.2f Kgs",
+                            item,
+                            bagPrefix,
+                            totalKgs
+                        )
+                        rowTv.setTextColor(Color.parseColor("#1B5E20"))
+                        rowTv.setTypeface(null, Typeface.BOLD)
+                        rowTv.textSize = 14.5f
+                        rowTv.setBackgroundColor(Color.parseColor("#E8F5E9"))
+                        rowTv.setPadding(24, 20, 24, 20)
+
+                        val lp = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        lp.setMargins(0, 0, 0, 8)
+                        rowTv.layoutParams = lp
+                        binding.llDashStockItems.addView(rowTv)
                     }
+                }
+
+                if (!hasAnyStock) {
+                    val emptyTv = TextView(this)
+                    emptyTv.text = "No Onion / Coconut stock available currently."
+                    emptyTv.setTextColor(Color.GRAY)
+                    emptyTv.textSize = 13f
+                    emptyTv.setPadding(16, 16, 16, 16)
+                    binding.llDashStockItems.addView(emptyTv)
                 }
             }
-        }
     }
 
-    private fun loadLiveSummary() {
+    private fun loadDateAndBalanceSummary() {
         binding.tvDashDateSectionTitle.text = "2. SUMMARY FOR $selectedDateStr"
-
-        db.collection("stock_batches").get().addOnSuccessListener { snap ->
-            val itemBagsMap = HashMap<String, Int>()
-            val itemKgsMap = HashMap<String, Double>()
-
-            for (doc in snap) {
-                val itemName = doc.getString("itemName") ?: continue
-                val bags = (doc.getLong("availableBags") ?: 0L).toInt()
-                val kgs = doc.getDouble("availableKgs") ?: 0.0
-
-                if (bags > 0 || kgs > 0.0) {
-                    val key = itemName.trim()
-                    itemBagsMap[key] = (itemBagsMap[key] ?: 0) + bags
-                    itemKgsMap[key] = (itemKgsMap[key] ?: 0.0) + kgs
-                }
-            }
-
-            binding.llDashStockItems.removeAllViews()
-            var hasAnyStock = false
-
-            val sortedItems = itemKgsMap.keys.sorted()
-            for (item in sortedItems) {
-                val totalBags = itemBagsMap[item] ?: 0
-                val totalKgs = itemKgsMap[item] ?: 0.0
-
-                if (totalBags > 0 || totalKgs > 0.001) {
-                    hasAnyStock = true
-                    val rowTv = TextView(this)
-                    val bagText = if (totalBags > 0) "$totalBags Bags  |  " else ""
-                    rowTv.text = "$item :  $bagText%.2f Kgs".format(totalKgs)
-                    rowTv.setTextColor(Color.parseColor("#1B5E20"))
-                    rowTv.setTypeface(null, Typeface.BOLD)
-                    rowTv.textSize = 14f
-                    rowTv.setBackgroundColor(Color.parseColor("#E8F5E9"))
-                    rowTv.setPadding(24, 20, 24, 20)
-
-                    val lp = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                    lp.setMargins(0, 0, 0, 8)
-                    rowTv.layoutParams = lp
-                    binding.llDashStockItems.addView(rowTv)
-                }
-            }
-
-            if (!hasAnyStock) {
-                val emptyTv = TextView(this)
-                emptyTv.text = "No stock available currently."
-                emptyTv.setTextColor(Color.GRAY)
-                emptyTv.textSize = 13f
-                emptyTv.setPadding(16, 16, 16, 16)
-                binding.llDashStockItems.addView(emptyTv)
-            }
-        }
 
         db.collection("purchases").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
             var dayPur = 0.0
             for (doc in snap) {
                 dayPur += doc.getDouble("grandTotal") ?: 0.0
             }
-            binding.tvDayPurchase.text = "Purchase\nRs. %.2f".format(dayPur)
+            binding.tvDayPurchase.text = String.format(Locale.getDefault(), "Purchase\nRs. %.2f", dayPur)
         }
 
         db.collection("sales").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
@@ -177,7 +181,7 @@ class DashboardActivity : AppCompatActivity() {
             for (doc in snap) {
                 daySales += doc.getDouble("grandTotal") ?: 0.0
             }
-            binding.tvDaySales.text = "Sales\nRs. %.2f".format(daySales)
+            binding.tvDaySales.text = String.format(Locale.getDefault(), "Sales\nRs. %.2f", daySales)
         }
 
         db.collection("receipts").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
@@ -185,7 +189,7 @@ class DashboardActivity : AppCompatActivity() {
             for (doc in snap) {
                 dayRec += doc.getDouble("amount") ?: 0.0
             }
-            binding.tvDayReceipt.text = "Receipt\nRs. %.2f".format(dayRec)
+            binding.tvDayReceipt.text = String.format(Locale.getDefault(), "Receipt\nRs. %.2f", dayRec)
         }
 
         db.collection("payments").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
@@ -193,20 +197,20 @@ class DashboardActivity : AppCompatActivity() {
             for (doc in snap) {
                 dayPay += doc.getDouble("amount") ?: 0.0
             }
-            binding.tvDayPayment.text = "Payment\nRs. %.2f".format(dayPay)
+            binding.tvDayPayment.text = String.format(Locale.getDefault(), "Payment\nRs. %.2f", dayPay)
         }
 
         db.collection("expenses").whereEqualTo("date", selectedDateStr).get().addOnSuccessListener { snap ->
             var dayInc = 0.0
             var dayExp = 0.0
             for (doc in snap) {
-                val type = doc.getString("type") ?: ""
+                val type = doc.getString("type") ?: "Expense"
                 val amt = doc.getDouble("amount") ?: 0.0
                 if (type.equals("Income", ignoreCase = true)) dayInc += amt
                 if (type.equals("Expense", ignoreCase = true)) dayExp += amt
             }
-            binding.tvDayIncome.text = "Income\nRs. %.2f".format(dayInc)
-            binding.tvDayExpense.text = "Expenses\nRs. %.2f".format(dayExp)
+            binding.tvDayIncome.text = String.format(Locale.getDefault(), "Income\nRs. %.2f", dayInc)
+            binding.tvDayExpense.text = String.format(Locale.getDefault(), "Expenses\nRs. %.2f", dayExp)
         }
 
         db.collection("customers").get().addOnSuccessListener { snap ->
@@ -214,7 +218,7 @@ class DashboardActivity : AppCompatActivity() {
             for (doc in snap) {
                 totalCollectable += doc.getDouble("currentBalance") ?: 0.0
             }
-            binding.tvDashCustDue.text = "Total Collectable\nRs. %.2f".format(totalCollectable)
+            binding.tvDashCustDue.text = String.format(Locale.getDefault(), "Total Collectable\nRs. %.2f", totalCollectable)
         }
 
         db.collection("suppliers").get().addOnSuccessListener { snap ->
@@ -222,7 +226,7 @@ class DashboardActivity : AppCompatActivity() {
             for (doc in snap) {
                 totalPayable += doc.getDouble("currentBalance") ?: 0.0
             }
-            binding.tvDashSupDue.text = "Total Payable\nRs. %.2f".format(totalPayable)
+            binding.tvDashSupDue.text = String.format(Locale.getDefault(), "Total Payable\nRs. %.2f", totalPayable)
         }
     }
 
@@ -242,18 +246,21 @@ class DashboardActivity : AppCompatActivity() {
             R.id.nav_purchase_payment -> startActivity(Intent(this, PurchasePaymentActivity::class.java))
             R.id.nav_expense_income -> startActivity(Intent(this, ExpenseIncomeActivity::class.java))
 
+            // Purchase Reports Sub-Menu
             R.id.nav_pur_supplier_rep -> openReportHub("PUR_SUPPLIER")
             R.id.nav_pur_details -> openReportHub("PUR_DETAILS")
             R.id.nav_pur_itemwise -> openReportHub("PUR_ITEMWISE")
             R.id.nav_pur_sup_statement -> openReportHub("PUR_STATEMENT")
             R.id.nav_sup_out -> startActivity(Intent(this, SupplierOutstandingActivity::class.java))
 
+            // Sales Reports Sub-Menu
             R.id.nav_sal_customer_rep -> openReportHub("SAL_CUSTOMER")
             R.id.nav_sal_details -> openReportHub("SAL_DETAILS")
             R.id.nav_sal_itemwise -> openReportHub("SAL_ITEMWISE")
             R.id.nav_sal_cust_statement -> openReportHub("SAL_STATEMENT")
             R.id.nav_cust_out -> startActivity(Intent(this, CustomerOutstandingActivity::class.java))
 
+            // Others Sub-Menu
             R.id.nav_daily_closing -> openReportHub("DAILY_CLOSING")
             R.id.nav_pnl -> startActivity(Intent(this, ProfitLossActivity::class.java))
             R.id.nav_history -> startActivity(Intent(this, TransactionHistoryActivity::class.java))
