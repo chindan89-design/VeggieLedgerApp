@@ -2,16 +2,27 @@ package com.shop.veggieledger
 
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.content.ContentValues
+import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -32,12 +43,15 @@ class SalesReceiptActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesReceiptBinding
     private val db = FirebaseFirestore.getInstance()
 
+    private lateinit var btnSendWhatsappReceipt: Button
+
     private val customerList = ArrayList<CustomerItem>()
     private val editFilterCustomerList = ArrayList<String>()
     private val pendingBills = ArrayList<PendingBill>()
 
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
+    private var selectedCustomerPhone: String = ""
     private var selectedCustomerOpBal: Double = 0.0
     private var calculatedTotalOutstanding: Double = 0.0
     private var selectedDateStr: String = ""
@@ -54,7 +68,7 @@ class SalesReceiptActivity : AppCompatActivity() {
 
     private val modes = arrayListOf("Cash", "GPay / UPI", "Bank Transfer", "Cheque")
 
-    data class CustomerItem(val id: String, val name: String, val balance: Double, val opBal: Double)
+    data class CustomerItem(val id: String, val name: String, val phone: String, val balance: Double, val opBal: Double)
 
     data class PendingBill(
         val docId: String,
@@ -73,6 +87,8 @@ class SalesReceiptActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         supportActionBar?.title = "Sales Receipt"
+
+        injectWhatsappReceiptButtonAfterSave()
 
         binding.btnModeNewRec.setOnClickListener { switchToNewMode() }
         binding.btnModeEditRec.setOnClickListener { switchToEditMode() }
@@ -155,6 +171,11 @@ class SalesReceiptActivity : AppCompatActivity() {
             binding.btnSaveReceipt.isEnabled = false
             allocateAmountToBills()
 
+            // Capture 3-inch Portrait JPG bitmap before resetting form
+            val receiptBitmap = generateReceiptJpgBitmap()
+            val targetCustName = selectedCustomerName
+            val targetPhone = selectedCustomerPhone
+
             val allocationsForDb = ArrayList<Any>()
             for (b in pendingBills) {
                 if (b.allocatedNow > 0.0) {
@@ -183,7 +204,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                 )
                 db.collection("receipts").document(editingReceiptDocId).update(updateData)
                     .addOnSuccessListener {
-                        applyReceiptBillUpdates(totalSettled)
+                        applyReceiptBillUpdates(totalSettled, recNo, targetCustName, targetPhone, receiptBitmap)
                     }
                     .addOnFailureListener {
                         binding.btnSaveReceipt.isEnabled = true
@@ -208,7 +229,7 @@ class SalesReceiptActivity : AppCompatActivity() {
 
                 db.collection("receipts").document(recId).set(recData)
                     .addOnSuccessListener {
-                        applyReceiptBillUpdates(totalSettled)
+                        applyReceiptBillUpdates(totalSettled, recNo, targetCustName, targetPhone, receiptBitmap)
                     }
                     .addOnFailureListener {
                         binding.btnSaveReceipt.isEnabled = true
@@ -218,11 +239,378 @@ class SalesReceiptActivity : AppCompatActivity() {
         }
     }
 
+    private fun injectWhatsappReceiptButtonAfterSave() {
+        val parent = binding.btnSaveReceipt.parent as? ViewGroup ?: return
+        val insertIdx = parent.indexOfChild(binding.btnSaveReceipt) + 1
+
+        btnSendWhatsappReceipt = Button(this)
+        btnSendWhatsappReceipt.text = "SEND JPG RECEIPT (3-INCH THERMAL / WHATSAPP)"
+        btnSendWhatsappReceipt.setBackgroundColor(Color.parseColor("#25D366"))
+        btnSendWhatsappReceipt.setTextColor(Color.WHITE)
+        btnSendWhatsappReceipt.setTypeface(null, Typeface.BOLD)
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 8, 0, 12)
+        btnSendWhatsappReceipt.layoutParams = lp
+
+        btnSendWhatsappReceipt.setOnClickListener {
+            if (selectedCustomerId.isEmpty() || selectedCustomerName.isEmpty()) {
+                Toast.makeText(this, "Please select a Customer first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val amt = binding.etRecAmount.text.toString().toDoubleOrNull() ?: 0.0
+            val disc = binding.etRecDiscount.text.toString().toDoubleOrNull() ?: 0.0
+            if (amt + disc <= 0.0) {
+                Toast.makeText(this, "Enter valid Receipt Amount or Discount", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            allocateAmountToBills()
+            val bmp = generateReceiptJpgBitmap()
+            val recNo = binding.etRecNo.text.toString().trim().ifEmpty { "REC" }
+            shareBitmapJpgToWhatsapp(bmp, recNo, selectedCustomerPhone)
+        }
+
+        parent.addView(btnSendWhatsappReceipt, insertIdx)
+    }
+
+    /**
+     * Generates a strict Portrait (576px width x min 840px height) 3-inch Thermal Printer
+     * JPG receipt matching the THIRUVENI COCONUTS template.
+     */
+    private fun generateReceiptJpgBitmap(): Bitmap {
+        val width = 576
+        val pad = 18f
+
+        val settledBills = pendingBills.filter { it.allocatedNow > 0.005 }
+        val rowCount = settledBills.size.coerceAtLeast(1)
+
+        val minPortraitHeight = 840
+        val estimatedHeight = 560 + (rowCount * 38)
+        val height = maxOf(minPortraitHeight, estimatedHeight)
+
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.WHITE)
+
+        val boldType = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val regType = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        val italicBold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD_ITALIC)
+        val italicReg = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+
+        val pTitle = Paint().apply {
+            color = Color.BLACK
+            textSize = 31f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        val pSub = Paint().apply {
+            color = Color.BLACK
+            textSize = 17.5f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        val pPhoneLeft = Paint().apply {
+            color = Color.BLACK
+            textSize = 18.5f
+            typeface = boldType
+            textAlign = Paint.Align.LEFT
+        }
+        val pPhoneRight = Paint().apply {
+            color = Color.BLACK
+            textSize = 18.5f
+            typeface = boldType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pBodyBold = Paint().apply {
+            color = Color.BLACK
+            textSize = 17.5f
+            typeface = boldType
+            textAlign = Paint.Align.LEFT
+        }
+        val pBodyReg = Paint().apply {
+            color = Color.BLACK
+            textSize = 17f
+            typeface = regType
+            textAlign = Paint.Align.LEFT
+        }
+        val pBodyRightReg = Paint().apply {
+            color = Color.BLACK
+            textSize = 17f
+            typeface = regType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pBodyRightBold = Paint().apply {
+            color = Color.BLACK
+            textSize = 17.5f
+            typeface = boldType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pDash = Paint().apply {
+            color = Color.BLACK
+            strokeWidth = 2f
+            style = Paint.Style.STROKE
+            pathEffect = DashPathEffect(floatArrayOf(8f, 5f), 0f)
+        }
+        val pSolid = Paint().apply {
+            color = Color.BLACK
+            strokeWidth = 2f
+            style = Paint.Style.STROKE
+        }
+
+        val cx = width / 2f
+        var y = 42f
+
+        // 1. Shop Header
+        canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
+        y += 25f
+        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
+        y += 22f
+        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
+        y += 28f
+        canvas.drawText("9841666651", pad, y, pPhoneLeft)
+        canvas.drawText("9840457613", width - pad, y, pPhoneRight)
+
+        y += 14f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 2. Customer Name & Date
+        y += 28f
+        val custDisplay = selectedCustomerName.ifEmpty { "Customer" }.take(22)
+        canvas.drawText("Name : $custDisplay", pad, y, pBodyBold)
+        canvas.drawText("Date : $selectedDateStr", width - pad, y, pBodyRightBold)
+        canvas.drawLine(pad + 60f, y + 5f, 345f, y + 5f, pSolid)
+        canvas.drawLine(width - 145f, y + 5f, width - pad, y + 5f, pSolid)
+
+        y += 24f
+        val recNo = binding.etRecNo.text.toString().trim()
+        val payMode = binding.spRecMode.selectedItem?.toString() ?: "Cash"
+        canvas.drawText("Receipt No : $recNo", pad, y, pBodyReg)
+        canvas.drawText("Mode : $payMode", width - pad, y, pBodyRightBold)
+
+        y += 14f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 3. Column Headers: Particulars / Bill | Date | Pending | Paid
+        y += 26f
+        val colBillX = pad
+        val colDateX = 290f
+        val colPendX = 430f
+        val colPaidX = width - pad
+
+        canvas.drawText("Bill / Ref", colBillX, y, pBodyBold)
+        canvas.drawText("Date", colDateX, y, pBodyRightBold)
+        canvas.drawText("Due", colPendX, y, pBodyRightBold)
+        canvas.drawText("Settled", colPaidX, y, pBodyRightBold)
+
+        y += 12f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 4. Settled Bill Rows
+        val receivedAmt = binding.etRecAmount.text.toString().toDoubleOrNull() ?: 0.0
+        val discountAmt = binding.etRecDiscount.text.toString().toDoubleOrNull() ?: 0.0
+        val totalSettled = receivedAmt + discountAmt
+
+        if (settledBills.isNotEmpty()) {
+            for (b in settledBills) {
+                y += 30f
+                canvas.drawText(b.billNo.take(14), colBillX, y, pBodyReg)
+                canvas.drawText(b.date, colDateX, y, pBodyRightReg)
+                canvas.drawText(String.format(Locale.getDefault(), "%.2f", b.pendingAmount), colPendX, y, pBodyRightReg)
+                canvas.drawText(String.format(Locale.getDefault(), "%.2f", b.allocatedNow), colPaidX, y, pBodyRightReg)
+            }
+        } else {
+            y += 30f
+            canvas.drawText("On-Account Receipt", colBillX, y, pBodyReg)
+            canvas.drawText(selectedDateStr, colDateX, y, pBodyRightReg)
+            canvas.drawText(String.format(Locale.getDefault(), "%.2f", calculatedTotalOutstanding), colPendX, y, pBodyRightReg)
+            canvas.drawText(String.format(Locale.getDefault(), "%.2f", totalSettled), colPaidX, y, pBodyRightReg)
+        }
+
+        y += 24f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 5. Balance Summary matching template
+        val opBal = calculatedTotalOutstanding
+        val closingBal = (opBal - totalSettled).coerceAtLeast(0.0)
+
+        val labelX = 375f
+        val colonX = 392f
+        val valX = width - pad
+
+        val pLabelBold = Paint().apply {
+            color = Color.BLACK
+            textSize = 17.5f
+            typeface = boldType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pLabelReg = Paint().apply {
+            color = Color.BLACK
+            textSize = 17f
+            typeface = regType
+            textAlign = Paint.Align.RIGHT
+        }
+
+        y += 28f
+        canvas.drawText("Op. Bal", labelX, y, pLabelBold)
+        canvas.drawText(":", colonX, y, pLabelBold)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", opBal), valX, y, pBodyRightBold)
+
+        y += 14f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        y += 28f
+        canvas.drawText("Received Amount", labelX, y, pLabelReg)
+        canvas.drawText(":", colonX, y, pLabelReg)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", receivedAmt), valX, y, pBodyRightReg)
+
+        y += 26f
+        canvas.drawText("Discount", labelX, y, pLabelReg)
+        canvas.drawText(":", colonX, y, pLabelReg)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", discountAmt), valX, y, pBodyRightReg)
+
+        y += 10f
+        canvas.drawLine(pad, y, width - pad, y, pSolid)
+
+        y += 28f
+        canvas.drawText("Closing Bal", labelX, y, pLabelBold)
+        canvas.drawText(":", colonX, y, pLabelBold)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", closingBal), valX, y, pBodyRightBold)
+
+        y += 14f
+        canvas.drawLine(pad, y, width - pad, y, pDash)
+
+        // 6. Payment Details & Footer
+        y += 32f
+        val pGpay = Paint().apply {
+            color = Color.BLACK
+            textSize = 20.5f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        val pAcc = Paint().apply {
+            color = Color.BLACK
+            textSize = 16f
+            typeface = boldType
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("GPay No : 9841666651", cx, y, pGpay)
+        y += 26f
+        canvas.drawText("A/c No : ATE TOMATO WHOLESALE MERCHANT", cx, y, pAcc)
+
+        y += 38f
+        val pThank = Paint().apply {
+            color = Color.BLACK
+            textSize = 25f
+            typeface = italicBold
+            textAlign = Paint.Align.CENTER
+        }
+        val pVisit = Paint().apply {
+            color = Color.BLACK
+            textSize = 20f
+            typeface = italicReg
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawLine(pad, y - 8f, cx - 98f, y - 8f, pSolid)
+        canvas.drawText("Thank You !", cx, y, pThank)
+        canvas.drawLine(cx + 98f, y - 8f, width - pad, y - 8f, pSolid)
+
+        y += 26f
+        canvas.drawText("Visit Again...", cx, y, pVisit)
+
+        val finalHeight = (y + 30f).toInt().coerceAtLeast(820).coerceAtMost(height)
+        return Bitmap.createBitmap(bmp, 0, 0, width, finalHeight)
+    }
+
+    private fun promptWhatsappJpgAfterSave(recNo: String, custName: String, phone: String, receiptBitmap: Bitmap) {
+        AlertDialog.Builder(this)
+            .setTitle("Receipt $recNo Saved")
+            .setMessage("Send 3-inch JPG receipt to $custName on WhatsApp / Printer now?")
+            .setPositiveButton("SEND JPG RECEIPT") { _, _ ->
+                shareBitmapJpgToWhatsapp(receiptBitmap, recNo, phone)
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    private fun shareBitmapJpgToWhatsapp(bitmap: Bitmap, recNo: String, rawPhone: String) {
+        try {
+            val safeRec = recNo.replace("[^A-Za-z0-9_-]".toRegex(), "_")
+            val fileName = "Receipt_${safeRec}_${System.currentTimeMillis()}.jpg"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VeggieBills")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val resolver = contentResolver
+            val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (imageUri == null) {
+                Toast.makeText(this, "Unable to create JPG file", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            resolver.openOutputStream(imageUri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                out.flush()
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(imageUri, values, null, null)
+            }
+
+            val digitsOnly = rawPhone.replace("[^0-9]".toRegex(), "")
+            val formattedPhone = when {
+                digitsOnly.length == 10 -> "91$digitsOnly"
+                digitsOnly.length == 11 && digitsOnly.startsWith("0") -> "91${digitsOnly.substring(1)}"
+                digitsOnly.length >= 12 -> digitsOnly
+                else -> ""
+            }
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, imageUri)
+                if (formattedPhone.isNotEmpty()) {
+                    putExtra("jid", "$formattedPhone@s.whatsapp.net")
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            try {
+                shareIntent.setPackage("com.whatsapp")
+                startActivity(shareIntent)
+            } catch (e: Exception) {
+                try {
+                    shareIntent.setPackage("com.whatsapp.w4b")
+                    startActivity(shareIntent)
+                } catch (ex: Exception) {
+                    shareIntent.setPackage(null)
+                    startActivity(Intent.createChooser(shareIntent, "Send / Print 3-Inch Receipt JPG"))
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error sharing JPG receipt: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun clearJsonArray(arr: JSONArray) {
         while (arr.length() > 0) arr.remove(0)
     }
 
-    private fun applyReceiptBillUpdates(totalSettled: Double) {
+    private fun applyReceiptBillUpdates(
+        totalSettled: Double,
+        recNo: String,
+        targetCustName: String,
+        targetPhone: String,
+        receiptBitmap: Bitmap
+    ) {
         for (b in pendingBills) {
             if (b.allocatedNow > 0.0) {
                 val newPaid = b.alreadyPaid + b.allocatedNow
@@ -248,6 +636,7 @@ class SalesReceiptActivity : AppCompatActivity() {
                 clearJsonArray(oldAllocationsJson)
                 resetForm()
                 if (isEditMode) loadReceiptsForEditFilter()
+                promptWhatsappJpgAfterSave(recNo, targetCustName, targetPhone, receiptBitmap)
             }
     }
 
@@ -463,8 +852,9 @@ class SalesReceiptActivity : AppCompatActivity() {
         selectedCustomerName = cName
         targetSpecificBillDocId = ""
 
-        val foundCust = customerList.find { it.id == oldReceiptCustomerId }
+        val foundCust = customerList.find { it.id == oldReceiptCustomerId || it.name.equals(cName, ignoreCase = true) }
         selectedCustomerOpBal = foundCust?.opBal ?: 0.0
+        selectedCustomerPhone = foundCust?.phone ?: ""
 
         binding.etRecDate.setText(rDate)
         binding.etRecNo.setText(rNo)
@@ -565,6 +955,7 @@ class SalesReceiptActivity : AppCompatActivity() {
             val chosen = filtered[position]
             selectedCustomerId = chosen.id
             selectedCustomerName = chosen.name
+            selectedCustomerPhone = chosen.phone
             selectedCustomerOpBal = chosen.opBal
             targetSpecificBillDocId = ""
             binding.etSearchCustomer.setText(chosen.name)
@@ -732,9 +1123,10 @@ class SalesReceiptActivity : AppCompatActivity() {
 
             for (doc in snap) {
                 val name = doc.getString("name") ?: continue
+                val phone = doc.getString("contact") ?: doc.getString("phone") ?: ""
                 val bal = doc.getDouble("currentBalance") ?: 0.0
                 val opBal = doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0
-                customerList.add(CustomerItem(doc.id, name, bal, opBal))
+                customerList.add(CustomerItem(doc.id, name, phone, bal, opBal))
                 editFilterCustomerList.add(name)
             }
             customerList.sortBy { it.name.lowercase(Locale.getDefault()) }
@@ -748,6 +1140,7 @@ class SalesReceiptActivity : AppCompatActivity() {
     private fun resetForm() {
         selectedCustomerId = ""
         selectedCustomerName = ""
+        selectedCustomerPhone = ""
         selectedCustomerOpBal = 0.0
         calculatedTotalOutstanding = 0.0
         targetSpecificBillDocId = ""
