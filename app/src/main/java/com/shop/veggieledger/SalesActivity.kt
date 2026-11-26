@@ -331,7 +331,7 @@ class SalesActivity : AppCompatActivity() {
 
             binding.btnSaveSalesBill.isEnabled = false
 
-            // Generate JPG receipt bitmap before resetting form
+            // Generate 3-inch thermal JPG receipt bitmap before resetting form
             val billBitmap = generateBillReceiptBitmap()
             val targetPhone = selectedCustomerPhone
             val targetCustName = selectedCustomerName
@@ -519,7 +519,7 @@ class SalesActivity : AppCompatActivity() {
         val insertIdx = parent.indexOfChild(binding.btnSaveSalesBill) + 1
 
         btnSendWhatsappBill = Button(this)
-        btnSendWhatsappBill.text = "SEND JPG BILL ON WHATSAPP"
+        btnSendWhatsappBill.text = "SEND JPG BILL (3-INCH THERMAL / WHATSAPP)"
         btnSendWhatsappBill.setBackgroundColor(Color.parseColor("#25D366"))
         btnSendWhatsappBill.setTextColor(Color.WHITE)
         btnSendWhatsappBill.setTypeface(null, Typeface.BOLD)
@@ -548,15 +548,15 @@ class SalesActivity : AppCompatActivity() {
     }
 
     /**
-     * Generates a crisp JPG receipt image matching the THIRUVENI COCONUTS template
-     * with clean, compact font sizes.
+     * Generates a 3-inch Thermal Printer ready (576px wide at 203 DPI) JPG receipt
+     * matching the THIRUVENI COCONUTS template with compact, crisp fonts.
      */
     private fun generateBillReceiptBitmap(): Bitmap {
-        val width = 760
-        val pad = 28f
+        val width = 576 // Standard 3-inch (80mm roll / 72mm print area) thermal width
+        val pad = 16f
         val itemCount = billItemsArray.length().coerceAtLeast(1)
 
-        val height = (610 + (itemCount * 42)).coerceAtLeast(660)
+        val height = (520 + (itemCount * 36)).coerceAtLeast(560)
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(Color.WHITE)
@@ -566,98 +566,98 @@ class SalesActivity : AppCompatActivity() {
         val italicBold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD_ITALIC)
         val italicReg = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
 
-        val pTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pTitle = Paint().apply {
             color = Color.BLACK
-            textSize = 36f
+            textSize = 30f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
-        val pSub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pSub = Paint().apply {
             color = Color.BLACK
-            textSize = 20f
+            textSize = 17f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
-        val pPhoneLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pPhoneLeft = Paint().apply {
             color = Color.BLACK
-            textSize = 22f
+            textSize = 18f
             typeface = boldType
             textAlign = Paint.Align.LEFT
         }
-        val pPhoneRight = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pPhoneRight = Paint().apply {
             color = Color.BLACK
-            textSize = 22f
+            textSize = 18f
             typeface = boldType
             textAlign = Paint.Align.RIGHT
         }
-        val pBodyBold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pBodyBold = Paint().apply {
             color = Color.BLACK
-            textSize = 21f
+            textSize = 17f
             typeface = boldType
             textAlign = Paint.Align.LEFT
         }
-        val pBodyReg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pBodyReg = Paint().apply {
             color = Color.BLACK
-            textSize = 20f
+            textSize = 16.5f
             typeface = regType
             textAlign = Paint.Align.LEFT
         }
-        val pBodyRightReg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pBodyRightReg = Paint().apply {
             color = Color.BLACK
-            textSize = 20f
+            textSize = 16.5f
             typeface = regType
             textAlign = Paint.Align.RIGHT
         }
-        val pBodyRightBold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pBodyRightBold = Paint().apply {
             color = Color.BLACK
-            textSize = 21f
+            textSize = 17f
             typeface = boldType
             textAlign = Paint.Align.RIGHT
         }
-        val pDash = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pDash = Paint().apply {
             color = Color.BLACK
             strokeWidth = 2f
             style = Paint.Style.STROKE
-            pathEffect = DashPathEffect(floatArrayOf(10f, 6f), 0f)
+            pathEffect = DashPathEffect(floatArrayOf(8f, 5f), 0f)
         }
-        val pSolid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pSolid = Paint().apply {
             color = Color.BLACK
-            strokeWidth = 2.5f
+            strokeWidth = 2f
             style = Paint.Style.STROKE
         }
 
         val cx = width / 2f
-        var y = 46f
+        var y = 36f
 
-        // 1. Header
+        // 1. Shop Header
         canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
-        y += 28f
+        y += 23f
         canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
-        y += 24f
+        y += 20f
         canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
-        y += 30f
+        y += 25f
         canvas.drawText("9841666651", pad, y, pPhoneLeft)
         canvas.drawText("9840457613", width - pad, y, pPhoneRight)
 
-        y += 14f
+        y += 11f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 2. Name & Date
-        y += 28f
-        val custDisplay = selectedCustomerName.ifEmpty { "Cash Customer" }
+        // 2. Customer Name & Date
+        y += 24f
+        val custDisplay = selectedCustomerName.ifEmpty { "Cash Customer" }.take(22)
         canvas.drawText("Name : $custDisplay", pad, y, pBodyBold)
         canvas.drawText("Date : $selectedDateStr", width - pad, y, pBodyRightBold)
-        canvas.drawLine(pad + 72f, y + 5f, 430f, y + 5f, pSolid)
-        canvas.drawLine(width - 175f, y + 5f, width - pad, y + 5f, pSolid)
+        canvas.drawLine(pad + 58f, y + 4f, 345f, y + 4f, pSolid)
+        canvas.drawLine(width - 142f, y + 4f, width - pad, y + 4f, pSolid)
 
-        y += 16f
+        y += 13f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 3. Table Column Headers: Item | Qty (Kgs) | Rate | Amount
-        y += 26f
+        // 3. Column Headers: Item | Qty (Kgs) | Rate | Amount
+        y += 22f
         val colItemX = pad
-        val colQtyX = 435f
-        val colRateX = 565f
+        val colQtyX = 335f
+        val colRateX = 435f
         val colAmtX = width - pad
 
         canvas.drawText("Item", colItemX, y, pBodyBold)
@@ -665,13 +665,13 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawText("Rate", colRateX, y, pBodyRightBold)
         canvas.drawText("Amount", colAmtX, y, pBodyRightBold)
 
-        y += 12f
+        y += 10f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         // 4. Item Rows
         var calcBillTotal = 0.0
         for (i in 0 until billItemsArray.length()) {
-            y += 30f
+            y += 26f
             val obj = billItemsArray.getJSONObject(i)
             val iName = obj.getString("itemName")
             val bgs = obj.getInt("bags")
@@ -687,16 +687,16 @@ class SalesActivity : AppCompatActivity() {
             }
             val effectiveRate = if (kgs > 0.0) (rowTot / kgs) else rt
 
-            canvas.drawText(label, colItemX, y, pBodyReg)
+            canvas.drawText(label.take(20), colItemX, y, pBodyReg)
             canvas.drawText(String.format(Locale.getDefault(), "%.2f", kgs), colQtyX, y, pBodyRightReg)
             canvas.drawText(String.format(Locale.getDefault(), "%.2f", effectiveRate), colRateX, y, pBodyRightReg)
             canvas.drawText(String.format(Locale.getDefault(), "%.2f", rowTot), colAmtX, y, pBodyRightReg)
         }
 
-        y += 16f
+        y += 13f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 5. Totals & Balance Summary matching template
+        // 5. Totals & Balance Summary
         val payMode = binding.spSalesPayMode.selectedItem?.toString() ?: "Credit"
         val isCredit = payMode.equals("Credit", ignoreCase = true)
 
@@ -706,100 +706,110 @@ class SalesActivity : AppCompatActivity() {
         val discountAmt = 0.0
         val closingBal = (docTotal - receivedAmt - discountAmt).coerceAtLeast(0.0)
 
-        val labelX = 485f
-        val colonX = 505f
+        val labelX = 375f
+        val colonX = 392f
         val valX = width - pad
 
-        pBodyBold.textAlign = Paint.Align.RIGHT
-        pBodyReg.textAlign = Paint.Align.RIGHT
+        val pLabelBold = Paint().apply {
+            color = Color.BLACK
+            textSize = 17f
+            typeface = boldType
+            textAlign = Paint.Align.RIGHT
+        }
+        val pLabelReg = Paint().apply {
+            color = Color.BLACK
+            textSize = 16.5f
+            typeface = regType
+            textAlign = Paint.Align.RIGHT
+        }
 
-        y += 28f
-        canvas.drawText("Total", labelX, y, pBodyBold)
-        canvas.drawText(":", colonX, y, pBodyBold)
-        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", calcBillTotal), valX, y, pBodyRightBold)
+        y += 24f
+        canvas.drawText("Total", labelX, y, pLabelBold)
+        canvas.drawText(":", colonX, y, pLabelBold)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", calcBillTotal), valX, y, pBodyRightBold)
 
-        y += 28f
-        canvas.drawText("Op. Bal", labelX, y, pBodyReg)
-        canvas.drawText(":", colonX, y, pBodyReg)
-        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", opBal), valX, y, pBodyRightReg)
+        y += 23f
+        canvas.drawText("Op. Bal", labelX, y, pLabelReg)
+        canvas.drawText(":", colonX, y, pLabelReg)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", opBal), valX, y, pBodyRightReg)
+
+        y += 8f
+        canvas.drawLine(210f, y, width - pad, y, pSolid)
+
+        y += 22f
+        canvas.drawText("Doc Total", labelX, y, pLabelBold)
+        canvas.drawText(":", colonX, y, pLabelBold)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", docTotal), valX, y, pBodyRightBold)
 
         y += 10f
-        canvas.drawLine(280f, y, width - pad, y, pSolid)
-
-        y += 26f
-        canvas.drawText("Doc Total", labelX, y, pBodyBold)
-        canvas.drawText(":", colonX, y, pBodyBold)
-        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", docTotal), valX, y, pBodyRightBold)
-
-        y += 12f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        y += 28f
-        canvas.drawText("Received Amount", labelX, y, pBodyReg)
-        canvas.drawText(":", colonX, y, pBodyReg)
-        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", receivedAmt), valX, y, pBodyRightReg)
+        y += 23f
+        canvas.drawText("Received Amount", labelX, y, pLabelReg)
+        canvas.drawText(":", colonX, y, pLabelReg)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", receivedAmt), valX, y, pBodyRightReg)
 
-        y += 26f
-        canvas.drawText("Discount", labelX, y, pBodyReg)
-        canvas.drawText(":", colonX, y, pBodyReg)
-        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", discountAmt), valX, y, pBodyRightReg)
+        y += 22f
+        canvas.drawText("Discount", labelX, y, pLabelReg)
+        canvas.drawText(":", colonX, y, pLabelReg)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", discountAmt), valX, y, pBodyRightReg)
 
-        y += 10f
+        y += 8f
         canvas.drawLine(pad, y, width - pad, y, pSolid)
 
-        y += 28f
-        canvas.drawText("Closing Bal", labelX, y, pBodyBold)
-        canvas.drawText(":", colonX, y, pBodyBold)
-        canvas.drawText(String.format(Locale.getDefault(), "₹ %,.2f", closingBal), valX, y, pBodyRightBold)
+        y += 23f
+        canvas.drawText("Closing Bal", labelX, y, pLabelBold)
+        canvas.drawText(":", colonX, y, pLabelBold)
+        canvas.drawText(String.format(Locale.getDefault(), "Rs. %,.2f", closingBal), valX, y, pBodyRightBold)
 
-        y += 12f
+        y += 10f
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
-        // 6. Payment & Footer
-        y += 30f
-        val pGpay = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // 6. Payment Details & Footer
+        y += 25f
+        val pGpay = Paint().apply {
             color = Color.BLACK
-            textSize = 24f
+            textSize = 20f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
-        val pAcc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pAcc = Paint().apply {
             color = Color.BLACK
-            textSize = 19f
+            textSize = 15.5f
             typeface = boldType
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText("GPay No : 9841666651", cx, y, pGpay)
-        y += 26f
+        y += 22f
         canvas.drawText("A/c No : ATE TOMATO WHOLESALE MERCHANT", cx, y, pAcc)
 
-        y += 36f
-        val pThank = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        y += 30f
+        val pThank = Paint().apply {
             color = Color.BLACK
-            textSize = 28f
+            textSize = 24f
             typeface = italicBold
             textAlign = Paint.Align.CENTER
         }
-        val pVisit = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val pVisit = Paint().apply {
             color = Color.BLACK
-            textSize = 22f
+            textSize = 19f
             typeface = italicReg
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawLine(pad, y - 9f, cx - 125f, y - 9f, pSolid)
+        canvas.drawLine(pad, y - 7f, cx - 95f, y - 7f, pSolid)
         canvas.drawText("Thank You !", cx, y, pThank)
-        canvas.drawLine(cx + 125f, y - 9f, width - pad, y - 9f, pSolid)
+        canvas.drawLine(cx + 95f, y - 7f, width - pad, y - 7f, pSolid)
 
-        y += 26f
+        y += 22f
         canvas.drawText("Visit Again...", cx, y, pVisit)
 
-        return Bitmap.createBitmap(bmp, 0, 0, width, (y + 24f).toInt().coerceAtMost(height))
+        return Bitmap.createBitmap(bmp, 0, 0, width, (y + 20f).toInt().coerceAtMost(height))
     }
 
     private fun promptWhatsappJpgAfterSave(billNo: String, custName: String, phone: String, billBitmap: Bitmap) {
         AlertDialog.Builder(this)
             .setTitle("Bill $billNo Saved")
-            .setMessage("Send JPG bill receipt to $custName on WhatsApp now?")
+            .setMessage("Send 3-inch JPG bill receipt to $custName on WhatsApp / Printer now?")
             .setPositiveButton("SEND JPG BILL") { _, _ ->
                 shareBitmapJpgToWhatsapp(billBitmap, billNo, phone)
             }
@@ -865,7 +875,7 @@ class SalesActivity : AppCompatActivity() {
                     startActivity(shareIntent)
                 } catch (ex: Exception) {
                     shareIntent.setPackage(null)
-                    startActivity(Intent.createChooser(shareIntent, "Send Bill JPG"))
+                    startActivity(Intent.createChooser(shareIntent, "Send / Print 3-Inch Bill JPG"))
                 }
             }
         } catch (e: Exception) {
