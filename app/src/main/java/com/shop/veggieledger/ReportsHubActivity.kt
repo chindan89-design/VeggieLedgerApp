@@ -113,6 +113,7 @@ class ReportsHubActivity : AppCompatActivity() {
     private fun getReportTitle(type: String): String {
         return when (type) {
             "DAILY_CLOSING" -> "Daily Account Closing (11 Steps)"
+            "PUR_WISE_SALES" -> "Purchase-wise Sales Report (Lot Tracking)"
             "PUR_SUPPLIER" -> "Supplier-wise Purchase Report"
             "PUR_DETAILS" -> "Purchase Bill Details"
             "PUR_ITEMWISE" -> "Itemwise Purchase Report"
@@ -134,16 +135,25 @@ class ReportsHubActivity : AppCompatActivity() {
         mainCol.orientation = LinearLayout.VERTICAL
         rootScroll.addView(mainCol)
 
-        val btnDailyClosing = Button(this)
-        btnDailyClosing.text = "DAILY ACCOUNT CLOSING REPORT (11 STEPS)"
-        btnDailyClosing.setBackgroundColor(Color.parseColor("#E65100"))
-        btnDailyClosing.setTextColor(Color.WHITE)
-        btnDailyClosing.setTypeface(null, Typeface.BOLD)
-        val dcLp = LinearLayout.LayoutParams(
+        // Quick Shortcut Row: Daily Closing & Purchase-wise Sales Report
+        val quickBtnRow = LinearLayout(this)
+        quickBtnRow.orientation = LinearLayout.HORIZONTAL
+        quickBtnRow.weightSum = 2f
+        val qLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        dcLp.setMargins(0, 0, 0, 12)
+        qLp.setMargins(0, 0, 0, 12)
+        quickBtnRow.layoutParams = qLp
+
+        val btnDailyClosing = Button(this)
+        btnDailyClosing.text = "DAILY CLOSING (11 STEPS)"
+        btnDailyClosing.setBackgroundColor(Color.parseColor("#E65100"))
+        btnDailyClosing.setTextColor(Color.WHITE)
+        btnDailyClosing.setTypeface(null, Typeface.BOLD)
+        btnDailyClosing.textSize = 11.5f
+        val dcLp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        dcLp.setMargins(0, 0, 4, 0)
         btnDailyClosing.layoutParams = dcLp
         btnDailyClosing.setOnClickListener {
             reportType = "DAILY_CLOSING"
@@ -156,7 +166,28 @@ class ReportsHubActivity : AppCompatActivity() {
             fromDateStr = toDateStr
             runReport()
         }
-        mainCol.addView(btnDailyClosing)
+
+        val btnPurWiseSales = Button(this)
+        btnPurWiseSales.text = "PURCHASE-WISE SALES"
+        btnPurWiseSales.setBackgroundColor(Color.parseColor("#1565C0"))
+        btnPurWiseSales.setTextColor(Color.WHITE)
+        btnPurWiseSales.setTypeface(null, Typeface.BOLD)
+        btnPurWiseSales.textSize = 11.5f
+        val pwsLp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        pwsLp.setMargins(4, 0, 0, 0)
+        btnPurWiseSales.layoutParams = pwsLp
+        btnPurWiseSales.setOnClickListener {
+            reportType = "PUR_WISE_SALES"
+            supportActionBar?.title = getReportTitle(reportType)
+            tvTitle.text = "PURCHASE-WISE SALES REPORT"
+            toCol.visibility = View.VISIBLE
+            lblFrom.text = "2. From Date"
+            setupPartyDropdownIfNeeded()
+        }
+
+        quickBtnRow.addView(btnDailyClosing)
+        quickBtnRow.addView(btnPurWiseSales)
+        mainCol.addView(quickBtnRow)
 
         val filterCard = LinearLayout(this)
         filterCard.orientation = LinearLayout.VERTICAL
@@ -407,6 +438,48 @@ class ReportsHubActivity : AppCompatActivity() {
             return
         }
 
+        // Purchase-wise Sales Report: Populate Lot / Stock ID + Supplier dropdown
+        if (reportType == "PUR_WISE_SALES") {
+            layoutPartyBox.visibility = View.VISIBLE
+            tvPartyLabel.text = "1. Select Purchase Stock ID / Lot"
+            db.collection("purchases").get().addOnSuccessListener { snap ->
+                partyNames.clear()
+                partyOpBalMap.clear()
+                partyIdMap.clear()
+                partyNames.add("ALL PURCHASE LOTS")
+
+                val sortedDocs = snap.documents.sortedByDescending { doc ->
+                    doc.getLong("timestamp") ?: 0L
+                }
+                for (doc in sortedDocs) {
+                    val bId = (doc.getString("batchId") ?: "").trim()
+                    val sup = (doc.getString("supplierName") ?: "Unknown").trim()
+                    val dt = (doc.getString("date") ?: "").trim()
+                    if (bId.isNotEmpty()) {
+                        val label = "$bId | $sup ($dt)"
+                        if (!partyNames.contains(label)) {
+                            partyNames.add(label)
+                            partyIdMap[label] = bId
+                        }
+                    }
+                }
+
+                val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, partyNames)
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                spPartyFilter.adapter = adapter
+
+                spPartyFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                        runReport()
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>?) {}
+                }
+
+                runReport()
+            }
+            return
+        }
+
         val isPurchase = reportType.startsWith("PUR_")
         val isItemwise = reportType.endsWith("ITEMWISE")
         val isSupplierStatement = (reportType == "PUR_STATEMENT")
@@ -508,14 +581,14 @@ class ReportsHubActivity : AppCompatActivity() {
         tableLayout.addView(tr)
     }
 
-    private fun addCustomerSectionBannerRow(customerName: String, colSpanCount: Int) {
+    private fun addCustomerSectionBannerRow(bannerText: String, colSpanCount: Int) {
         val tr = TableRow(this)
         tr.setBackgroundColor(Color.BLACK)
         val tv = TextView(this)
-        tv.text = "NAME: $customerName"
+        tv.text = bannerText
         tv.setTextColor(Color.parseColor("#0D47A1"))
         tv.setBackgroundColor(Color.parseColor("#E3F2FD"))
-        tv.textSize = 15f
+        tv.textSize = 14f
         tv.setTypeface(null, Typeface.BOLD)
         tv.setPadding(14, 14, 14, 14)
         tv.gravity = Gravity.START
@@ -570,6 +643,7 @@ class ReportsHubActivity : AppCompatActivity() {
         }
 
         when (reportType) {
+            "PUR_WISE_SALES" -> loadPurchaseWiseSalesReport(selectedParty)
             "SAL_CUSTOMER" -> loadGroupedCustomerSalesReport(selectedParty, "CUSTOMER SALES REPORT")
             "SAL_STATEMENT" -> loadGroupedCustomerSalesReport(selectedParty, "CUSTOMER LEDGER STATEMENT")
             "PUR_SUPPLIER" -> loadPartySummaryReport("purchases", "supplierName", selectedParty, "#1565C0")
@@ -578,6 +652,284 @@ class ReportsHubActivity : AppCompatActivity() {
             "PUR_STATEMENT" -> loadLedgerStatement("purchases", "payments", "supplierName", selectedParty, "#1565C0")
             "SAL_DETAILS" -> loadBillDetailsReport("sales", "customerName", selectedParty, "#1B5E20")
             "SAL_ITEMWISE" -> loadItemwiseReport("sales", "#1B5E20")
+        }
+    }
+
+    // =========================================================================
+    // PURCHASE-WISE SALES REPORT (Shows which customers bought each Purchase Lot)
+    // =========================================================================
+    private fun loadPurchaseWiseSalesReport(selectedLotFilter: String) {
+        val isAllLots = selectedLotFilter.equals("ALL PURCHASE LOTS", ignoreCase = true)
+        val filterBatchId = if (isAllLots) "" else (partyIdMap[selectedLotFilter] ?: selectedLotFilter.substringBefore("|").trim())
+
+        tvLeftMeta.text = "PURCHASE LOT: ${if (isAllLots) "ALL LOTS" else filterBatchId}"
+        tvSheetSubTitle.text = "PURCHASE-WISE SALES REPORT (CUSTOMER DISTRIBUTION)"
+
+        val headers = listOf("SALE DATE", "BILL NO", "CUSTOMER NAME", "BAGS", "NET KGS", "RATE", "AMOUNT", "MODE")
+        addHeaderRow(headers, "#1565C0")
+
+        db.collection("purchases").get().addOnSuccessListener { purSnap ->
+            db.collection("sales").get().addOnSuccessListener { salSnap ->
+                db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
+
+                    // Map batchId -> current available stock
+                    val availKgsByBatch = HashMap<String, Double>()
+                    val availBagsByBatch = HashMap<String, Int>()
+                    for (stDoc in stockSnap) {
+                        val bId = (stDoc.getString("batchId") ?: "").trim().uppercase(Locale.getDefault())
+                        if (bId.isNotEmpty()) {
+                            availKgsByBatch[bId] = (availKgsByBatch[bId] ?: 0.0) + (stDoc.getDouble("availableKgs") ?: 0.0)
+                            availBagsByBatch[bId] = (availBagsByBatch[bId] ?: 0) + (stDoc.getLong("availableBags") ?: 0L).toInt()
+                        }
+                    }
+
+                    // Collect all sales entries grouped by batchId (and fallback supplierName+itemName)
+                    val salesByBatch = HashMap<String, ArrayList<JSONObject>>()
+                    val sortedSales = salSnap.documents.sortedBy { it.getLong("timestamp") ?: 0L }
+
+                    for (sDoc in sortedSales) {
+                        val sDate = sDoc.getString("date") ?: ""
+                        val bNo = sDoc.getString("billNo") ?: sDoc.id
+                        val cName = sDoc.getString("customerName") ?: "Unknown Customer"
+                        val pMode = sDoc.getString("payMode") ?: "Credit"
+                        val docBatchId = (sDoc.getString("batchId") ?: sDoc.getString("stockId") ?: "").trim().uppercase(Locale.getDefault())
+                        val docSupName = (sDoc.getString("supplierName") ?: "").trim()
+
+                        val itemsList = sDoc.get("items") as? List<*>
+                        if (itemsList != null && itemsList.isNotEmpty()) {
+                            for (raw in itemsList) {
+                                val m = raw as? Map<*, *> ?: continue
+                                val iName = m["itemName"]?.toString() ?: ""
+                                val itemBatch = (m["batchId"]?.toString() ?: m["stockId"]?.toString() ?: docBatchId).trim().uppercase(Locale.getDefault())
+                                val itemSup = (m["supplierName"]?.toString() ?: docSupName).trim()
+                                val bags = (m["bags"] as? Number)?.toInt() ?: 0
+                                val kgs = (m["netKgs"] as? Number)?.toDouble() ?: (m["kgs"] as? Number)?.toDouble() ?: 0.0
+                                val rate = (m["rate"] as? Number)?.toDouble() ?: 0.0
+                                val amt = ((m["amount"] as? Number)?.toDouble() ?: 0.0) +
+                                        ((m["bagCharge"] as? Number)?.toDouble() ?: 0.0) +
+                                        ((m["weighCoolie"] as? Number)?.toDouble() ?: 0.0)
+
+                                val key = if (itemBatch.isNotEmpty()) itemBatch else "SUP_${itemSup.uppercase(Locale.getDefault())}_${iName.uppercase(Locale.getDefault())}"
+                                val list = salesByBatch.getOrPut(key) { arrayListOf() }
+                                val obj = JSONObject()
+                                obj.put("date", sDate)
+                                obj.put("billNo", bNo)
+                                obj.put("customerName", cName)
+                                obj.put("bags", bags)
+                                obj.put("netKgs", kgs)
+                                obj.put("rate", rate)
+                                obj.put("amount", amt)
+                                obj.put("payMode", pMode)
+                                list.add(obj)
+                            }
+                        } else {
+                            val iName = sDoc.getString("itemName") ?: ""
+                            val bags = (sDoc.getLong("bags") ?: 0L).toInt()
+                            val kgs = sDoc.getDouble("netKgs") ?: 0.0
+                            val tot = sDoc.getDouble("grandTotal") ?: 0.0
+                            val rate = if (kgs > 0.0) tot / kgs else 0.0
+
+                            val key = if (docBatchId.isNotEmpty()) docBatchId else "SUP_${docSupName.uppercase(Locale.getDefault())}_${iName.uppercase(Locale.getDefault())}"
+                            val list = salesByBatch.getOrPut(key) { arrayListOf() }
+                            val obj = JSONObject()
+                            obj.put("date", sDate)
+                            obj.put("billNo", bNo)
+                            obj.put("customerName", cName)
+                            obj.put("bags", bags)
+                            obj.put("netKgs", kgs)
+                            obj.put("rate", rate)
+                            obj.put("amount", tot)
+                            obj.put("payMode", pMode)
+                            list.add(obj)
+                        }
+                    }
+
+                    val sortedPurchases = purSnap.documents.sortedByDescending { it.getLong("timestamp") ?: 0L }
+
+                    var grandPurKgs = 0.0
+                    var grandSoldKgs = 0.0
+                    var grandSoldAmt = 0.0
+                    var rowIdx = 0
+
+                    val htmlSections = StringBuilder()
+                    val shareSb = StringBuilder("PURCHASE-WISE SALES REPORT ($fromDateStr TO $toDateStr)\n\n")
+
+                    for (pDoc in sortedPurchases) {
+                        val pDate = pDoc.getString("date") ?: ""
+                        val bId = (pDoc.getString("batchId") ?: "").trim().uppercase(Locale.getDefault())
+                        val supName = pDoc.getString("supplierName") ?: "Unknown Supplier"
+                        val purBillNo = pDoc.getString("billNo") ?: ""
+
+                        if (!isAllLots) {
+                            if (!bId.equals(filterBatchId, ignoreCase = true)) continue
+                        } else {
+                            if (!isDateInRange(pDate)) continue
+                        }
+
+                        var purItemName = ""
+                        var purTotalBags = 0
+                        var purTotalKgs = 0.0
+                        var purAvgRate = 0.0
+
+                        val pItems = pDoc.get("items") as? List<*>
+                        if (pItems != null && pItems.isNotEmpty()) {
+                            for (raw in pItems) {
+                                val m = raw as? Map<*, *> ?: continue
+                                if (purItemName.isEmpty()) purItemName = m["itemName"]?.toString() ?: ""
+                                purTotalBags += (m["bags"] as? Number)?.toInt() ?: 0
+                                purTotalKgs += (m["netKgs"] as? Number)?.toDouble() ?: 0.0
+                                purAvgRate = (m["ratePerKg"] as? Number)?.toDouble() ?: (m["rate"] as? Number)?.toDouble() ?: 0.0
+                            }
+                        }
+
+                        val fallbackKey = "SUP_${supName.uppercase(Locale.getDefault())}_${purItemName.uppercase(Locale.getDefault())}"
+                        val matchedSales = salesByBatch[bId] ?: salesByBatch[fallbackKey] ?: arrayListOf()
+
+                        var lotSoldBags = 0
+                        var lotSoldKgs = 0.0
+                        var lotSoldAmt = 0.0
+                        for (sObj in matchedSales) {
+                            lotSoldBags += sObj.optInt("bags", 0)
+                            lotSoldKgs += sObj.optDouble("netKgs", 0.0)
+                            lotSoldAmt += sObj.optDouble("amount", 0.0)
+                        }
+
+                        val balKgs = availKgsByBatch[bId] ?: (purTotalKgs - lotSoldKgs).coerceAtLeast(0.0)
+                        val isCoconut = purItemName.equals("Coconut", ignoreCase = true)
+
+                        val purQtyText = if (isCoconut || purTotalBags <= 0) {
+                            "${fmtVal(purTotalKgs)} Kgs"
+                        } else {
+                            "$purTotalBags Bags / ${fmtVal(purTotalKgs)} Kgs"
+                        }
+
+                        val bannerTitle = "LOT: $bId ($pDate) | Supplier: $supName | Item: $purItemName | Pur: $purQtyText @ Rs.${fmtVal(purAvgRate)} | Sold: ${fmtVal(lotSoldKgs)} Kgs | Bal: ${fmtVal(balKgs)} Kgs"
+                        addCustomerSectionBannerRow(bannerTitle, 8)
+
+                        val secHtml = StringBuilder()
+                        secHtml.append("<tr class='custbanner'><td colspan='8'>$bannerTitle</td></tr>")
+                        shareSb.append("=== $bannerTitle ===\n")
+
+                        grandPurKgs += purTotalKgs
+                        grandSoldKgs += lotSoldKgs
+                        grandSoldAmt += lotSoldAmt
+
+                        if (matchedSales.isEmpty()) {
+                            addDataRow(
+                                listOf("-", purBillNo, "No sales recorded from this lot yet", "-", "-", "-", "-", "-"),
+                                rowIdx++,
+                                rightAlignFromIndex = 3
+                            )
+                            secHtml.append("<tr><td class='center'>-</td><td class='center'>$purBillNo</td><td class='left'>No sales recorded from this lot yet</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>")
+                            shareSb.append("No sales recorded yet.\n\n")
+                        } else {
+                            for (sObj in matchedSales) {
+                                val sDate = sObj.optString("date", "")
+                                val sBill = sObj.optString("billNo", "")
+                                val cName = sObj.optString("customerName", "")
+                                val sBags = sObj.optInt("bags", 0)
+                                val sKgs = sObj.optDouble("netKgs", 0.0)
+                                val sRate = sObj.optDouble("rate", 0.0)
+                                val sAmt = sObj.optDouble("amount", 0.0)
+                                val sMode = sObj.optString("payMode", "")
+
+                                val bagStr = if (isCoconut || sBags <= 0) "-" else "$sBags"
+
+                                addDataRow(
+                                    listOf(sDate, sBill, cName, bagStr, fmtVal(sKgs), fmtVal(sRate), fmtVal(sAmt), sMode),
+                                    rowIdx++,
+                                    rightAlignFromIndex = 3
+                                )
+                                secHtml.append("<tr><td class='center'>$sDate</td><td class='center'>$sBill</td><td class='left'>$cName</td><td>$bagStr</td><td>${fmtVal(sKgs)}</td><td>${fmtVal(sRate)}</td><td class='bold'>${fmtVal(sAmt)}</td><td class='center'>$sMode</td></tr>")
+                                shareSb.append("$sDate | $sBill | $cName | ${fmtVal(sKgs)} Kgs @ ${fmtVal(sRate)} = Rs. ${fmtVal(sAmt)} ($sMode)\n")
+                            }
+
+                            val subBagStr = if (isCoconut || lotSoldBags <= 0) "-" else "$lotSoldBags"
+                            addDataRow(
+                                listOf("LOT TOTAL", "-", "Customers: ${matchedSales.size}", subBagStr, fmtVal(lotSoldKgs), "-", fmtVal(lotSoldAmt), "Bal: ${fmtVal(balKgs)} Kg"),
+                                rowIdx++,
+                                rightAlignFromIndex = 3,
+                                isSubTotalRow = true
+                            )
+                            secHtml.append("<tr class='subtotal'><td class='left'>LOT TOTAL</td><td>-</td><td class='left'>Customers: ${matchedSales.size}</td><td>$subBagStr</td><td>${fmtVal(lotSoldKgs)}</td><td>-</td><td>${fmtVal(lotSoldAmt)}</td><td class='center'>Bal: ${fmtVal(balKgs)}</td></tr>")
+                            shareSb.append("LOT SOLD: ${fmtVal(lotSoldKgs)} Kgs | Rs. ${fmtVal(lotSoldAmt)} | BAL STOCK: ${fmtVal(balKgs)} Kgs\n\n")
+                        }
+
+                        htmlSections.append("<tbody>$secHtml</tbody>")
+                    }
+
+                    addDataRow(
+                        listOf("GRAND TOTAL", "-", "Pur: ${fmtVal(grandPurKgs)} Kg", "-", fmtVal(grandSoldKgs), "-", fmtVal(grandSoldAmt), "-"),
+                        rowIdx,
+                        rightAlignFromIndex = 3,
+                        isTotalRow = true
+                    )
+                    htmlSections.append("<tbody><tr class='total'><td class='left'>GRAND TOTAL</td><td>-</td><td class='left'>Pur: ${fmtVal(grandPurKgs)} Kg</td><td>-</td><td>${fmtVal(grandSoldKgs)}</td><td>-</td><td>${fmtVal(grandSoldAmt)}</td><td>-</td></tr></tbody>")
+
+                    tvSummary.text = String.format(
+                        Locale.getDefault(),
+                        "Purchased: %s Kgs  |  Sold: %s Kgs  |  Sales Value: Rs. %s",
+                        fmtVal(grandPurKgs), fmtVal(grandSoldKgs), fmtVal(grandSoldAmt)
+                    )
+                    shareReportText = shareSb.toString()
+
+                    lastPrintableHtml = """
+                        <html>
+                        <head>
+                        <style>
+                            * { box-sizing: border-box; }
+                            @page { size: A4 portrait; margin: 5mm; }
+                            body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+                            .center { text-align: center !important; }
+                            .left { text-align: left !important; }
+                            .bold { font-weight: bold; }
+                            h1 { font-size: 20px; margin: 0; }
+                            h2 { font-size: 12px; margin: 2px 0 4px 0; }
+                            h3 { font-size: 15px; margin: 3px 0 6px 0; text-decoration: underline; }
+                            .meta { width: 100%; margin-bottom: 6px; font-size: 12.5px; font-weight: bold; }
+                            .meta td { border: none; padding: 2px 0; }
+                            table.grid { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+                            table.grid thead { display: table-header-group; }
+                            table.grid tbody { page-break-inside: avoid; }
+                            table.grid th, table.grid td { border: 1px solid #000; padding: 5px 4px; text-align: right; }
+                            table.grid th { background-color: #E0E0E0; text-align: center; font-weight: bold; }
+                            tr.custbanner td { text-align: left !important; font-weight: bold; background-color: #E3F2FD; color: #0D47A1; font-size: 12px; padding: 6px; }
+                            tr.subtotal td { font-weight: bold; background-color: #FFFDE7; border-top: 1.5px solid #000; }
+                            tr.total td { font-weight: bold; background-color: #E8F5E9; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 12px; }
+                        </style>
+                        </head>
+                        <body>
+                            <div class="center">
+                                <h1>THIRUVENI COCONUTS</h1>
+                                <h2>SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU</h2>
+                                <h3>PURCHASE-WISE SALES REPORT</h3>
+                            </div>
+                            <table class="meta">
+                                <tr>
+                                    <td style="text-align:left;">LOT FILTER: ${if (isAllLots) "ALL PURCHASE LOTS" else filterBatchId}</td>
+                                    <td style="text-align:right;">DATE: $fromDateStr TO $toDateStr</td>
+                                </tr>
+                            </table>
+                            <table class="grid">
+                                <thead>
+                                    <tr>
+                                        <th>SALE DATE</th>
+                                        <th>BILL NO</th>
+                                        <th>CUSTOMER NAME</th>
+                                        <th>BAGS</th>
+                                        <th>NET KGS</th>
+                                        <th>RATE</th>
+                                        <th>AMOUNT</th>
+                                        <th>MODE</th>
+                                    </tr>
+                                </thead>
+                                $htmlSections
+                            </table>
+                        </body>
+                        </html>
+                    """.trimIndent()
+                }
+            }
         }
     }
 
@@ -743,7 +1095,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                 db.collection("customers").get().addOnSuccessListener { custSnap ->
                                     db.collection("stock_batches").get().addOnSuccessListener { stockSnap ->
 
-                                        // 1. PURCHASE DETAILS (Line by line: 1st Purchase, 2nd Purchase...)
                                         val purchaseLineRows = arrayListOf<Pair<String, String>>()
                                         val purHtmlRows = StringBuilder()
 
@@ -768,62 +1119,41 @@ class ReportsHubActivity : AppCompatActivity() {
                                                         ?: (m["bags"] as? Number)?.toDouble()
                                                         ?: (m["qtyNos"] as? Number)?.toDouble()
                                                         ?: 0.0
-                                                    val totalKgs = (m["grossKgs"] as? Number)?.toDouble()
+                                                    val totalKgs = (m["purchaseKgs"] as? Number)?.toDouble()
+                                                        ?: (m["grossKgs"] as? Number)?.toDouble()
                                                         ?: (m["totalKgs"] as? Number)?.toDouble()
                                                         ?: (m["kgs"] as? Number)?.toDouble()
                                                         ?: (m["netKgs"] as? Number)?.toDouble()
                                                         ?: 0.0
-                                                    val suit3Pct = (m["suit"] as? Number)?.toDouble()
-                                                        ?: (m["suitKgs"] as? Number)?.toDouble()
-                                                        ?: (totalKgs * 0.03)
                                                     val kudumi = (m["kudumi"] as? Number)?.toDouble()
                                                         ?: (m["kudumiKgs"] as? Number)?.toDouble()
                                                         ?: 0.0
+                                                    val thadukki = (m["thadukki"] as? Number)?.toDouble() ?: 0.0
                                                     val netKgs = (m["netKgs"] as? Number)?.toDouble()
-                                                        ?: (totalKgs - suit3Pct - kudumi).coerceAtLeast(0.0)
-                                                    val rate = (m["rate"] as? Number)?.toDouble() ?: 0.0
-                                                    val lineAmt = (m["amount"] as? Number)?.toDouble() ?: (netKgs * rate)
+                                                        ?: (totalKgs - kudumi - thadukki).coerceAtLeast(0.0)
+                                                    val rate = (m["ratePerKg"] as? Number)?.toDouble()
+                                                        ?: (m["rate"] as? Number)?.toDouble()
+                                                        ?: 0.0
+                                                    val lineAmt = (m["lineTotal"] as? Number)?.toDouble()
+                                                        ?: (m["amount"] as? Number)?.toDouble()
+                                                        ?: (netKgs * rate)
 
                                                     val label = "${ordinalLabel(purCounter)} Purchase - $supName"
                                                     purchaseLineRows.add(label to "SECTION_HEADER")
                                                     purchaseLineRows.add("Today Purchase Nos & Kgs" to "${fmtQty(nos)} Nos  |  ${fmtVal(totalKgs)} Kgs")
-                                                    purchaseLineRows.add("Suit (3%) + Kudumi" to "${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs")
-                                                    purchaseLineRows.add("Net Purchase Kgs (Total - Suit - Kudumi)" to "${fmtVal(netKgs)} Kgs")
+                                                    purchaseLineRows.add("Kudumi + Thadukki" to "${fmtVal(kudumi)} + ${fmtVal(thadukki)} = ${fmtVal(kudumi + thadukki)} Kgs")
+                                                    purchaseLineRows.add("Net Purchase Kgs" to "${fmtVal(netKgs)} Kgs")
                                                     purchaseLineRows.add("Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})" to fmtVal(lineAmt))
 
                                                     purHtmlRows.append("<tr class='subhdr'><td colspan='2'>$label</td></tr>")
                                                     purHtmlRows.append("<tr><td>Today Purchase Nos &amp; Kgs</td><td class='r'>${fmtQty(nos)} Nos | ${fmtVal(totalKgs)} Kgs</td></tr>")
-                                                    purHtmlRows.append("<tr><td>Suit (3%) + Kudumi</td><td class='r'>${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs</td></tr>")
-                                                    purHtmlRows.append("<tr><td>Net Purchase Kgs (Total - Suit - Kudumi)</td><td class='r'>${fmtVal(netKgs)} Kgs</td></tr>")
+                                                    purHtmlRows.append("<tr><td>Kudumi + Thadukki</td><td class='r'>${fmtVal(kudumi)} + ${fmtVal(thadukki)} = ${fmtVal(kudumi + thadukki)} Kgs</td></tr>")
+                                                    purHtmlRows.append("<tr><td>Net Purchase Kgs</td><td class='r'>${fmtVal(netKgs)} Kgs</td></tr>")
                                                     purHtmlRows.append("<tr><td>Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})</td><td class='r'>${fmtVal(lineAmt)}</td></tr>")
 
                                                     todayPurchaseTot += lineAmt
                                                     purCounter++
                                                 }
-                                            } else {
-                                                val nos = (doc.getLong("bags") ?: doc.getLong("nos") ?: 0L).toDouble()
-                                                val totalKgs = doc.getDouble("grossKgs") ?: doc.getDouble("kgs") ?: doc.getDouble("netKgs") ?: 0.0
-                                                val suit3Pct = doc.getDouble("suit") ?: (totalKgs * 0.03)
-                                                val kudumi = doc.getDouble("kudumi") ?: 0.0
-                                                val netKgs = doc.getDouble("netKgs") ?: (totalKgs - suit3Pct - kudumi).coerceAtLeast(0.0)
-                                                val rate = doc.getDouble("rate") ?: (if (netKgs > 0.0) tot / netKgs else 0.0)
-                                                val lineAmt = if (tot > 0.0) tot else (netKgs * rate)
-
-                                                val label = "${ordinalLabel(purCounter)} Purchase - $supName"
-                                                purchaseLineRows.add(label to "SECTION_HEADER")
-                                                purchaseLineRows.add("Today Purchase Nos & Kgs" to "${fmtQty(nos)} Nos  |  ${fmtVal(totalKgs)} Kgs")
-                                                purchaseLineRows.add("Suit (3%) + Kudumi" to "${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs")
-                                                purchaseLineRows.add("Net Purchase Kgs (Total - Suit - Kudumi)" to "${fmtVal(netKgs)} Kgs")
-                                                purchaseLineRows.add("Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})" to fmtVal(lineAmt))
-
-                                                purHtmlRows.append("<tr class='subhdr'><td colspan='2'>$label</td></tr>")
-                                                purHtmlRows.append("<tr><td>Today Purchase Nos &amp; Kgs</td><td class='r'>${fmtQty(nos)} Nos | ${fmtVal(totalKgs)} Kgs</td></tr>")
-                                                purHtmlRows.append("<tr><td>Suit (3%) + Kudumi</td><td class='r'>${fmtVal(suit3Pct)} + ${fmtVal(kudumi)} = ${fmtVal(suit3Pct + kudumi)} Kgs</td></tr>")
-                                                purHtmlRows.append("<tr><td>Net Purchase Kgs (Total - Suit - Kudumi)</td><td class='r'>${fmtVal(netKgs)} Kgs</td></tr>")
-                                                purHtmlRows.append("<tr><td>Net Kgs x Rate = Amount (${fmtVal(netKgs)} x ${fmtVal(rate)})</td><td class='r'>${fmtVal(lineAmt)}</td></tr>")
-
-                                                todayPurchaseTot += lineAmt
-                                                purCounter++
                                             }
                                         }
 
@@ -834,7 +1164,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                         purchaseLineRows.add("Today Total Purchase Amount" to fmtVal(todayPurchaseTot))
                                         purHtmlRows.append("<tr class='hi'><td>Today Total Purchase Amount</td><td class='r'>${fmtVal(todayPurchaseTot)}</td></tr>")
 
-                                        // 2. SUPPLIER OUTSTANDING
                                         var supMasterOp = 0.0
                                         for (doc in supSnap) {
                                             supMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
@@ -854,7 +1183,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                         }
                                         val supplierClosingOut = (supMasterOp + totalPurAll - totalSupPaid).coerceAtLeast(0.0)
 
-                                        // 3. CREDIT BILL RECEIVED (Cash & GPay)
                                         var creditRecCash = 0.0
                                         var creditRecGpay = 0.0
                                         var todayCustDiscount = 0.0
@@ -875,7 +1203,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
 
-                                        // 4. TODAY SALES (Cash, GPay, Credit)
                                         var cashSales = 0.0
                                         var gpaySales = 0.0
                                         var creditSales = 0.0
@@ -892,11 +1219,8 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
                                         val todaySalesTotal = cashSales + gpaySales + creditSales
-
-                                        // 5. CASH RECEIVED
                                         val cashReceivedTotal = cashSales + creditRecCash
 
-                                        // 6. EXPENSES (A. Other, B. Shop, C. Vehicle) & Other Income
                                         var otherExp = 0.0
                                         var shopExp = 0.0
                                         var vehicleExp = 0.0
@@ -921,12 +1245,9 @@ class ReportsHubActivity : AppCompatActivity() {
                                             }
                                         }
                                         val totalExpenses = otherExp + shopExp + vehicleExp
-
-                                        // 7. COLLECTION & TODAY CLOSING BALANCE
                                         val collectionTotal = cashSales + creditRecCash + otherCashIncome
                                         val todayClosingBalance = collectionTotal - totalExpenses
 
-                                        // 8. STOCK INQUIRY
                                         val stockMap = HashMap<String, Pair<Int, Double>>()
                                         for (doc in stockSnap) {
                                             val iName = doc.getString("itemName") ?: continue
@@ -936,10 +1257,8 @@ class ReportsHubActivity : AppCompatActivity() {
                                             stockMap[iName] = Pair(curr.first + bgs, curr.second + kgs)
                                         }
 
-                                        // 9. INCOME DETAILS
                                         val incomeDetailsTotal = cashSales + gpaySales + creditRecCash + creditRecGpay
 
-                                        // 10. CUSTOMER OUTSTANDING (Vertical)
                                         var custMasterOp = 0.0
                                         for (doc in custSnap) {
                                             custMasterOp += (doc.getDouble("opbal") ?: doc.getDouble("openingBalance") ?: 0.0)
@@ -971,7 +1290,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                         val vertOpOut = (custMasterOp + prevSalesAll - prevIncAll - prevDiscAll).coerceAtLeast(0.0)
                                         val vertClosingOut = (vertOpOut + todaySalesTotal - incomeDetailsTotal - todayCustDiscount).coerceAtLeast(0.0)
 
-                                        // 11. PROFIT & LOSS
                                         val netProfitLoss = todaySalesTotal - todayPurchaseTot - totalExpenses - todayCustDiscount
 
                                         tvSummary.text = String.format(
@@ -982,20 +1300,9 @@ class ReportsHubActivity : AppCompatActivity() {
 
                                         closingCardsContainer.removeAllViews()
 
-                                        addClosingTwoColCard(
-                                            "1. PURCHASE DETAILS (LINE BY LINE)",
-                                            purchaseLineRows,
-                                            highlightLast = true
-                                        )
-
-                                        addClosingTwoColCard(
-                                            "2. SUPPLIER OUTSTANDING",
-                                            listOf("Supplier Closing Outstanding" to fmtVal(supplierClosingOut)),
-                                            highlightLast = true
-                                        )
-
+                                        addClosingTwoColCard("1. PURCHASE DETAILS (LINE BY LINE)", purchaseLineRows, highlightLast = true)
+                                        addClosingTwoColCard("2. SUPPLIER OUTSTANDING", listOf("Supplier Closing Outstanding" to fmtVal(supplierClosingOut)), highlightLast = true)
                                         addClosingThreeColCreditRec(creditRecCash, creditRecGpay)
-
                                         addClosingTwoColCard(
                                             "4. TODAY SALES & 5. CASH RECEIVED",
                                             listOf(
@@ -1007,7 +1314,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                             ),
                                             highlightLast = true
                                         )
-
                                         addClosingTwoColCard(
                                             "6. EXPENSES & 7. COLLECTION CLOSING BALANCE",
                                             listOf(
@@ -1023,7 +1329,11 @@ class ReportsHubActivity : AppCompatActivity() {
 
                                         val stockRows = arrayListOf<Pair<String, String>>()
                                         for ((item, pair) in stockMap.toSortedMap()) {
-                                            stockRows.add(item to "${pair.first} Bags  |  ${fmtVal(pair.second)} Kgs")
+                                            if (item.equals("Coconut", ignoreCase = true)) {
+                                                stockRows.add(item to "${fmtVal(pair.second)} Kgs")
+                                            } else {
+                                                stockRows.add(item to "${pair.first} Bags  |  ${fmtVal(pair.second)} Kgs")
+                                            }
                                         }
                                         if (stockRows.isEmpty()) stockRows.add("Stock" to "No active batches")
                                         addClosingTwoColCard("8. STOCK INQUIRY", stockRows)
@@ -1039,7 +1349,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                             ),
                                             highlightLast = true
                                         )
-
                                         addClosingTwoColCard(
                                             "10. CUSTOMER OUTSTANDING (VERTICAL)",
                                             listOf(
@@ -1051,7 +1360,6 @@ class ReportsHubActivity : AppCompatActivity() {
                                             ),
                                             highlightLast = true
                                         )
-
                                         addClosingTwoColCard(
                                             "11. PROFIT AND LOSS",
                                             listOf(
@@ -1238,7 +1546,9 @@ class ReportsHubActivity : AppCompatActivity() {
                                     val bgs = (m["bags"] as? Number)?.toDouble() ?: 0.0
                                     val qtyVal = if (kgs > 0.0) kgs else bgs
                                     val rtVal = (m["rate"] as? Number)?.toDouble() ?: 0.0
-                                    val lineAmt = ((m["amount"] as? Number)?.toDouble() ?: 0.0) + ((m["bagCharge"] as? Number)?.toDouble() ?: 0.0)
+                                    val lineAmt = ((m["amount"] as? Number)?.toDouble() ?: 0.0) +
+                                            ((m["bagCharge"] as? Number)?.toDouble() ?: 0.0) +
+                                            ((m["weighCoolie"] as? Number)?.toDouble() ?: 0.0)
                                     val finalAmt = if (lineAmt > 0.0) lineAmt else gTot
 
                                     val tx = JSONObject()
@@ -1302,7 +1612,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
                         txList.sortBy { obj -> obj.optLong("ts", 0L) }
 
-                        addCustomerSectionBannerRow(custName, 8)
+                        addCustomerSectionBannerRow("NAME: $custName", 8)
                         val custBodyHtml = StringBuilder()
                         custBodyHtml.append("<tr class='custbanner'><td colspan='8'>NAME: $custName</td></tr>")
                         shareSb.append("=== $custName ===\n")
