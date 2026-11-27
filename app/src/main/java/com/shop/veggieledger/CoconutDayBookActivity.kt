@@ -52,7 +52,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
     private var lastTotalExpense: Double = 0.0
     private var lastClosingBal: Double = 0.0
     private val lastCollectionTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
-    private val lastExpenseItems = ArrayList<TreeEntry>()
+    private val lastExpenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
     data class TreeEntry(val label: String, val subInfo: String, val amount: Double)
 
@@ -254,6 +254,38 @@ class CoconutDayBookActivity : AppCompatActivity() {
         return 0.0
     }
 
+    private fun normalizeExpenseCategory(rawCat: String): String {
+        val c = rawCat.trim()
+        if (c.isEmpty()) return "Other Expenses"
+        return when {
+            c.equals("shop", ignoreCase = true) || c.equals("shop expenses", ignoreCase = true) -> "Shop Expenses"
+            c.equals("vehicle", ignoreCase = true) || c.equals("vehicle expenses", ignoreCase = true) -> "Vehicle Expenses"
+            c.equals("other", ignoreCase = true) || c.equals("other expenses", ignoreCase = true) -> "Other Expenses"
+            else -> c
+        }
+    }
+
+    private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
+        val expPart = safeString(doc, "expense")
+            .ifEmpty { safeString(doc, "expenseName") }
+            .ifEmpty { safeString(doc, "account") }
+            .ifEmpty { safeString(doc, "accountName") }
+            .ifEmpty { safeString(doc, "head") }
+            .ifEmpty { categoryLabel }
+
+        val descPart = safeString(doc, "description")
+            .ifEmpty { safeString(doc, "desc") }
+            .ifEmpty { safeString(doc, "remarks") }
+            .ifEmpty { safeString(doc, "particulars") }
+            .ifEmpty { safeString(doc, "note") }
+
+        return if (descPart.isNotEmpty()) {
+            "$expPart - $descPart"
+        } else {
+            expPart
+        }
+    }
+
     private fun loadCoconutDayBook() {
         contentContainer.removeAllViews()
         tvSummaryStrip.text = "Calculating Coconut Day Book for $selectedDateStr..."
@@ -355,19 +387,17 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & Expenses (Account - Description with separate '-')
-                        val expenseItems = ArrayList<TreeEntry>()
+                        // 3. Other Incomes & Separate Category-wise Expenses ("Expense - Description")
+                        val expenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
                         for (eDoc in expSnap.documents) {
                             val dYmd = dateToYmd(safeString(eDoc, "date"))
                             val type = safeString(eDoc, "type", "Expense")
-                            val acc = safeString(eDoc, "account")
-                                .ifEmpty { safeString(eDoc, "accountName") }
-                                .ifEmpty { safeString(eDoc, "category", "Expense") }
-                            val desc = safeString(eDoc, "description")
-                                .ifEmpty { safeString(eDoc, "desc") }
-                                .ifEmpty { safeString(eDoc, "particulars") }
-                                .ifEmpty { safeString(eDoc, "remarks") }
+                            val rawCat = safeString(eDoc, "category")
+                                .ifEmpty { safeString(eDoc, "expenseCategory") }
+                                .ifEmpty { safeString(eDoc, "account") }
+                            val catName = normalizeExpenseCategory(rawCat)
+                            val labelText = formatExpenseAndDescription(eDoc, catName)
                             val amt = safeDouble(eDoc, "amount").let {
                                 if (it > 0.0) it else safeDouble(eDoc, "expenseAmount")
                             }
@@ -375,7 +405,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             if (amt <= 0.0) continue
 
                             if (type.equals("Income", ignoreCase = true)) {
-                                val labelText = if (desc.isNotEmpty()) "$acc - $desc" else acc
                                 if (dYmd in 1 until targetYmd) {
                                     prevCashIn += amt
                                 } else if (dYmd == targetYmd) {
@@ -385,8 +414,8 @@ class CoconutDayBookActivity : AppCompatActivity() {
                                 if (dYmd in 1 until targetYmd) {
                                     prevCashOut += amt
                                 } else if (dYmd == targetYmd) {
-                                    val accountAndDesc = if (desc.isNotEmpty()) "$acc - $desc" else acc
-                                    expenseItems.add(TreeEntry(accountAndDesc, mode, amt))
+                                    val list = expenseCategoryMap.getOrPut(catName) { arrayListOf() }
+                                    list.add(TreeEntry(labelText, mode, amt))
                                 }
                             }
                         }
@@ -400,7 +429,9 @@ class CoconutDayBookActivity : AppCompatActivity() {
                         val todayCollectionTotal = todayCashSalesSum + otherCollectionTotal
 
                         var todayExpenseTotal = 0.0
-                        for (item in expenseItems) todayExpenseTotal += item.amount
+                        for ((_, list) in expenseCategoryMap) {
+                            for (item in list) todayExpenseTotal += item.amount
+                        }
 
                         val totalAvailable = openingBalance + todayCollectionTotal
                         val closingBalance = totalAvailable - todayExpenseTotal
@@ -413,8 +444,8 @@ class CoconutDayBookActivity : AppCompatActivity() {
                         lastClosingBal = closingBalance
                         lastCollectionTree.clear()
                         lastCollectionTree.putAll(collectionTree)
-                        lastExpenseItems.clear()
-                        lastExpenseItems.addAll(expenseItems)
+                        lastExpenseCategoryMap.clear()
+                        lastExpenseCategoryMap.putAll(expenseCategoryMap)
 
                         tvSummaryStrip.text = String.format(
                             Locale.getDefault(),
@@ -428,7 +459,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             collectionTree,
                             todayCollectionTotal,
                             totalAvailable,
-                            expenseItems,
+                            expenseCategoryMap,
                             todayExpenseTotal,
                             closingBalance
                         )
@@ -447,7 +478,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
     }
 
     private fun generateAndShareDayBookPdf() {
-        if (lastCollectionTree.isEmpty() && lastExpenseItems.isEmpty() && abs(lastCashSalesTotal) < 0.005) {
+        if (lastCollectionTree.isEmpty() && lastExpenseCategoryMap.isEmpty() && abs(lastCashSalesTotal) < 0.005) {
             Toast.makeText(this, "Please wait for Day Book data to load", Toast.LENGTH_SHORT).show()
             return
         }
@@ -616,20 +647,35 @@ class CoconutDayBookActivity : AppCompatActivity() {
             canvas.drawText("Rs. ${fmt(lastTotalAvailable)}", pageWidth - margin - 8f, y + 15f, pCatRight)
             y += 30f
 
-            // Expenses section: Account - Description
+            // Expenses section: Separate Category-wise blocks with Expense - Description inside each
             y = newPageIfNeeded(y, 44f)
             pFill.color = Color.parseColor("#C62828")
             canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
             canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
-            canvas.drawText("3. EXPENSES (ACCOUNT - DESCRIPTION)", margin + 8f, y + 15f, pSecHdr)
+            canvas.drawText("3. EXPENSES (CATEGORY-WISE)", margin + 8f, y + 15f, pSecHdr)
             y += 22f
 
-            for (item in lastExpenseItems) {
-                y = newPageIfNeeded(y, 19f)
-                canvas.drawRect(margin, y, pageWidth - margin, y + 19f, pBorder)
-                canvas.drawText(item.label, margin + 10f, y + 13.5f, pChildLeft)
-                canvas.drawText(fmt(item.amount), pageWidth - margin - 8f, y + 13.5f, pChildRight)
-                y += 19f
+            for ((catName, items) in lastExpenseCategoryMap) {
+                y = newPageIfNeeded(y, 22f)
+                var catSum = 0.0
+                for (it in items) catSum += it.amount
+
+                pFill.color = Color.parseColor("#FFEBEE")
+                canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pFill)
+                canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pBorder)
+                pCatLeft.color = Color.parseColor("#C62828")
+                pCatRight.color = Color.BLACK
+                canvas.drawText("$catName (${items.size})", margin + 8f, y + 14f, pCatLeft)
+                canvas.drawText("Rs. ${fmt(catSum)}", pageWidth - margin - 8f, y + 14f, pCatRight)
+                y += 20f
+
+                for (item in items) {
+                    y = newPageIfNeeded(y, 19f)
+                    canvas.drawRect(margin, y, pageWidth - margin, y + 19f, pBorder)
+                    canvas.drawText(item.label, margin + 16f, y + 13.5f, pChildLeft)
+                    canvas.drawText(fmt(item.amount), pageWidth - margin - 8f, y + 13.5f, pChildRight)
+                    y += 19f
+                }
             }
 
             y = newPageIfNeeded(y, 22f)
@@ -724,7 +770,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
         collectionTree: LinkedHashMap<String, ArrayList<TreeEntry>>,
         todayCollection: Double,
         totalWithOpBal: Double,
-        expenseItems: ArrayList<TreeEntry>,
+        expenseCategoryMap: LinkedHashMap<String, ArrayList<TreeEntry>>,
         totalExpense: Double,
         closingBal: Double
     ) {
@@ -762,7 +808,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
         shareSb.append("=== 2. INCOMES / COLLECTION ===\n")
 
-        // Cash Sales total only (no TreeView)
         val cashSalesRow = LinearLayout(this)
         cashSalesRow.orientation = LinearLayout.HORIZONTAL
         cashSalesRow.gravity = Gravity.CENTER_VERTICAL
@@ -807,69 +852,114 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
         contentContainer.addView(colCard)
 
-        // 3. Expenses section: Account - Description (no TreeView)
-        val expCard = LinearLayout(this)
-        expCard.orientation = LinearLayout.VERTICAL
-        expCard.setBackgroundColor(Color.WHITE)
-        expCard.setPadding(14, 14, 14, 14)
-        val expLp = LinearLayout.LayoutParams(
+        // 3. Expenses section: Separate Category-wise cards with "Expense - Description" inside each
+        val expSectionCard = LinearLayout(this)
+        expSectionCard.orientation = LinearLayout.VERTICAL
+        expSectionCard.setBackgroundColor(Color.WHITE)
+        expSectionCard.setPadding(14, 14, 14, 14)
+        val expSecLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        expLp.setMargins(0, 0, 0, 12)
-        expCard.layoutParams = expLp
+        expSecLp.setMargins(0, 0, 0, 12)
+        expSectionCard.layoutParams = expSecLp
 
-        val tvExpHdr = TextView(this)
-        tvExpHdr.text = "3. EXPENSES (ACCOUNT - DESCRIPTION)"
-        tvExpHdr.textSize = 14f
-        tvExpHdr.setTypeface(null, Typeface.BOLD)
-        tvExpHdr.setTextColor(Color.WHITE)
-        tvExpHdr.setBackgroundColor(Color.parseColor("#C62828"))
-        tvExpHdr.setPadding(14, 12, 14, 12)
-        expCard.addView(tvExpHdr)
+        val tvExpMainHdr = TextView(this)
+        tvExpMainHdr.text = "3. EXPENSES (CATEGORY-WISE)"
+        tvExpMainHdr.textSize = 14f
+        tvExpMainHdr.setTypeface(null, Typeface.BOLD)
+        tvExpMainHdr.setTextColor(Color.WHITE)
+        tvExpMainHdr.setBackgroundColor(Color.parseColor("#C62828"))
+        tvExpMainHdr.setPadding(14, 12, 14, 12)
+        expSectionCard.addView(tvExpMainHdr)
 
-        shareSb.append("=== 3. EXPENSES (ACCOUNT - DESCRIPTION) ===\n")
+        shareSb.append("=== 3. EXPENSES (CATEGORY-WISE) ===\n")
 
-        for (item in expenseItems) {
-            val row = LinearLayout(this)
-            row.orientation = LinearLayout.HORIZONTAL
-            row.gravity = Gravity.CENTER_VERTICAL
-            row.setBackgroundColor(Color.parseColor("#FFEBEE"))
-            row.setPadding(14, 11, 14, 11)
-            val rLp = LinearLayout.LayoutParams(
+        for ((catName, items) in expenseCategoryMap) {
+            var catSum = 0.0
+            for (it in items) catSum += it.amount
+
+            val singleCatBox = LinearLayout(this)
+            singleCatBox.orientation = LinearLayout.VERTICAL
+            singleCatBox.setBackgroundColor(Color.parseColor("#FFF8F8"))
+            singleCatBox.setPadding(10, 10, 10, 10)
+            val scLp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            rLp.setMargins(0, 4, 0, 0)
-            row.layoutParams = rLp
+            scLp.setMargins(0, 10, 0, 0)
+            singleCatBox.layoutParams = scLp
 
-            val tvLbl = TextView(this)
-            tvLbl.text = item.label
-            tvLbl.textSize = 13f
-            tvLbl.setTypeface(null, Typeface.BOLD)
-            tvLbl.setTextColor(Color.BLACK)
-            tvLbl.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            val catHeaderRow = LinearLayout(this)
+            catHeaderRow.orientation = LinearLayout.HORIZONTAL
+            catHeaderRow.gravity = Gravity.CENTER_VERTICAL
+            catHeaderRow.setBackgroundColor(Color.parseColor("#FFCDD2"))
+            catHeaderRow.setPadding(12, 10, 12, 10)
 
-            val tvAmt = TextView(this)
-            tvAmt.text = fmt(item.amount)
-            tvAmt.textSize = 13f
-            tvAmt.setTypeface(null, Typeface.BOLD)
-            tvAmt.setTextColor(Color.parseColor("#C62828"))
-            tvAmt.gravity = Gravity.END
+            val tvCatTitle = TextView(this)
+            tvCatTitle.text = "$catName (${items.size})"
+            tvCatTitle.textSize = 13.5f
+            tvCatTitle.setTypeface(null, Typeface.BOLD)
+            tvCatTitle.setTextColor(Color.parseColor("#B71C1C"))
+            tvCatTitle.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 
-            row.addView(tvLbl)
-            row.addView(tvAmt)
-            expCard.addView(row)
+            val tvCatTotal = TextView(this)
+            tvCatTotal.text = "Rs. ${fmt(catSum)}"
+            tvCatTotal.textSize = 13.5f
+            tvCatTotal.setTypeface(null, Typeface.BOLD)
+            tvCatTotal.setTextColor(Color.BLACK)
+            tvCatTotal.gravity = Gravity.END
 
-            shareSb.append("• ${item.label} : Rs. ${fmt(item.amount)}\n")
-            htmlSb.append("<tr class='child'><td>${item.label}</td><td>${item.subInfo}</td><td class='r'>${fmt(item.amount)}</td></tr>")
+            catHeaderRow.addView(tvCatTitle)
+            catHeaderRow.addView(tvCatTotal)
+            singleCatBox.addView(catHeaderRow)
+
+            shareSb.append("[$catName] : Rs. ${fmt(catSum)}\n")
+            htmlSb.append("<tr class='cat'><td>$catName (${items.size})</td><td>Category Total</td><td class='r'>${fmt(catSum)}</td></tr>")
+
+            for (item in items) {
+                val itemRow = LinearLayout(this)
+                itemRow.orientation = LinearLayout.HORIZONTAL
+                itemRow.gravity = Gravity.CENTER_VERTICAL
+                itemRow.setBackgroundColor(Color.WHITE)
+                itemRow.setPadding(14, 9, 12, 9)
+                val irLp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                irLp.setMargins(0, 3, 0, 0)
+                itemRow.layoutParams = irLp
+
+                val tvItemLabel = TextView(this)
+                tvItemLabel.text = item.label
+                tvItemLabel.textSize = 12.5f
+                tvItemLabel.setTypeface(null, Typeface.BOLD)
+                tvItemLabel.setTextColor(Color.BLACK)
+                tvItemLabel.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+                val tvItemAmt = TextView(this)
+                tvItemAmt.text = fmt(item.amount)
+                tvItemAmt.textSize = 12.5f
+                tvItemAmt.setTypeface(null, Typeface.BOLD)
+                tvItemAmt.setTextColor(Color.parseColor("#C62828"))
+                tvItemAmt.gravity = Gravity.END
+
+                itemRow.addView(tvItemLabel)
+                itemRow.addView(tvItemAmt)
+                singleCatBox.addView(itemRow)
+
+                shareSb.append("   • ${item.label} : Rs. ${fmt(item.amount)}\n")
+                htmlSb.append("<tr class='child'><td class='indent'>${item.label}</td><td>${item.subInfo}</td><td class='r'>${fmt(item.amount)}</td></tr>")
+            }
+
+            expSectionCard.addView(singleCatBox)
         }
 
-        expCard.addView(makeSummaryStripRow("Total Expenses (-)", "Rs. ${fmt(totalExpense)}", "#FFF9C4", "#C62828"))
+        expSectionCard.addView(makeSummaryStripRow("Total Expenses (-)", "Rs. ${fmt(totalExpense)}", "#FFF9C4", "#C62828"))
         shareSb.append("Total Expenses (-) : Rs. ${fmt(totalExpense)}\n\n")
         htmlSb.append("<tr class='tot'><td colspan='2'>Total Expenses (-)</td><td class='r'>${fmt(totalExpense)}</td></tr>")
 
-        contentContainer.addView(expCard)
+        contentContainer.addView(expSectionCard)
 
         val clColor = if (closingBal >= 0.0) "#1B5E20" else "#C62828"
         val clBg = if (closingBal >= 0.0) "#C8E6C9" else "#FFCDD2"
