@@ -1,5 +1,6 @@
 package com.shop.veggieledger
 
+import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.content.ContentValues
 import android.content.Intent
@@ -14,6 +15,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.widget.AdapterView
@@ -37,6 +41,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 class ReportsHubActivity : AppCompatActivity() {
 
@@ -86,6 +91,20 @@ class ReportsHubActivity : AppCompatActivity() {
         val closingBal: Double
     )
 
+    private data class DaySaleRow(
+        val docId: String,
+        val entryIndex: Long,
+        val billNo: String,
+        val date: String,
+        val partyName: String,
+        val qty: Double,
+        val rate: Double,
+        val amount: Double,
+        val gpay: Double,
+        val cash: Double,
+        val credit: Double
+    )
+
     private val minSupplierNames = arrayListOf<String>()
     private val minSupplierOpBalMap = HashMap<String, Double>()
     private lateinit var minSupplierAdapter: ArrayAdapter<String>
@@ -104,12 +123,6 @@ class ReportsHubActivity : AppCompatActivity() {
         reportType = intent.getStringExtra("REPORT_TYPE") ?: "DAILY_CLOSING"
         supportActionBar?.title = getReportTitle(reportType)
 
-        if (isDaySalesReportType(reportType)) {
-            startActivity(Intent(this, DailySalesEditActivity::class.java))
-            finish()
-            return
-        }
-
         if (reportType == "PUR_STATEMENT") {
             setupMinimalSupplierStatementScreen()
             return
@@ -118,16 +131,18 @@ class ReportsHubActivity : AppCompatActivity() {
         buildUiProgrammatically()
         setupDates()
         setupPartyDropdownIfNeeded()
-        if (isDaybookReport()) {
-            loadAndRenderDaybook()
+
+        when {
+            isDaySalesReport() -> loadAndRenderDaySalesReport()
+            isDaybookReport() -> loadAndRenderDaybook()
         }
     }
 
-    private fun isDaySalesReportType(type: String): Boolean {
-        return type.equals("DAY_SALES_REPORT", ignoreCase = true) ||
-            type.equals("DAILY_SALES_REPORT", ignoreCase = true) ||
-            type.equals("DAILY_SALES_EDIT", ignoreCase = true) ||
-            type.equals("SAL_DAY_REPORT", ignoreCase = true)
+    private fun isDaySalesReport(): Boolean {
+        return reportType.equals("DAY_SALES_REPORT", ignoreCase = true) ||
+            reportType.equals("DAILY_SALES_REPORT", ignoreCase = true) ||
+            reportType.equals("DAILY_SALES_EDIT", ignoreCase = true) ||
+            reportType.equals("SAL_DAY_REPORT", ignoreCase = true)
     }
 
     private fun isDaybookReport(): Boolean {
@@ -303,7 +318,7 @@ class ReportsHubActivity : AppCompatActivity() {
             setTextColor(Color.parseColor(textColorHex))
             textSize = 12f
             setPadding(14, 11, 14, 11)
-            gravity = if (alignRight) Gravity.END else Gravity.START
+            gravity = if (alignRight) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
             if (bold) setTypeface(null, Typeface.BOLD)
             val lp = TableRow.LayoutParams(
                 TableRow.LayoutParams.WRAP_CONTENT,
@@ -311,6 +326,28 @@ class ReportsHubActivity : AppCompatActivity() {
             )
             lp.setMargins(2, 2, 2, 2)
             layoutParams = lp
+        }
+    }
+
+    private fun makeSmallActionBtn(label: String, bgHex: String, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            setBackgroundColor(Color.parseColor(bgHex))
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = 11f
+            minHeight = 0
+            minimumHeight = 0
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(14, 8, 14, 8)
+            layoutParams = TableRow.LayoutParams(
+                TableRow.LayoutParams.WRAP_CONTENT,
+                TableRow.LayoutParams.MATCH_PARENT
+            ).apply {
+                setMargins(2, 2, 2, 2)
+            }
+            setOnClickListener { onClick() }
         }
     }
 
@@ -791,12 +828,29 @@ class ReportsHubActivity : AppCompatActivity() {
         }
     }
 
+    private fun safeLong(doc: DocumentSnapshot, field: String): Long {
+        val raw = doc.get(field) ?: return 0L
+        return when (raw) {
+            is Number -> raw.toLong()
+            is String -> raw.trim().toLongOrNull() ?: 0L
+            else -> 0L
+        }
+    }
+
     private fun safeDouble(doc: DocumentSnapshot, field: String): Double {
         val raw = doc.get(field) ?: return 0.0
         return when (raw) {
             is Number -> raw.toDouble()
             is String -> raw.trim().toDoubleOrNull() ?: 0.0
             else -> 0.0
+        }
+    }
+
+    private fun fmtQty(v: Double): String {
+        return if (abs(v - v.toLong()) < 0.005) {
+            "${v.toLong()}"
+        } else {
+            String.format(Locale.getDefault(), "%.2f", v)
         }
     }
 
@@ -861,33 +915,6 @@ class ReportsHubActivity : AppCompatActivity() {
         tvTitle.setPadding(0, 0, 0, 10)
         filterCard.addView(tvTitle)
 
-        val salesMenuLabel = TextView(this).apply {
-            text = "SALES REPORTS"
-            textSize = 11.5f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#1B5E20"))
-            setPadding(0, 0, 0, 6)
-        }
-        filterCard.addView(salesMenuLabel)
-
-        val btnDaySalesReport = Button(this).apply {
-            text = "DAY SALES REPORT (EDIT / DELETE)"
-            setBackgroundColor(Color.parseColor("#2E7D32"))
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-            textSize = 12f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, 0, 0, 10)
-            }
-            setOnClickListener {
-                startActivity(Intent(this@ReportsHubActivity, DailySalesEditActivity::class.java))
-            }
-        }
-        filterCard.addView(btnDaySalesReport)
-
         layoutPartyBox = LinearLayout(this)
         layoutPartyBox.orientation = LinearLayout.VERTICAL
         layoutPartyBox.setPadding(0, 0, 0, 8)
@@ -911,7 +938,7 @@ class ReportsHubActivity : AppCompatActivity() {
         fromCol.orientation = LinearLayout.VERTICAL
         fromCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         lblFrom = TextView(this)
-        lblFrom.text = if (isDaybookReport()) "Date" else "2. From Date"
+        lblFrom.text = if (isDaybookReport() || isDaySalesReport()) "Date" else "2. From Date"
         lblFrom.textSize = 12f
         lblFrom.setTypeface(null, Typeface.BOLD)
         etFromDate = EditText(this)
@@ -945,7 +972,7 @@ class ReportsHubActivity : AppCompatActivity() {
         btnRow.setPadding(0, 4, 0, 4)
 
         val btnFilter = Button(this)
-        btnFilter.text = "SUBMIT"
+        btnFilter.text = if (isDaySalesReport()) "SEARCH" else "SUBMIT"
         btnFilter.setBackgroundColor(Color.parseColor("#1B5E20"))
         btnFilter.setTextColor(Color.WHITE)
         btnFilter.setTypeface(null, Typeface.BOLD)
@@ -975,7 +1002,7 @@ class ReportsHubActivity : AppCompatActivity() {
         mainCol.addView(filterCard)
 
         tvSummary = TextView(this)
-        tvSummary.text = "Tap SUBMIT to generate report"
+        tvSummary.text = "Tap SEARCH / SUBMIT to generate report"
         tvSummary.setBackgroundColor(Color.parseColor("#FFF9C4"))
         tvSummary.setTextColor(Color.parseColor("#D84315"))
         tvSummary.setTypeface(null, Typeface.BOLD)
@@ -1068,7 +1095,7 @@ class ReportsHubActivity : AppCompatActivity() {
         toDateStr = sdf.format(calTo.time)
 
         val calFrom = Calendar.getInstance()
-        if (isDaybookReport()) {
+        if (isDaybookReport() || isDaySalesReport()) {
             fromDateStr = toDateStr
         } else {
             calFrom.set(Calendar.DAY_OF_MONTH, 1)
@@ -1096,7 +1123,7 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     private fun setupPartyDropdownIfNeeded() {
-        if (isDaybookReport()) {
+        if (isDaybookReport() || isDaySalesReport()) {
             layoutPartyBox.visibility = View.GONE
             toCol.visibility = View.GONE
             lblFrom.text = "Date"
@@ -1130,6 +1157,10 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     private fun runReport() {
+        if (isDaySalesReport()) {
+            loadAndRenderDaySalesReport()
+            return
+        }
         if (isDaybookReport()) {
             loadAndRenderDaybook()
             return
@@ -1139,6 +1170,316 @@ class ReportsHubActivity : AppCompatActivity() {
         tvLeftMeta.text = "PARTY: $selectedParty"
         tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
         tvSummary.text = "Report ready for $selectedParty ($fromDateStr to $toDateStr)"
+    }
+
+    private fun loadAndRenderDaySalesReport() {
+        val targetYmd = dateToYmd(fromDateStr)
+        daybookContainer.visibility = View.GONE
+        tvLeftMeta.text = "DAY SALES REPORT"
+        tvRightMeta.text = "DATE: $fromDateStr"
+        tvSummary.text = "Loading sales for $fromDateStr..."
+
+        db.collection("sales").get()
+            .addOnSuccessListener { snap ->
+                val rows = arrayListOf<DaySaleRow>()
+                for ((pos, doc) in snap.documents.withIndex()) {
+                    val dStr = (doc.getString("date") ?: "").trim()
+                    val dYmd = dateToYmd(dStr)
+                    if (targetYmd != -1 && dYmd != targetYmd) continue
+
+                    val idxVal = if (doc.contains("entryIndex")) {
+                        safeLong(doc, "entryIndex")
+                    } else if (safeLong(doc, "sequenceNo") > 0L) {
+                        safeLong(doc, "sequenceNo")
+                    } else if (safeLong(doc, "timestamp") > 0L) {
+                        safeLong(doc, "timestamp")
+                    } else {
+                        9_000_000_000_000L + pos.toLong()
+                    }
+
+                    val billNo = (doc.getString("billNo") ?: doc.id).trim()
+                    val party = (doc.getString("customerName") ?: doc.getString("partyName") ?: "CASH").trim()
+                    var qty = safeDouble(doc, "netKgs").let {
+                        if (it > 0.0) it else safeDouble(doc, "quantity").let { q ->
+                            if (q > 0.0) q else safeDouble(doc, "qty")
+                        }
+                    }
+                    var rate = safeDouble(doc, "rate").let {
+                        if (it > 0.0) it else safeDouble(doc, "ratePerKg")
+                    }
+                    var amt = safeDouble(doc, "grandTotal").let {
+                        if (it > 0.0) it else safeDouble(doc, "amount")
+                    }
+
+                    val rawItems = doc.get("items") as? List<*>
+                    if ((qty <= 0.0 || rate <= 0.0) && rawItems != null && rawItems.isNotEmpty()) {
+                        val first = rawItems[0] as? Map<*, *>
+                        if (first != null) {
+                            if (qty <= 0.0) {
+                                qty = (first["netKgs"] as? Number)?.toDouble()
+                                    ?: (first["qty"] as? Number)?.toDouble() ?: 0.0
+                            }
+                            if (rate <= 0.0) {
+                                rate = (first["rate"] as? Number)?.toDouble()
+                                    ?: (first["ratePerKg"] as? Number)?.toDouble() ?: 0.0
+                            }
+                            if (amt <= 0.0) {
+                                amt = (first["amount"] as? Number)?.toDouble()
+                                    ?: (first["lineTotal"] as? Number)?.toDouble() ?: (qty * rate)
+                            }
+                        }
+                    }
+
+                    val mode = (doc.getString("payMode") ?: doc.getString("paymentMode") ?: "").trim()
+                    val hasSplit = doc.contains("cash") || doc.contains("gpay") || doc.contains("credit") ||
+                        doc.contains("cashAmount") || doc.contains("gpayAmount")
+
+                    val cashAmt: Double
+                    val gpayAmt: Double
+                    val creditAmt: Double
+
+                    if (hasSplit) {
+                        cashAmt = if (doc.contains("cash")) safeDouble(doc, "cash") else safeDouble(doc, "cashAmount")
+                        gpayAmt = if (doc.contains("gpay")) safeDouble(doc, "gpay") else safeDouble(doc, "gpayAmount")
+                        creditAmt = if (doc.contains("credit")) {
+                            safeDouble(doc, "credit")
+                        } else {
+                            (amt - cashAmt - gpayAmt).coerceAtLeast(0.0)
+                        }
+                    } else {
+                        when {
+                            mode.equals("Cash", ignoreCase = true) -> {
+                                cashAmt = amt; gpayAmt = 0.0; creditAmt = 0.0
+                            }
+                            mode.contains("GPay", ignoreCase = true) || mode.contains("UPI", ignoreCase = true) -> {
+                                cashAmt = 0.0; gpayAmt = amt; creditAmt = 0.0
+                            }
+                            else -> {
+                                cashAmt = 0.0; gpayAmt = 0.0; creditAmt = amt
+                            }
+                        }
+                    }
+
+                    rows.add(
+                        DaySaleRow(
+                            docId = doc.id,
+                            entryIndex = idxVal,
+                            billNo = billNo,
+                            date = dStr,
+                            partyName = party,
+                            qty = qty,
+                            rate = rate,
+                            amount = amt,
+                            gpay = gpayAmt,
+                            cash = cashAmt,
+                            credit = creditAmt
+                        )
+                    )
+                }
+
+                rows.sortWith(compareBy<DaySaleRow> { it.entryIndex }.thenBy { it.docId })
+                renderDaySalesTable(rows)
+            }
+            .addOnFailureListener { e ->
+                tvSummary.text = "Error loading Day Sales: ${e.message}"
+            }
+    }
+
+    private fun renderDaySalesTable(rows: List<DaySaleRow>) {
+        tableLayout.removeAllViews()
+        val headers = listOf("Idx", "Bill No", "Party Name", "Qty", "Rate", "Amount", "GPay", "Cash", "Credit", "Edit", "Delete")
+        val hRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#64748B")) }
+        for (h in headers) {
+            val isRight = h in listOf("Idx", "Qty", "Rate", "Amount", "GPay", "Cash", "Credit")
+            hRow.addView(makeTableCell(h, "#1B5E20", "#FFFFFF", isRight, true))
+        }
+        tableLayout.addView(hRow)
+
+        var totQty = 0.0
+        var totAmt = 0.0
+        var totGpay = 0.0
+        var totCash = 0.0
+        var totCredit = 0.0
+
+        val shareSb = StringBuilder("DAY SALES REPORT - $fromDateStr\n")
+
+        rows.forEachIndexed { displayPos, r ->
+            totQty += r.qty
+            totAmt += r.amount
+            totGpay += r.gpay
+            totCash += r.cash
+            totCredit += r.credit
+
+            val idxStr = if (r.entryIndex < 9_000_000_000_000L && r.entryIndex < 10_000_000L) {
+                "${r.entryIndex}"
+            } else {
+                "$displayPos"
+            }
+
+            val bg = if (displayPos % 2 == 0) "#FFFFFF" else "#F1F8E9"
+            val tr = TableRow(this).apply { setBackgroundColor(Color.parseColor("#64748B")) }
+            tr.addView(makeTableCell(idxStr, bg, "#334155", true, true))
+            tr.addView(makeTableCell(r.billNo, bg, "#1B5E20", false, true))
+            tr.addView(makeTableCell(r.partyName, bg, "#000000", false, true))
+            tr.addView(makeTableCell(fmtQty(r.qty), bg, "#000000", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.rate), bg, "#000000", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.amount), bg, "#000000", true, true))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.gpay), bg, "#1565C0", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.cash), bg, "#2E7D32", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.credit), bg, "#C62828", true, false))
+
+            tr.addView(makeSmallActionBtn("EDIT", "#1565C0") {
+                showEditSaleDialog(r)
+            })
+            tr.addView(makeSmallActionBtn("DELETE", "#C62828") {
+                confirmDeleteSaleRow(r)
+            })
+            tableLayout.addView(tr)
+
+            shareSb.append(
+                "[$idxStr] ${r.billNo} | ${r.partyName} | Qty: ${fmtQty(r.qty)} | Amt: %.2f (GPay: %.2f, Cash: %.2f, Cr: %.2f)\n".format(
+                    Locale.getDefault(), r.amount, r.gpay, r.cash, r.credit
+                )
+            )
+        }
+
+        val totRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#64748B")) }
+        totRow.addView(makeTableCell("", "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("TOTAL", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell("${rows.size} Bills", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell(fmtQty(totQty), "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("-", "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("%.2f".format(Locale.getDefault(), totAmt), "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("%.2f".format(Locale.getDefault(), totGpay), "#FFF9C4", "#1565C0", true, true))
+        totRow.addView(makeTableCell("%.2f".format(Locale.getDefault(), totCash), "#FFF9C4", "#2E7D32", true, true))
+        totRow.addView(makeTableCell("%.2f".format(Locale.getDefault(), totCredit), "#FFF9C4", "#C62828", true, true))
+        totRow.addView(makeTableCell("", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell("", "#FFF9C4", "#000000", false, true))
+        tableLayout.addView(totRow)
+
+        tvSummary.text = "Date: $fromDateStr | Bills: ${rows.size} | Qty: ${fmtQty(totQty)} | Total: Rs. %.2f (GPay: %.2f | Cash: %.2f | Credit: %.2f)".format(
+            Locale.getDefault(), totAmt, totGpay, totCash, totCredit
+        )
+        shareSb.append("\nTotal Amount: Rs. %.2f | GPay: %.2f | Cash: %.2f | Credit: %.2f".format(
+            Locale.getDefault(), totAmt, totGpay, totCash, totCredit
+        ))
+        shareReportText = shareSb.toString()
+    }
+
+    private fun showEditSaleDialog(row: DaySaleRow) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 24, 40, 12)
+        }
+
+        fun fieldInput(label: String, initial: String, numeric: Boolean): EditText {
+            val tv = TextView(this).apply {
+                text = label
+                textSize = 12f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#1B5E20"))
+            }
+            val et = EditText(this).apply {
+                setText(initial)
+                inputType = if (numeric) {
+                    InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                } else {
+                    InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+                }
+            }
+            box.addView(tv)
+            box.addView(et)
+            return et
+        }
+
+        val etParty = fieldInput("Party Name", row.partyName, false)
+        val etQty = fieldInput("Quantity (Net Kgs)", fmtQty(row.qty), true)
+        val etRate = fieldInput("Rate", "%.2f".format(Locale.US, row.rate), true)
+        val etAmt = fieldInput("Amount (Auto = Qty x Rate)", "%.2f".format(Locale.US, row.amount), true)
+        val etGpay = fieldInput("GPay", "%.2f".format(Locale.US, row.gpay), true)
+        val etCash = fieldInput("Cash", "%.2f".format(Locale.US, row.cash), true)
+        val etCredit = fieldInput("Credit", "%.2f".format(Locale.US, row.credit), true)
+
+        val watcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val q = etQty.text.toString().toDoubleOrNull() ?: 0.0
+                val r = etRate.text.toString().toDoubleOrNull() ?: 0.0
+                etAmt.setText("%.2f".format(Locale.US, q * r))
+            }
+        }
+        etQty.addTextChangedListener(watcher)
+        etRate.addTextChangedListener(watcher)
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Sale (${row.billNo})")
+            .setView(box)
+            .setPositiveButton("UPDATE") { _, _ ->
+                val newParty = etParty.text.toString().trim().ifEmpty { "CASH" }
+                val newQty = etQty.text.toString().toDoubleOrNull() ?: 0.0
+                val newRate = etRate.text.toString().toDoubleOrNull() ?: 0.0
+                val newAmt = etAmt.text.toString().toDoubleOrNull() ?: (newQty * newRate)
+                val newGpay = etGpay.text.toString().toDoubleOrNull() ?: 0.0
+                val newCash = etCash.text.toString().toDoubleOrNull() ?: 0.0
+                val newCredit = etCredit.text.toString().toDoubleOrNull() ?: 0.0
+
+                val payMode = when {
+                    newCredit > 0.0 && newCash == 0.0 && newGpay == 0.0 -> "Credit"
+                    newGpay > 0.0 && newCash == 0.0 && newCredit == 0.0 -> "GPay / UPI"
+                    newCash > 0.0 && newGpay == 0.0 && newCredit == 0.0 -> "Cash"
+                    newCredit > 0.0 -> "Credit"
+                    newGpay > 0.0 -> "GPay / UPI"
+                    else -> "Cash"
+                }
+
+                val updates = hashMapOf<String, Any>(
+                    "customerName" to newParty,
+                    "netKgs" to newQty,
+                    "quantity" to newQty,
+                    "rate" to newRate,
+                    "ratePerKg" to newRate,
+                    "amount" to newAmt,
+                    "grandTotal" to newAmt,
+                    "gpay" to newGpay,
+                    "gpayAmount" to newGpay,
+                    "cash" to newCash,
+                    "cashAmount" to newCash,
+                    "credit" to newCredit,
+                    "payMode" to payMode
+                )
+
+                db.collection("sales").document(row.docId)
+                    .update(updates)
+                    .addOnSuccessListener {
+                        Toast.makeText(this, "${row.billNo} Updated!", Toast.LENGTH_SHORT).show()
+                        loadAndRenderDaySalesReport()
+                    }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(this, "Update failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun confirmDeleteSaleRow(row: DaySaleRow) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Sale Bill?")
+            .setMessage("Delete ${row.billNo} (${row.partyName} - Rs. %.2f)?".format(Locale.getDefault(), row.amount))
+            .setPositiveButton("DELETE") { _, _ ->
+                db.collection("sales").document(row.docId)
+                    .delete()
+                    .addOnSuccessListener {
+                        Toast.makeText(this, "${row.billNo} Deleted!", Toast.LENGTH_SHORT).show()
+                        loadAndRenderDaySalesReport()
+                    }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(this, "Delete failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 
     private fun loadAndRenderDaybook() {
