@@ -54,8 +54,8 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         val opBalance: Double,
         val purchase: Double,
         val payment: Double,
-        val outstanding: Double,
-        val closingBalance: Double
+        val less: Double,
+        val outstanding: Double
     )
 
     private val currentRows = arrayListOf<SupplierOutstandingRow>()
@@ -285,8 +285,8 @@ class SupplierOutstandingActivity : AppCompatActivity() {
             "Op Balance",
             "Purchase",
             "Payment",
-            "Outstanding",
-            "Closing Balance"
+            "Less",
+            "Outstanding"
         )
         val headerRow = TableRow(this).apply {
             setBackgroundColor(Color.parseColor("#607D8B"))
@@ -354,8 +354,10 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                     val baseOp = supplierOpBalMap[supName.lowercase(Locale.getDefault())] ?: 0.0
                     var beforePur = 0.0
                     var beforePay = 0.0
+                    var beforeLess = 0.0
                     var periodPur = 0.0
                     var periodPay = 0.0
+                    var periodLess = 0.0
 
                     for (doc in purchaseDocs) {
                         val s = (doc.getString("supplierName") ?: "").trim()
@@ -386,19 +388,21 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                                 if (p > 0.0) p else safeDouble(doc, "payment")
                             }
                         }
+                        val lessAmt = extractLessAmount(doc)
 
                         if (fromYmd != -1 && ymd != -1 && ymd < fromYmd) {
                             beforePay += paid
+                            beforeLess += lessAmt
                         } else if ((fromYmd == -1 || ymd == -1 || ymd >= fromYmd) &&
                             (toYmd == -1 || ymd == -1 || ymd <= toYmd)
                         ) {
                             periodPay += paid
+                            periodLess += lessAmt
                         }
                     }
 
-                    val opBal = (baseOp + beforePur - beforePay).coerceAtLeast(0.0)
-                    val outAmt = (opBal + periodPur - periodPay).coerceAtLeast(0.0)
-                    val closingBal = outAmt
+                    val opBal = (baseOp + beforePur - beforePay - beforeLess).coerceAtLeast(0.0)
+                    val outAmt = (opBal + periodPur - periodPay - periodLess).coerceAtLeast(0.0)
 
                     rows.add(
                         SupplierOutstandingRow(
@@ -406,8 +410,8 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                             opBalance = opBal,
                             purchase = periodPur,
                             payment = periodPay,
-                            outstanding = outAmt,
-                            closingBalance = closingBal
+                            less = periodLess,
+                            outstanding = outAmt
                         )
                     )
                 }
@@ -428,15 +432,15 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         var totOp = 0.0
         var totPur = 0.0
         var totPay = 0.0
+        var totLess = 0.0
         var totOut = 0.0
-        var totClose = 0.0
 
         rows.forEachIndexed { idx, r ->
             totOp += r.opBalance
             totPur += r.purchase
             totPay += r.payment
+            totLess += r.less
             totOut += r.outstanding
-            totClose += r.closingBalance
 
             val rowBg = if (idx % 2 == 0) "#FFFFFF" else "#F1F8E9"
             val tr = TableRow(this).apply {
@@ -448,8 +452,8 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                 "%.2f".format(Locale.getDefault(), r.opBalance),
                 "%.2f".format(Locale.getDefault(), r.purchase),
                 "%.2f".format(Locale.getDefault(), r.payment),
-                "%.2f".format(Locale.getDefault(), r.outstanding),
-                "%.2f".format(Locale.getDefault(), r.closingBalance)
+                "%.2f".format(Locale.getDefault(), r.less),
+                "%.2f".format(Locale.getDefault(), r.outstanding)
             )
 
             vals.forEachIndexed { cIdx, txt ->
@@ -457,9 +461,9 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                     makeCell(
                         text = txt,
                         bgColorHex = rowBg,
-                        textColorHex = if (cIdx == 4 || cIdx == 5) "#C62828" else "#000000",
+                        textColorHex = if (cIdx == 5) "#C62828" else "#000000",
                         alignRight = (cIdx != 0),
-                        bold = (cIdx == 0 || cIdx == 4 || cIdx == 5)
+                        bold = (cIdx == 0 || cIdx == 5)
                     )
                 )
             }
@@ -474,15 +478,15 @@ class SupplierOutstandingActivity : AppCompatActivity() {
             "%.2f".format(Locale.getDefault(), totOp),
             "%.2f".format(Locale.getDefault(), totPur),
             "%.2f".format(Locale.getDefault(), totPay),
-            "%.2f".format(Locale.getDefault(), totOut),
-            "%.2f".format(Locale.getDefault(), totClose)
+            "%.2f".format(Locale.getDefault(), totLess),
+            "%.2f".format(Locale.getDefault(), totOut)
         )
         totalVals.forEachIndexed { cIdx, txt ->
             totalRow.addView(
                 makeCell(
                     text = txt,
                     bgColorHex = "#FFF9C4",
-                    textColorHex = if (cIdx == 4 || cIdx == 5) "#C62828" else "#000000",
+                    textColorHex = if (cIdx == 5) "#C62828" else "#000000",
                     alignRight = (cIdx != 0),
                     bold = true
                 )
@@ -523,14 +527,14 @@ class SupplierOutstandingActivity : AppCompatActivity() {
             canvas.drawText("SUPPLIER OUTSTANDING ($fromDateStr to $toDateStr)", 24f, y, titlePaint)
             y += 30f
 
-            val colsX = floatArrayOf(24f, 220f, 345f, 465f, 585f, 705f)
+            val colsX = floatArrayOf(24f, 220f, 340f, 460f, 580f, 695f)
             val headers = listOf(
                 "Supplier Name",
                 "Op Balance",
                 "Purchase",
                 "Payment",
-                "Outstanding",
-                "Closing Balance"
+                "Less",
+                "Outstanding"
             )
             headers.forEachIndexed { i, h -> canvas.drawText(h, colsX[i], y, headPaint) }
 
@@ -542,8 +546,8 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                     "%.2f".format(Locale.getDefault(), r.opBalance),
                     "%.2f".format(Locale.getDefault(), r.purchase),
                     "%.2f".format(Locale.getDefault(), r.payment),
-                    "%.2f".format(Locale.getDefault(), r.outstanding),
-                    "%.2f".format(Locale.getDefault(), r.closingBalance)
+                    "%.2f".format(Locale.getDefault(), r.less),
+                    "%.2f".format(Locale.getDefault(), r.outstanding)
                 )
                 rowVals.forEachIndexed { i, v -> canvas.drawText(v, colsX[i], y, bodyPaint) }
                 y += 20f
@@ -585,6 +589,15 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "PDF Export Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun extractLessAmount(doc: DocumentSnapshot): Double {
+        val candidates = listOf("less", "discount", "discAmount", "deduction", "lessAmount")
+        for (field in candidates) {
+            val v = safeDouble(doc, field)
+            if (v != 0.0) return v
+        }
+        return 0.0
     }
 
     private fun extractPurchaseAmount(doc: DocumentSnapshot): Double {
