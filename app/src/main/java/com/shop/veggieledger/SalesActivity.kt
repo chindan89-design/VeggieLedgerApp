@@ -887,11 +887,11 @@ class SalesActivity : AppCompatActivity() {
         val cx = width / 2f
         var y = 42f
 
-        canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)[span_0](start_span)[span_0](end_span)
+        canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
         y += 25f
-        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)[span_1](start_span)[span_1](end_span)
+        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
         y += 22f
-        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)[span_2](start_span)[span_2](end_span)
+        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
         y += 28f
         canvas.drawText("9841666651", pad, y, pPhoneLeft)
         canvas.drawText("9840457613", width - pad, y, pPhoneRight)
@@ -2253,7 +2253,6 @@ class SalesActivity : AppCompatActivity() {
             tr.addView(makeCell(extraDisplay, alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rowTot), alignRight = true, bold = true))
 
-            // GridView EDIT button for each item row
             val editRowBtn = TextView(this)
             editRowBtn.text = "EDIT"
             editRowBtn.setTextColor(Color.WHITE)
@@ -2270,7 +2269,6 @@ class SalesActivity : AppCompatActivity() {
             }
             tr.addView(editRowBtn)
 
-            // GridView DEL (Delete) button for each item row
             val delBtn = TextView(this)
             delBtn.text = "DEL"
             delBtn.setTextColor(Color.WHITE)
