@@ -167,6 +167,7 @@ class PurchaseActivity : AppCompatActivity() {
 
         binding.btnAddItem.setOnClickListener {
             val purchaseKgs = binding.etNetKgs.text.toString().toDoubleOrNull() ?: 0.0
+            // Allow 0 or blank Rate/Kg when Kgs, Bags, or Nos are entered
             val ratePerKg = binding.etRatePerKg.text.toString().toDoubleOrNull() ?: 0.0
 
             val isOnion = selectedItemName.equals("Onion", ignoreCase = true)
@@ -179,8 +180,8 @@ class PurchaseActivity : AppCompatActivity() {
             val kudumi = if (isCoconut) (binding.etKudumi.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
             val thadukki = if (isCoconut) (binding.etThadukki.text.toString().toDoubleOrNull() ?: 0.0) else 0.0
 
-            if (purchaseKgs <= 0.0 || ratePerKg <= 0.0) {
-                Toast.makeText(this, "Enter valid Purchase Kgs and Rate/Kg", Toast.LENGTH_SHORT).show()
+            if (purchaseKgs <= 0.0 && totalNos <= 0 && bags <= 0) {
+                Toast.makeText(this, "Enter valid Purchase Kgs, Bags, or Nos", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
@@ -307,10 +308,6 @@ class PurchaseActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Adds an editable Stock / Lot ID box right below tvGeneratedBatchId so
-     * existing saved purchases can have their Stock ID modified cleanly in Edit Mode.
-     */
     private fun injectEditableBatchIdBox() {
         val parent = binding.tvGeneratedBatchId.parent as? ViewGroup ?: return
         val insertIdx = parent.indexOfChild(binding.tvGeneratedBatchId) + 1
@@ -1006,10 +1003,6 @@ class PurchaseActivity : AppCompatActivity() {
         resetFormForFreshEntry()
     }
 
-    /**
-     * Updates Stock ID (batchId), supplier info, and net quantity deltas in stock_batches
-     * while preserving any quantity already sold from this batch.
-     */
     private fun reconcileStockAndSupplierOnEdit(purchaseId: String, newBatchId: String, newPayMode: String) {
         db.collection("stock_batches").whereEqualTo("purchaseId", purchaseId).get()
             .addOnSuccessListener { bSnap ->
