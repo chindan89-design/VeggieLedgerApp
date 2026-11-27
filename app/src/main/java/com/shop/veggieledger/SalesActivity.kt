@@ -80,6 +80,8 @@ class SalesActivity : AppCompatActivity() {
 
     // When editing a specific row inside GridView: -1 means adding new row
     private var editingGridRowIndex: Int = -1
+    private var pendingEditBatchDocId: String = ""
+    private var pendingEditBatchId: String = ""
 
     private var selectedDateStr: String = ""
     private var editFilterDateStr: String = ""
@@ -258,7 +260,7 @@ class SalesActivity : AppCompatActivity() {
             if (kgs > remainingKgs + 0.01) {
                 Toast.makeText(
                     this,
-                    String.format(Locale.getDefault(), "Insufficient Stock! %s (%s) only has %.2f Kgs left.", supplierName, batchId, remainingKgs),
+                    String.format(Locale.getDefault(), "Insufficient Stock! Lot %s (%s) only has %.2f Kgs left.", batchId, supplierName, remainingKgs),
                     Toast.LENGTH_LONG
                 ).show()
                 return@setOnClickListener
@@ -266,7 +268,7 @@ class SalesActivity : AppCompatActivity() {
             if (!isCoconut && bags > remainingBags) {
                 Toast.makeText(
                     this,
-                    "Insufficient Bags! $supplierName ($batchId) only has $remainingBags Bags left.",
+                    "Insufficient Bags! Lot $batchId ($supplierName) only has $remainingBags Bags left.",
                     Toast.LENGTH_LONG
                 ).show()
                 return@setOnClickListener
@@ -305,7 +307,7 @@ class SalesActivity : AppCompatActivity() {
 
             if (editingGridRowIndex in 0 until billItemsArray.length()) {
                 billItemsArray.put(editingGridRowIndex, rowObj)
-                Toast.makeText(this, "Updated item in grid ($batchId)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Updated Row in Grid -> Lot ID: $batchId", Toast.LENGTH_SHORT).show()
             } else {
                 billItemsArray.put(rowObj)
             }
@@ -417,6 +419,7 @@ class SalesActivity : AppCompatActivity() {
             }
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
+                // 1. Return old items' stock back to their original purchase stock_batches
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockToSpecificBatch(
@@ -428,6 +431,7 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
+                // 2. Deduct updated items' stock from their selected (possibly changed) Stock Lot ID
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
                     deductStockFromSpecificBatch(
@@ -461,6 +465,7 @@ class SalesActivity : AppCompatActivity() {
                     "items" to itemsForDb,
                     "itemName" to firstItemName,
                     "batchId" to firstBatchId,
+                    "stockId" to firstBatchId,
                     "supplierName" to firstSupplierName,
                     "bags" to totalBagsAll,
                     "netKgs" to totalKgsAll,
@@ -474,7 +479,7 @@ class SalesActivity : AppCompatActivity() {
 
                 db.collection("sales").document(editingSaleDocId).update(updateData)
                     .addOnSuccessListener {
-                        Toast.makeText(this, "Sales Bill $billNo & Purchase Stock Updated!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Sales Bill $billNo & Stock Lot Updated!", Toast.LENGTH_SHORT).show()
                         editingSaleDocId = ""
                         oldSaleCreditBalance = 0.0
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -515,6 +520,7 @@ class SalesActivity : AppCompatActivity() {
                     "items" to itemsForDb,
                     "itemName" to firstItemName,
                     "batchId" to firstBatchId,
+                    "stockId" to firstBatchId,
                     "supplierName" to firstSupplierName,
                     "bags" to totalBagsAll,
                     "netKgs" to totalKgsAll,
@@ -549,6 +555,8 @@ class SalesActivity : AppCompatActivity() {
 
     private fun clearGridRowEditState() {
         editingGridRowIndex = -1
+        pendingEditBatchDocId = ""
+        pendingEditBatchId = ""
         binding.btnAddSalesItem.text = "+ ADD ITEM TO BILL"
         binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32"))
     }
@@ -567,25 +575,18 @@ class SalesActivity : AppCompatActivity() {
         val bChg = obj.optDouble("bagCharge", 0.0)
         val wCoolie = obj.optDouble("weighCoolie", 0.0)
 
+        pendingEditBatchDocId = sDocId
+        pendingEditBatchId = bId
+
         val itemPos = itemNames.indexOfFirst { it.equals(iName, ignoreCase = true) }
         if (itemPos >= 0) {
             binding.spSalesItem.setSelection(itemPos)
             filterBatchesForSelectedItem(iName)
+        } else {
+            filterBatchesForSelectedItem(iName)
         }
 
-        var batchPos = -1
-        for (i in 0 until filteredBatchesJson.length()) {
-            val bObj = filteredBatchesJson.getJSONObject(i)
-            val dId = bObj.optString("docId", "")
-            val code = bObj.optString("batchId", "")
-            if ((sDocId.isNotEmpty() && dId == sDocId) || (bId.isNotEmpty() && code.equals(bId, ignoreCase = true))) {
-                batchPos = i
-                break
-            }
-        }
-        if (batchPos >= 0 && batchPos < batchDisplayList.size) {
-            spSalesStockBatch.setSelection(batchPos)
-        }
+        selectBatchInSpinner(sDocId, bId)
 
         binding.etSalesBags.setText(if (bgs > 0) "$bgs" else "")
         binding.etSalesKgs.setText(if (kgs > 0.0) String.format(Locale.getDefault(), "%.2f", kgs) else "")
@@ -593,11 +594,30 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesBagCharge.setText(if (bChg > 0.0) String.format(Locale.getDefault(), "%.2f", bChg) else "")
         etSalesWeighCoolie.setText(if (wCoolie > 0.0) String.format(Locale.getDefault(), "%.2f", wCoolie) else "")
 
-        binding.btnAddSalesItem.text = "UPDATE ROW #${rowIdx + 1} IN GRID"
+        binding.btnAddSalesItem.text = "UPDATE ROW #${rowIdx + 1} (LOT ID)"
         binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
         updateLineAmountPreview()
         updateSelectedBatchAvailabilityBanner()
-        Toast.makeText(this, "Editing Row #${rowIdx + 1} — change stock/qty & tap UPDATE ROW", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Row #${rowIdx + 1}: Change '3. Select Stock' Lot ID & tap UPDATE", Toast.LENGTH_LONG).show()
+    }
+
+    private fun selectBatchInSpinner(targetDocId: String, targetBatchId: String) {
+        if (targetDocId.isEmpty() && targetBatchId.isEmpty()) return
+        var batchPos = -1
+        for (i in 0 until filteredBatchesJson.length()) {
+            val bObj = filteredBatchesJson.getJSONObject(i)
+            val dId = bObj.optString("docId", "")
+            val code = bObj.optString("batchId", "")
+            if ((targetDocId.isNotEmpty() && dId == targetDocId) ||
+                (targetBatchId.isNotEmpty() && code.equals(targetBatchId, ignoreCase = true))
+            ) {
+                batchPos = i
+                break
+            }
+        }
+        if (batchPos in 0 until batchDisplayList.size) {
+            spSalesStockBatch.setSelection(batchPos)
+        }
     }
 
     private fun populateFormTableRows() {
@@ -1158,7 +1178,7 @@ class SalesActivity : AppCompatActivity() {
                 val availBags = (doc.getLong("availableBags") ?: 0L).toInt()
                 val availKgs = doc.getDouble("availableKgs") ?: 0.0
 
-                if (iName.isNotEmpty() && (availKgs > 0.001 || availBags > 0)) {
+                if (iName.isNotEmpty()) {
                     val obj = JSONObject()
                     obj.put("docId", doc.id)
                     obj.put("batchId", doc.getString("batchId") ?: doc.id.take(6))
@@ -1181,32 +1201,44 @@ class SalesActivity : AppCompatActivity() {
         batchDisplayList.clear()
 
         val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val allowZeroStockLots = isEditMode || editingGridRowIndex >= 0
 
         for (i in 0 until allStockBatchesJson.length()) {
             val obj = allStockBatchesJson.getJSONObject(i)
             val bItem = obj.optString("itemName", "")
             if (!bItem.equals(itemName, ignoreCase = true)) continue
 
-            val sup = obj.optString("supplierName", "Unknown")
+            val docId = obj.optString("docId", "")
             val bId = obj.optString("batchId", "")
+            val sup = obj.optString("supplierName", "Unknown")
             val bags = obj.optInt("availableBags", 0)
             val kgs = obj.optDouble("availableKgs", 0.0)
 
+            val isCurrentEditLot = (pendingEditBatchDocId.isNotEmpty() && docId == pendingEditBatchDocId) ||
+                (pendingEditBatchId.isNotEmpty() && bId.equals(pendingEditBatchId, ignoreCase = true))
+
+            if (!allowZeroStockLots && !isCurrentEditLot && kgs <= 0.001 && bags <= 0) {
+                continue
+            }
+
             filteredBatchesJson.put(obj)
             val label = if (isCoconut) {
-                String.format(Locale.getDefault(), "%s [%s] — %.2f Kgs", sup, bId, kgs)
+                String.format(Locale.getDefault(), "%s | %s — %.2f Kg", bId, sup, kgs)
             } else {
-                String.format(Locale.getDefault(), "%s [%s] — %d Bags | %.2f Kgs", sup, bId, bags, kgs)
+                String.format(Locale.getDefault(), "%s | %s — %d Bg | %.2f Kg", bId, sup, bags, kgs)
             }
             batchDisplayList.add(label)
         }
 
         if (batchDisplayList.isEmpty()) {
-            batchDisplayList.add("No $itemName stock available")
+            batchDisplayList.add("No $itemName stock lot available")
         }
 
         batchSpinnerAdapter.notifyDataSetChanged()
         spSalesStockBatch.setSelection(0)
+        if (pendingEditBatchDocId.isNotEmpty() || pendingEditBatchId.isNotEmpty()) {
+            selectBatchInSpinner(pendingEditBatchDocId, pendingEditBatchId)
+        }
         updateSelectedBatchAvailabilityBanner()
     }
 
@@ -1216,7 +1248,7 @@ class SalesActivity : AppCompatActivity() {
         val pos = spSalesStockBatch.selectedItemPosition
 
         if (filteredBatchesJson.length() == 0 || pos < 0 || pos >= filteredBatchesJson.length()) {
-            tvSelectedBatchAvail.text = "Available Stock: 0.00 Kgs (Purchase entry required)"
+            tvSelectedBatchAvail.text = "Lot ID: None | Avail: 0.00 Kgs"
             tvSelectedBatchAvail.setTextColor(Color.RED)
             return
         }
@@ -1246,9 +1278,9 @@ class SalesActivity : AppCompatActivity() {
         tvSelectedBatchAvail.setTextColor(Color.parseColor("#1B5E20"))
         val rateHint = if (purRate > 0.0) String.format(Locale.getDefault(), " | Pur.Rate: %.2f", purRate) else ""
         tvSelectedBatchAvail.text = if (isCoconut) {
-            String.format(Locale.getDefault(), "Supplier: %s (%s) | Avail: %.2f Kgs%s", sup, bId, remKgs, rateHint)
+            String.format(Locale.getDefault(), "Lot ID: %s | %s | Avail: %.2f Kgs%s", bId, sup, remKgs, rateHint)
         } else {
-            String.format(Locale.getDefault(), "Supplier: %s (%s) | Avail: %d Bags / %.2f Kgs%s", sup, bId, remBags, remKgs, rateHint)
+            String.format(Locale.getDefault(), "Lot ID: %s | %s | Avail: %d Bags / %.2f Kgs%s", bId, sup, remBags, remKgs, rateHint)
         }
     }
 
@@ -1585,7 +1617,10 @@ class SalesActivity : AppCompatActivity() {
         }
 
         refreshBillItemsGrid()
-        Toast.makeText(this, "Loaded $bNo — tap EDIT on any grid row to modify", Toast.LENGTH_SHORT).show()
+        if (billItemsArray.length() > 0) {
+            loadGridRowIntoForm(0)
+        }
+        Toast.makeText(this, "Loaded $bNo — Stock Lot ID dropdown ready to change", Toast.LENGTH_SHORT).show()
     }
 
     private fun adjustCustomerBalance(custId: String, delta: Double) {
