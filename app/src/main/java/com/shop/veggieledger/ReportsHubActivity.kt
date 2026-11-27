@@ -11,11 +11,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.text.TextWatcher
-import android.text.Editable
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -856,7 +853,7 @@ class ReportsHubActivity : AppCompatActivity() {
         sheetBox.setPadding(18, 20, 18, 20)
 
         tvSheetShopName = TextView(this)
-        tvSheetShopName.text = "THIRUVENI COCONUTS[span_1](start_span)"[span_1](end_span)
+        tvSheetShopName.text = "THIRUVENI COCONUTS"
         tvSheetShopName.textSize = 20f
         tvSheetShopName.setTypeface(null, Typeface.BOLD)
         tvSheetShopName.setTextColor(Color.BLACK)
@@ -864,7 +861,7 @@ class ReportsHubActivity : AppCompatActivity() {
         sheetBox.addView(tvSheetShopName)
 
         tvSheetShopAddr = TextView(this)
-        tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU[span_2](start_span)"[span_2](end_span)
+        tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
         tvSheetShopAddr.textSize = 12.5f
         tvSheetShopAddr.setTypeface(null, Typeface.BOLD)
         tvSheetShopAddr.setTextColor(Color.DKGRAY)
