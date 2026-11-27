@@ -112,6 +112,9 @@ class ReportsHubActivity : AppCompatActivity() {
         buildUiProgrammatically()
         setupDates()
         setupPartyDropdownIfNeeded()
+        if (isDaybookReport()) {
+            loadAndRenderDaybook()
+        }
     }
 
     private fun isDaybookReport(): Boolean {
