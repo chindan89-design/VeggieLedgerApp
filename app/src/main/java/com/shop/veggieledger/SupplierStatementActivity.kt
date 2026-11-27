@@ -378,24 +378,12 @@ class SupplierStatementActivity : AppCompatActivity() {
             }
     }
 
-    private fun parseDateSortKey(rawDate: String, fallbackMillis: Long = 0L): Long {
-        val clean = rawDate.trim()
-        val formats = listOf(
-            SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()),
-            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        )
-        for (fmt in formats) {
-            try {
-                val dt = fmt.parse(clean)
-                if (dt != null) {
-                    val ymd = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(dt).toLong()
-                    return (ymd * 1_000_000L) + ((fallbackMillis / 1000L) % 1_000_000L)
-                }
-            } catch (_: Exception) {
-            }
-        }
-        return fallbackMillis
+    private fun buildDateSortKey(rawDate: String, typeOrder: Int, fallbackMillis: Long = 0L): Long {
+        val ymd = dateToYmdNumber(rawDate)
+        val safeYmd = if (ymd != Long.MIN_VALUE) ymd else 0L
+        val safeType = typeOrder.coerceIn(0, 9).toLong()
+        val tail = ((fallbackMillis / 1000L) % 1_000_000L).coerceAtLeast(0L)
+        return (safeYmd * 10_000_000L) + (safeType * 1_000_000L) + tail
     }
 
     private fun dateToYmdNumber(rawDate: String): Long {
@@ -434,8 +422,8 @@ class SupplierStatementActivity : AppCompatActivity() {
 
             val dateStr = (doc.getString("date") ?: "").trim()
             val ts = doc.getLong("timestamp") ?: 0L
-            val sortKey = parseDateSortKey(dateStr, ts)
-            val ymd = if (sortKey >= 100_000_000L) sortKey / 1_000_000L else dateToYmdNumber(dateStr)
+            val ymd = dateToYmdNumber(dateStr)
+            val sortKey = buildDateSortKey(dateStr, typeOrder = 1, fallbackMillis = ts)
 
             val billNo = (doc.getString("billNo") ?: "").trim()
             val batchId = (doc.getString("batchId") ?: "").trim()
@@ -529,8 +517,8 @@ class SupplierStatementActivity : AppCompatActivity() {
 
             val dateStr = (doc.getString("date") ?: "").trim()
             val ts = doc.getLong("timestamp") ?: 0L
-            val sortKey = parseDateSortKey(dateStr, ts)
-            val ymd = if (sortKey >= 100_000_000L) sortKey / 1_000_000L else dateToYmdNumber(dateStr)
+            val ymd = dateToYmdNumber(dateStr)
+            val sortKey = buildDateSortKey(dateStr, typeOrder = 2, fallbackMillis = ts)
 
             val paidAmt = (doc.getDouble("amount")
                 ?: doc.getDouble("paidAmount")
@@ -566,7 +554,6 @@ class SupplierStatementActivity : AppCompatActivity() {
 
         val sortedAllEvents = allEvents.sortedBy { it.sortKey }
 
-        // Carry forward balance before fromYmd so Op.Bal on fromYmd is exact (just like Customer Ledger)
         var runningBalance = supplierOpeningBalance
         val periodRows = ArrayList<StatementRow>()
 
