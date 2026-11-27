@@ -237,8 +237,8 @@ class ReportsHubActivity : AppCompatActivity() {
         }
 
         minTableLayout = TableLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#CFD8DC"))
-            setPadding(2, 2, 2, 2)
+            setBackgroundColor(Color.parseColor("#607D8B"))
+            setPadding(3, 3, 3, 3)
         }
         hScroll.addView(minTableLayout)
         rootCol.addView(hScroll)
@@ -265,20 +265,47 @@ class ReportsHubActivity : AppCompatActivity() {
         }
     }
 
+    private fun makeTableCell(
+        text: String,
+        bgColorHex: String,
+        textColorHex: String = "#000000",
+        alignRight: Boolean = false,
+        bold: Boolean = false
+    ): TextView {
+        val tv = TextView(this).apply {
+            this.text = text
+            setBackgroundColor(Color.parseColor(bgColorHex))
+            setTextColor(Color.parseColor(textColorHex))
+            textSize = 12f
+            setPadding(14, 11, 14, 11)
+            gravity = if (alignRight) Gravity.END else Gravity.START
+            if (bold) setTypeface(null, Typeface.BOLD)
+            val lp = TableRow.LayoutParams(
+                TableRow.LayoutParams.WRAP_CONTENT,
+                TableRow.LayoutParams.MATCH_PARENT
+            )
+            lp.setMargins(2, 2, 2, 2)
+            layoutParams = lp
+        }
+        return tv
+    }
+
     private fun renderMinimalHeaderOnly() {
         minTableLayout.removeAllViews()
         val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Less", "Closing Bal")
-        val headerRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#1B5E20")) }
+        val headerRow = TableRow(this).apply {
+            setBackgroundColor(Color.parseColor("#607D8B"))
+        }
         for (h in headers) {
-            val tv = TextView(this).apply {
-                text = h
-                setTextColor(Color.WHITE)
-                setTypeface(null, Typeface.BOLD)
-                textSize = 12f
-                setPadding(12, 10, 12, 10)
-                gravity = if (h == "Date") Gravity.START else Gravity.END
-            }
-            headerRow.addView(tv)
+            headerRow.addView(
+                makeTableCell(
+                    text = h,
+                    bgColorHex = "#1B5E20",
+                    textColorHex = "#FFFFFF",
+                    alignRight = (h != "Date"),
+                    bold = true
+                )
+            )
         }
         minTableLayout.addView(headerRow)
     }
@@ -492,8 +519,9 @@ class ReportsHubActivity : AppCompatActivity() {
                     sumLess += r.less
                     lastClosing = r.closingBal
 
+                    val rowBg = if (idx % 2 == 0) "#FFFFFF" else "#F1F8E9"
                     val tr = TableRow(this).apply {
-                        setBackgroundColor(if (idx % 2 == 0) Color.WHITE else Color.parseColor("#F1F8E9"))
+                        setBackgroundColor(Color.parseColor("#607D8B"))
                     }
                     val vals = listOf(
                         r.dateStr,
@@ -509,20 +537,22 @@ class ReportsHubActivity : AppCompatActivity() {
                         "%.2f".format(Locale.getDefault(), r.closingBal)
                     )
                     vals.forEachIndexed { cIdx, txt ->
-                        val tv = TextView(this).apply {
-                            text = txt
-                            setTextColor(Color.BLACK)
-                            textSize = 12f
-                            setPadding(12, 10, 12, 10)
-                            gravity = if (cIdx == 0) Gravity.START else Gravity.END
-                            if (cIdx == 0 || cIdx == 5 || cIdx == 7 || cIdx == 10) setTypeface(null, Typeface.BOLD)
-                        }
-                        tr.addView(tv)
+                        tr.addView(
+                            makeTableCell(
+                                text = txt,
+                                bgColorHex = rowBg,
+                                textColorHex = "#000000",
+                                alignRight = (cIdx != 0),
+                                bold = (cIdx == 0 || cIdx == 5 || cIdx == 7 || cIdx == 10)
+                            )
+                        )
                     }
                     minTableLayout.addView(tr)
                 }
 
-                val totalRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#FFF9C4")) }
+                val totalRow = TableRow(this).apply {
+                    setBackgroundColor(Color.parseColor("#607D8B"))
+                }
                 val totalVals = listOf(
                     "TOTAL",
                     "",
@@ -537,15 +567,15 @@ class ReportsHubActivity : AppCompatActivity() {
                     "%.2f".format(Locale.getDefault(), lastClosing)
                 )
                 totalVals.forEachIndexed { cIdx, txt ->
-                    val tv = TextView(this).apply {
-                        text = txt
-                        setTextColor(Color.BLACK)
-                        setTypeface(null, Typeface.BOLD)
-                        textSize = 12f
-                        setPadding(12, 12, 12, 12)
-                        gravity = if (cIdx == 0) Gravity.START else Gravity.END
-                    }
-                    totalRow.addView(tv)
+                    totalRow.addView(
+                        makeTableCell(
+                            text = txt,
+                            bgColorHex = "#FFF9C4",
+                            textColorHex = "#000000",
+                            alignRight = (cIdx != 0),
+                            bold = true
+                        )
+                    )
                 }
                 minTableLayout.addView(totalRow)
             }
