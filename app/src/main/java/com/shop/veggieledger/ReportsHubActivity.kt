@@ -66,26 +66,19 @@ class ReportsHubActivity : AppCompatActivity() {
     private lateinit var minBtnExportPdf: Button
     private lateinit var minTableLayout: TableLayout
 
-    private data class MinSupplierRow(
-        val sortKey: Long,
-        val ymdDate: Long,
-        val dateStr: String,
-        val opBal: Double,
-        val qty: Double,
-        val suit: Double,
-        val kudumi: Double,
-        val netQty: Double,
-        val rate: Double,
-        val amount: Double,
+    private data class MinSupplierSummaryRow(
+        val supplierName: String,
+        val opBalance: Double,
+        val purchase: Double,
         val payment: Double,
-        val less: Double,
-        val closingBal: Double
+        val outstanding: Double,
+        val closingBalance: Double
     )
 
     private val minSupplierNames = arrayListOf<String>()
     private val minSupplierOpBalMap = HashMap<String, Double>()
     private lateinit var minSupplierAdapter: ArrayAdapter<String>
-    private val lastMinStatementRows = arrayListOf<MinSupplierRow>()
+    private val lastMinStatementRows = arrayListOf<MinSupplierSummaryRow>()
 
     private var fromDateStr: String = ""
     private var toDateStr: String = ""
@@ -272,12 +265,12 @@ class ReportsHubActivity : AppCompatActivity() {
         alignRight: Boolean = false,
         bold: Boolean = false
     ): TextView {
-        val tv = TextView(this).apply {
+        return TextView(this).apply {
             this.text = text
             setBackgroundColor(Color.parseColor(bgColorHex))
             setTextColor(Color.parseColor(textColorHex))
             textSize = 12f
-            setPadding(14, 11, 14, 11)
+            setPadding(16, 12, 16, 12)
             gravity = if (alignRight) Gravity.END else Gravity.START
             if (bold) setTypeface(null, Typeface.BOLD)
             val lp = TableRow.LayoutParams(
@@ -287,12 +280,18 @@ class ReportsHubActivity : AppCompatActivity() {
             lp.setMargins(2, 2, 2, 2)
             layoutParams = lp
         }
-        return tv
     }
 
     private fun renderMinimalHeaderOnly() {
         minTableLayout.removeAllViews()
-        val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Less", "Closing Bal")
+        val headers = listOf(
+            "Supplier Name",
+            "Op Balance",
+            "Purchase",
+            "Payment",
+            "Outstanding",
+            "Closing Balance"
+        )
         val headerRow = TableRow(this).apply {
             setBackgroundColor(Color.parseColor("#607D8B"))
         }
@@ -302,12 +301,36 @@ class ReportsHubActivity : AppCompatActivity() {
                     text = h,
                     bgColorHex = "#1B5E20",
                     textColorHex = "#FFFFFF",
-                    alignRight = (h != "Date"),
+                    alignRight = (h != "Supplier Name"),
                     bold = true
                 )
             )
         }
         minTableLayout.addView(headerRow)
+    }
+
+    private fun extractPurchaseDocAmount(doc: DocumentSnapshot): Double {
+        val grandTot = safeDouble(doc, "grandTotal")
+        if (grandTot > 0.0) return grandTot
+        val directAmt = safeDouble(doc, "amount")
+        if (directAmt > 0.0) return directAmt
+
+        val rawItems = doc.get("items") as? List<*> ?: return 0.0
+        var sum = 0.0
+        for (entry in rawItems) {
+            val m = entry as? Map<*, *> ?: continue
+            val lineTot = (m["lineTotal"] as? Number)?.toDouble() ?: (m["amount"] as? Number)?.toDouble()
+            if (lineTot != null) {
+                sum += lineTot
+            } else {
+                val kgs = (m["netKgs"] as? Number)?.toDouble() ?: (m["purchaseKgs"] as? Number)?.toDouble() ?: 0.0
+                val rate = (m["ratePerKg"] as? Number)?.toDouble() ?: (m["rate"] as? Number)?.toDouble() ?: 0.0
+                val bags = (m["bags"] as? Number)?.toDouble() ?: 0.0
+                val bagRate = (m["bagRate"] as? Number)?.toDouble() ?: 0.0
+                sum += (kgs * rate) + (bags * bagRate)
+            }
+        }
+        return sum
     }
 
     private fun generateMinimalSupplierStatement() {
@@ -348,86 +371,25 @@ class ReportsHubActivity : AppCompatActivity() {
                     }
                 }
 
-                val events = arrayListOf<MinSupplierRow>()
+                var beforeFromPurchase = 0.0
+                var beforeFromPayment = 0.0
+                var periodPurchase = 0.0
+                var periodPayment = 0.0
 
                 for (doc in purchaseDocs) {
                     val s = (doc.getString("supplierName") ?: "").trim()
                     if (!s.equals(supName, ignoreCase = true)) continue
 
                     val dStr = (doc.getString("date") ?: "").trim()
-                    val ts = doc.getLong("timestamp") ?: 0L
-                    val ymd = dateToYmd(dStr).toLong()
-                    val safeYmd = if (ymd > 0L) ymd else 0L
-                    val sortKey = (safeYmd * 10_000_000L) + (1L * 1_000_000L) + ((ts / 1000L) % 1_000_000L)
+                    val ymd = dateToYmd(dStr)
+                    val amt = extractPurchaseDocAmount(doc)
 
-                    val rawItems = doc.get("items") as? List<*>
-                    if (rawItems != null && rawItems.isNotEmpty()) {
-                        for (entry in rawItems) {
-                            val m = entry as? Map<*, *> ?: continue
-                            val purKgs = (m["purchaseKgs"] as? Number)?.toDouble() ?: 0.0
-                            val bags = (m["bags"] as? Number)?.toDouble() ?: 0.0
-                            val nos = (m["nos"] as? Number)?.toDouble() ?: 0.0
-                            val qtyVal = when {
-                                purKgs > 0.0 -> purKgs
-                                bags > 0.0 -> bags
-                                else -> nos
-                            }
-                            val suitVal = (m["suit"] as? Number)?.toDouble()
-                                ?: (m["thadukki"] as? Number)?.toDouble()
-                                ?: 0.0
-                            val kudumiVal = (m["kudumi"] as? Number)?.toDouble() ?: 0.0
-                            val savedNet = (m["netKgs"] as? Number)?.toDouble()
-                            val netQtyVal = savedNet ?: (qtyVal - suitVal - kudumiVal).coerceAtLeast(0.0)
-                            val rateVal = (m["ratePerKg"] as? Number)?.toDouble()
-                                ?: (m["rate"] as? Number)?.toDouble()
-                                ?: 0.0
-                            val amtVal = (m["lineTotal"] as? Number)?.toDouble()
-                                ?: (m["amount"] as? Number)?.toDouble()
-                                ?: (netQtyVal * rateVal)
-
-                            events.add(
-                                MinSupplierRow(
-                                    sortKey = sortKey,
-                                    ymdDate = safeYmd,
-                                    dateStr = dStr,
-                                    opBal = 0.0,
-                                    qty = qtyVal,
-                                    suit = suitVal,
-                                    kudumi = kudumiVal,
-                                    netQty = netQtyVal,
-                                    rate = rateVal,
-                                    amount = amtVal,
-                                    payment = 0.0,
-                                    less = 0.0,
-                                    closingBal = 0.0
-                                )
-                            )
-                        }
-                    } else {
-                        val qtyVal = (doc.getDouble("purchaseKgs") ?: doc.getDouble("netKgs") ?: 0.0)
-                        val suitVal = (doc.getDouble("suit") ?: doc.getDouble("thadukki") ?: 0.0)
-                        val kudumiVal = (doc.getDouble("kudumi") ?: 0.0)
-                        val netQtyVal = (doc.getDouble("netKgs") ?: (qtyVal - suitVal - kudumiVal).coerceAtLeast(0.0))
-                        val rateVal = (doc.getDouble("ratePerKg") ?: doc.getDouble("rate") ?: 0.0)
-                        val amtVal = (doc.getDouble("grandTotal") ?: doc.getDouble("amount") ?: (netQtyVal * rateVal))
-
-                        events.add(
-                            MinSupplierRow(
-                                sortKey = sortKey,
-                                ymdDate = safeYmd,
-                                dateStr = dStr,
-                                opBal = 0.0,
-                                qty = qtyVal,
-                                suit = suitVal,
-                                kudumi = kudumiVal,
-                                netQty = netQtyVal,
-                                rate = rateVal,
-                                amount = amtVal,
-                                payment = 0.0,
-                                less = 0.0,
-                                closingBal = 0.0
-                            )
-                        )
+                    if (fromYmd != -1 && ymd != -1 && ymd < fromYmd) {
+                        beforeFromPurchase += amt
+                    } else if ((fromYmd == -1 || ymd == -1 || ymd >= fromYmd) &&
+                        (toYmd == -1 || ymd == -1 || ymd <= toYmd)
+                    ) {
+                        periodPurchase += amt
                     }
                 }
 
@@ -439,139 +401,81 @@ class ReportsHubActivity : AppCompatActivity() {
                     if (!s.equals(supName, ignoreCase = true)) continue
 
                     val dStr = (doc.getString("date") ?: "").trim()
-                    val ts = doc.getLong("timestamp") ?: 0L
-                    val ymd = dateToYmd(dStr).toLong()
-                    val safeYmd = if (ymd > 0L) ymd else 0L
-                    val sortKey = (safeYmd * 10_000_000L) + (2L * 1_000_000L) + ((ts / 1000L) % 1_000_000L)
-
-                    val paidAmt = (doc.getDouble("amount")
-                        ?: doc.getDouble("paidAmount")
-                        ?: doc.getDouble("payment")
-                        ?: 0.0)
-
-                    val lessAmt = (doc.getDouble("discount")
-                        ?: doc.getDouble("less")
-                        ?: doc.getDouble("discAmount")
-                        ?: doc.getDouble("deduction")
-                        ?: 0.0)
-
-                    events.add(
-                        MinSupplierRow(
-                            sortKey = sortKey,
-                            ymdDate = safeYmd,
-                            dateStr = dStr,
-                            opBal = 0.0,
-                            qty = 0.0,
-                            suit = 0.0,
-                            kudumi = 0.0,
-                            netQty = 0.0,
-                            rate = 0.0,
-                            amount = 0.0,
-                            payment = paidAmt,
-                            less = lessAmt,
-                            closingBal = 0.0
-                        )
-                    )
-                }
-
-                val sortedEvents = events.sortedBy { it.sortKey }
-                var runningOp = baseOpBal
-                val filteredRows = arrayListOf<MinSupplierRow>()
-
-                for (ev in sortedEvents) {
-                    val isBeforeFrom = fromYmd != -1 && ev.ymdDate > 0L && ev.ymdDate < fromYmd.toLong()
-                    val isAfterTo = toYmd != -1 && ev.ymdDate > 0L && ev.ymdDate > toYmd.toLong()
-
-                    val rowOp = runningOp
-                    val rowClosing = (rowOp + ev.amount - ev.payment - ev.less).coerceAtLeast(0.0)
-
-                    if (isBeforeFrom) {
-                        runningOp = rowClosing
-                        continue
+                    val ymd = dateToYmd(dStr)
+                    val paid = safeDouble(doc, "amount").let {
+                        if (it > 0.0) it else safeDouble(doc, "paidAmount").let { p ->
+                            if (p > 0.0) p else safeDouble(doc, "payment")
+                        }
                     }
-                    if (isAfterTo) break
 
-                    filteredRows.add(ev.copy(opBal = rowOp, closingBal = rowClosing))
-                    runningOp = rowClosing
+                    if (fromYmd != -1 && ymd != -1 && ymd < fromYmd) {
+                        beforeFromPayment += paid
+                    } else if ((fromYmd == -1 || ymd == -1 || ymd >= fromYmd) &&
+                        (toYmd == -1 || ymd == -1 || ymd <= toYmd)
+                    ) {
+                        periodPayment += paid
+                    }
                 }
+
+                val computedOpBalance = (baseOpBal + beforeFromPurchase - beforeFromPayment).coerceAtLeast(0.0)
+                val computedOutstanding = (computedOpBalance + periodPurchase - periodPayment).coerceAtLeast(0.0)
+                val computedClosingBalance = computedOutstanding
+
+                val summaryRow = MinSupplierSummaryRow(
+                    supplierName = supName,
+                    opBalance = computedOpBalance,
+                    purchase = periodPurchase,
+                    payment = periodPayment,
+                    outstanding = computedOutstanding,
+                    closingBalance = computedClosingBalance
+                )
 
                 lastMinStatementRows.clear()
-                lastMinStatementRows.addAll(filteredRows)
+                lastMinStatementRows.add(summaryRow)
 
                 renderMinimalHeaderOnly()
 
-                var sumQty = 0.0
-                var sumSuit = 0.0
-                var sumKudumi = 0.0
-                var sumNetQty = 0.0
-                var sumAmount = 0.0
-                var sumPayment = 0.0
-                var sumLess = 0.0
-                var lastClosing = baseOpBal
-
-                filteredRows.forEachIndexed { idx, r ->
-                    sumQty += r.qty
-                    sumSuit += r.suit
-                    sumKudumi += r.kudumi
-                    sumNetQty += r.netQty
-                    sumAmount += r.amount
-                    sumPayment += r.payment
-                    sumLess += r.less
-                    lastClosing = r.closingBal
-
-                    val rowBg = if (idx % 2 == 0) "#FFFFFF" else "#F1F8E9"
-                    val tr = TableRow(this).apply {
-                        setBackgroundColor(Color.parseColor("#607D8B"))
-                    }
-                    val vals = listOf(
-                        r.dateStr,
-                        "%.2f".format(Locale.getDefault(), r.opBal),
-                        "%.2f".format(Locale.getDefault(), r.qty),
-                        "%.2f".format(Locale.getDefault(), r.suit),
-                        "%.2f".format(Locale.getDefault(), r.kudumi),
-                        "%.2f".format(Locale.getDefault(), r.netQty),
-                        "%.2f".format(Locale.getDefault(), r.rate),
-                        "%.2f".format(Locale.getDefault(), r.amount),
-                        "%.2f".format(Locale.getDefault(), r.payment),
-                        "%.2f".format(Locale.getDefault(), r.less),
-                        "%.2f".format(Locale.getDefault(), r.closingBal)
-                    )
-                    vals.forEachIndexed { cIdx, txt ->
-                        tr.addView(
-                            makeTableCell(
-                                text = txt,
-                                bgColorHex = rowBg,
-                                textColorHex = "#000000",
-                                alignRight = (cIdx != 0),
-                                bold = (cIdx == 0 || cIdx == 5 || cIdx == 7 || cIdx == 10)
-                            )
-                        )
-                    }
-                    minTableLayout.addView(tr)
+                val tr = TableRow(this).apply {
+                    setBackgroundColor(Color.parseColor("#607D8B"))
                 }
+                val vals = listOf(
+                    summaryRow.supplierName,
+                    "%.2f".format(Locale.getDefault(), summaryRow.opBalance),
+                    "%.2f".format(Locale.getDefault(), summaryRow.purchase),
+                    "%.2f".format(Locale.getDefault(), summaryRow.payment),
+                    "%.2f".format(Locale.getDefault(), summaryRow.outstanding),
+                    "%.2f".format(Locale.getDefault(), summaryRow.closingBalance)
+                )
+                vals.forEachIndexed { cIdx, txt ->
+                    tr.addView(
+                        makeTableCell(
+                            text = txt,
+                            bgColorHex = "#FFFFFF",
+                            textColorHex = if (cIdx == 4 || cIdx == 5) "#C62828" else "#000000",
+                            alignRight = (cIdx != 0),
+                            bold = (cIdx == 0 || cIdx == 4 || cIdx == 5)
+                        )
+                    )
+                }
+                minTableLayout.addView(tr)
 
                 val totalRow = TableRow(this).apply {
                     setBackgroundColor(Color.parseColor("#607D8B"))
                 }
                 val totalVals = listOf(
                     "TOTAL",
-                    "",
-                    "%.2f".format(Locale.getDefault(), sumQty),
-                    "%.2f".format(Locale.getDefault(), sumSuit),
-                    "%.2f".format(Locale.getDefault(), sumKudumi),
-                    "%.2f".format(Locale.getDefault(), sumNetQty),
-                    "",
-                    "%.2f".format(Locale.getDefault(), sumAmount),
-                    "%.2f".format(Locale.getDefault(), sumPayment),
-                    "%.2f".format(Locale.getDefault(), sumLess),
-                    "%.2f".format(Locale.getDefault(), lastClosing)
+                    "%.2f".format(Locale.getDefault(), summaryRow.opBalance),
+                    "%.2f".format(Locale.getDefault(), summaryRow.purchase),
+                    "%.2f".format(Locale.getDefault(), summaryRow.payment),
+                    "%.2f".format(Locale.getDefault(), summaryRow.outstanding),
+                    "%.2f".format(Locale.getDefault(), summaryRow.closingBalance)
                 )
                 totalVals.forEachIndexed { cIdx, txt ->
                     totalRow.addView(
                         makeTableCell(
                             text = txt,
                             bgColorHex = "#FFF9C4",
-                            textColorHex = "#000000",
+                            textColorHex = if (cIdx == 4 || cIdx == 5) "#C62828" else "#000000",
                             alignRight = (cIdx != 0),
                             bold = true
                         )
@@ -604,41 +508,35 @@ class ReportsHubActivity : AppCompatActivity() {
             }
             val headPaint = Paint().apply {
                 color = Color.BLACK
-                textSize = 9.5f
+                textSize = 11f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val bodyPaint = Paint().apply {
                 color = Color.BLACK
-                textSize = 9.5f
+                textSize = 11f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
 
-            var y = 36f
-            canvas.drawText("SUPPLIER STATEMENT : $supName ($fromDateStr to $toDateStr)", 20f, y, titlePaint)
-            y += 26f
+            var y = 38f
+            canvas.drawText("SUPPLIER STATEMENT ($fromDateStr to $toDateStr)", 24f, y, titlePaint)
+            y += 30f
 
-            val colsX = floatArrayOf(20f, 92f, 165f, 225f, 285f, 350f, 415f, 485f, 565f, 640f, 715f)
-            val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Less", "Closing Bal")
+            val colsX = floatArrayOf(24f, 220f, 345f, 465f, 585f, 705f)
+            val headers = listOf("Supplier Name", "Op Balance", "Purchase", "Payment", "Outstanding", "Closing Balance")
             headers.forEachIndexed { i, h -> canvas.drawText(h, colsX[i], y, headPaint) }
 
-            y += 18f
+            y += 22f
             for (r in lastMinStatementRows) {
-                if (y > 550f) break
                 val rowVals = listOf(
-                    r.dateStr,
-                    "%.2f".format(Locale.getDefault(), r.opBal),
-                    "%.2f".format(Locale.getDefault(), r.qty),
-                    "%.2f".format(Locale.getDefault(), r.suit),
-                    "%.2f".format(Locale.getDefault(), r.kudumi),
-                    "%.2f".format(Locale.getDefault(), r.netQty),
-                    "%.2f".format(Locale.getDefault(), r.rate),
-                    "%.2f".format(Locale.getDefault(), r.amount),
+                    r.supplierName,
+                    "%.2f".format(Locale.getDefault(), r.opBalance),
+                    "%.2f".format(Locale.getDefault(), r.purchase),
                     "%.2f".format(Locale.getDefault(), r.payment),
-                    "%.2f".format(Locale.getDefault(), r.less),
-                    "%.2f".format(Locale.getDefault(), r.closingBal)
+                    "%.2f".format(Locale.getDefault(), r.outstanding),
+                    "%.2f".format(Locale.getDefault(), r.closingBalance)
                 )
                 rowVals.forEachIndexed { i, v -> canvas.drawText(v, colsX[i], y, bodyPaint) }
-                y += 17f
+                y += 20f
             }
 
             pdfDoc.finishPage(page)
@@ -686,47 +584,6 @@ class ReportsHubActivity : AppCompatActivity() {
             is Number -> raw.toDouble()
             is String -> raw.trim().toDoubleOrNull() ?: 0.0
             else -> 0.0
-        }
-    }
-
-    private fun getSaleSplitAmounts(doc: DocumentSnapshot): Triple<Double, Double, Double> {
-        val tot = safeDouble(doc, "grandTotal")
-        val mode = (doc.getString("payMode") ?: "Credit").trim()
-        val hasSplitFields = doc.contains("cash") || doc.contains("gpay") || doc.contains("credit") ||
-                doc.contains("cashAmount") || doc.contains("gpayAmount")
-
-        return if (hasSplitFields) {
-            val cAmt = if (doc.contains("cash")) safeDouble(doc, "cash") else safeDouble(doc, "cashAmount")
-            val gAmt = if (doc.contains("gpay")) safeDouble(doc, "gpay") else safeDouble(doc, "gpayAmount")
-            val crAmt = if (doc.contains("credit")) {
-                safeDouble(doc, "credit")
-            } else if (doc.contains("balanceAmount")) {
-                safeDouble(doc, "balanceAmount")
-            } else {
-                (tot - cAmt - gAmt).coerceAtLeast(0.0)
-            }
-            Triple(cAmt, gAmt, crAmt)
-        } else {
-            when {
-                mode.equals("Cash", ignoreCase = true) -> Triple(tot, 0.0, 0.0)
-                mode.contains("GPay", ignoreCase = true) ||
-                        mode.contains("UPI", ignoreCase = true) ||
-                        mode.contains("Bank", ignoreCase = true) -> Triple(0.0, tot, 0.0)
-                else -> Triple(0.0, 0.0, tot)
-            }
-        }
-    }
-
-    private fun fmtVal(value: Double): String {
-        return if (abs(value) < 0.005) "-" else String.format(Locale.getDefault(), "%.2f", value)
-    }
-
-    private fun fmtQty(value: Double): String {
-        if (abs(value) < 0.005) return "-"
-        return if (abs(value - value.toLong()) < 0.005) {
-            "${value.toLong()}"
-        } else {
-            String.format(Locale.getDefault(), "%.2f", value)
         }
     }
 
