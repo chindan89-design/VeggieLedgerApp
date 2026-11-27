@@ -3,8 +3,11 @@ package com.shop.veggieledger
 import android.app.DatePickerDialog
 import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
@@ -74,7 +77,7 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         }
 
         btnExportPdf.setOnClickListener {
-            exportSupplierOutstandingPdf()
+            exportSupplierOutstandingPdfAndImage()
         }
     }
 
@@ -495,69 +498,205 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         tlOutstandingGrid.addView(totalRow)
     }
 
-    private fun exportSupplierOutstandingPdf() {
+    private fun drawTableSheetOnCanvas(canvas: Canvas, sheetWidth: Int, sheetHeight: Int) {
+        canvas.drawColor(Color.WHITE)
+
+        val titlePaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 18f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val subPaint = Paint().apply {
+            color = Color.DKGRAY
+            textSize = 12f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val headerBgPaint = Paint().apply {
+            color = Color.parseColor("#1B5E20")
+            style = Paint.Style.FILL
+        }
+        val evenRowPaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        val oddRowPaint = Paint().apply {
+            color = Color.parseColor("#F1F8E9")
+            style = Paint.Style.FILL
+        }
+        val totalRowPaint = Paint().apply {
+            color = Color.parseColor("#FFF9C4")
+            style = Paint.Style.FILL
+        }
+        val borderPaint = Paint().apply {
+            color = Color.parseColor("#607D8B")
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            isAntiAlias = true
+        }
+        val headerTextPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = 11.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val bodyTextPaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            isAntiAlias = true
+        }
+        val boldBodyPaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val outTextPaint = Paint().apply {
+            color = Color.parseColor("#C62828")
+            textSize = 11.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+
+        val leftMargin = 24f
+        var y = 34f
+        canvas.drawText("SUPPLIER OUTSTANDING", leftMargin, y, titlePaint)
+        y += 20f
+        canvas.drawText("Date Range: $fromDateStr to $toDateStr", leftMargin, y, subPaint)
+        y += 16f
+
+        val colWidths = floatArrayOf(254f, 110f, 110f, 110f, 100f, 110f)
+        val colXs = FloatArray(colWidths.size)
+        var runningX = leftMargin
+        for (i in colWidths.indices) {
+            colXs[i] = runningX
+            runningX += colWidths[i]
+        }
+        val tableRight = runningX
+        val rowHeight = 26f
+
+        val headers = listOf(
+            "Supplier Name",
+            "Op Balance",
+            "Purchase",
+            "Payment",
+            "Less",
+            "Outstanding"
+        )
+
+        canvas.drawRect(Rect(leftMargin.toInt(), y.toInt(), tableRight.toInt(), (y + rowHeight).toInt()), headerBgPaint)
+        for (i in headers.indices) {
+            val cellLeft = colXs[i]
+            val cellRight = cellLeft + colWidths[i]
+            canvas.drawRect(Rect(cellLeft.toInt(), y.toInt(), cellRight.toInt(), (y + rowHeight).toInt()), borderPaint)
+            val hText = headers[i]
+            val textY = y + 17f
+            if (i == 0) {
+                canvas.drawText(hText, cellLeft + 10f, textY, headerTextPaint)
+            } else {
+                val w = headerTextPaint.measureText(hText)
+                canvas.drawText(hText, cellRight - w - 10f, textY, headerTextPaint)
+            }
+        }
+        y += rowHeight
+
+        var totOp = 0.0
+        var totPur = 0.0
+        var totPay = 0.0
+        var totLess = 0.0
+        var totOut = 0.0
+
+        currentRows.forEachIndexed { idx, r ->
+            if (y + rowHeight > sheetHeight - 36f) return@forEachIndexed
+            totOp += r.opBalance
+            totPur += r.purchase
+            totPay += r.payment
+            totLess += r.less
+            totOut += r.outstanding
+
+            val bgPaint = if (idx % 2 == 0) evenRowPaint else oddRowPaint
+            canvas.drawRect(Rect(leftMargin.toInt(), y.toInt(), tableRight.toInt(), (y + rowHeight).toInt()), bgPaint)
+
+            val vals = listOf(
+                r.supplierName,
+                "%.2f".format(Locale.getDefault(), r.opBalance),
+                "%.2f".format(Locale.getDefault(), r.purchase),
+                "%.2f".format(Locale.getDefault(), r.payment),
+                "%.2f".format(Locale.getDefault(), r.less),
+                "%.2f".format(Locale.getDefault(), r.outstanding)
+            )
+
+            for (i in vals.indices) {
+                val cellLeft = colXs[i]
+                val cellRight = cellLeft + colWidths[i]
+                canvas.drawRect(Rect(cellLeft.toInt(), y.toInt(), cellRight.toInt(), (y + rowHeight).toInt()), borderPaint)
+                val v = vals[i]
+                val textY = y + 17f
+                val paintToUse = when {
+                    i == 5 -> outTextPaint
+                    i == 0 -> boldBodyPaint
+                    else -> bodyTextPaint
+                }
+                if (i == 0) {
+                    canvas.drawText(v, cellLeft + 10f, textY, paintToUse)
+                } else {
+                    val w = paintToUse.measureText(v)
+                    canvas.drawText(v, cellRight - w - 10f, textY, paintToUse)
+                }
+            }
+            y += rowHeight
+        }
+
+        if (y + rowHeight <= sheetHeight - 16f) {
+            canvas.drawRect(Rect(leftMargin.toInt(), y.toInt(), tableRight.toInt(), (y + rowHeight).toInt()), totalRowPaint)
+            val totalVals = listOf(
+                "TOTAL",
+                "%.2f".format(Locale.getDefault(), totOp),
+                "%.2f".format(Locale.getDefault(), totPur),
+                "%.2f".format(Locale.getDefault(), totPay),
+                "%.2f".format(Locale.getDefault(), totLess),
+                "%.2f".format(Locale.getDefault(), totOut)
+            )
+            for (i in totalVals.indices) {
+                val cellLeft = colXs[i]
+                val cellRight = cellLeft + colWidths[i]
+                canvas.drawRect(Rect(cellLeft.toInt(), y.toInt(), cellRight.toInt(), (y + rowHeight).toInt()), borderPaint)
+                val v = totalVals[i]
+                val textY = y + 17f
+                val paintToUse = if (i == 5) outTextPaint else boldBodyPaint
+                if (i == 0) {
+                    canvas.drawText(v, cellLeft + 10f, textY, paintToUse)
+                } else {
+                    val w = paintToUse.measureText(v)
+                    canvas.drawText(v, cellRight - w - 10f, textY, paintToUse)
+                }
+            }
+        }
+    }
+
+    private fun exportSupplierOutstandingPdfAndImage() {
         if (currentRows.isEmpty()) {
             Toast.makeText(this, "Tap SUBMIT first to generate report", Toast.LENGTH_SHORT).show()
             return
         }
 
         try {
+            val stamp = System.currentTimeMillis()
+            val sheetWidth = 842
+            val sheetHeight = 595
+
+            // 1. Generate Table-Formatted PDF
             val pdfDoc = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(842, 595, 1).create()
+            val pageInfo = PdfDocument.PageInfo.Builder(sheetWidth, sheetHeight, 1).create()
             val page = pdfDoc.startPage(pageInfo)
-            val canvas = page.canvas
-
-            val titlePaint = Paint().apply {
-                color = Color.BLACK
-                textSize = 15f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            }
-            val headPaint = Paint().apply {
-                color = Color.BLACK
-                textSize = 11f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            }
-            val bodyPaint = Paint().apply {
-                color = Color.BLACK
-                textSize = 11f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            }
-
-            var y = 38f
-            canvas.drawText("SUPPLIER OUTSTANDING ($fromDateStr to $toDateStr)", 24f, y, titlePaint)
-            y += 30f
-
-            val colsX = floatArrayOf(24f, 220f, 340f, 460f, 580f, 695f)
-            val headers = listOf(
-                "Supplier Name",
-                "Op Balance",
-                "Purchase",
-                "Payment",
-                "Less",
-                "Outstanding"
-            )
-            headers.forEachIndexed { i, h -> canvas.drawText(h, colsX[i], y, headPaint) }
-
-            y += 22f
-            for (r in currentRows) {
-                if (y > 550f) break
-                val rowVals = listOf(
-                    r.supplierName,
-                    "%.2f".format(Locale.getDefault(), r.opBalance),
-                    "%.2f".format(Locale.getDefault(), r.purchase),
-                    "%.2f".format(Locale.getDefault(), r.payment),
-                    "%.2f".format(Locale.getDefault(), r.less),
-                    "%.2f".format(Locale.getDefault(), r.outstanding)
-                )
-                rowVals.forEachIndexed { i, v -> canvas.drawText(v, colsX[i], y, bodyPaint) }
-                y += 20f
-            }
-
+            drawTableSheetOnCanvas(page.canvas, sheetWidth, sheetHeight)
             pdfDoc.finishPage(page)
 
-            val fileName = "SupplierOutstanding_${System.currentTimeMillis()}.pdf"
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            val pdfFileName = "SupplierOutstanding_$stamp.pdf"
+            val pdfValues = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, pdfFileName)
                 put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Downloads.RELATIVE_PATH, "Download/VeggieReports")
@@ -566,28 +705,65 @@ class SupplierOutstandingActivity : AppCompatActivity() {
             }
 
             val resolver = contentResolver
-            val uri: Uri? = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                resolver.openOutputStream(uri)?.use { out -> pdfDoc.writeTo(out) }
+            val pdfUri: Uri? = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, pdfValues)
+            if (pdfUri != null) {
+                resolver.openOutputStream(pdfUri)?.use { out -> pdfDoc.writeTo(out) }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    values.clear()
-                    values.put(MediaStore.Downloads.IS_PENDING, 0)
-                    resolver.update(uri, values, null, null)
+                    pdfValues.clear()
+                    pdfValues.put(MediaStore.Downloads.IS_PENDING, 0)
+                    resolver.update(pdfUri, pdfValues, null, null)
                 }
-                pdfDoc.close()
+            }
+            pdfDoc.close()
 
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/pdf"
-                    putExtra(Intent.EXTRA_STREAM, uri)
+            // 2. Generate Matching Table-Formatted Image (PNG)
+            val bitmap = Bitmap.createBitmap(sheetWidth, sheetHeight, Bitmap.Config.ARGB_8888)
+            val imgCanvas = Canvas(bitmap)
+            drawTableSheetOnCanvas(imgCanvas, sheetWidth, sheetHeight)
+
+            val imgFileName = "SupplierOutstanding_$stamp.png"
+            val imgValues = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, imgFileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VeggieReports")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val imgUri: Uri? = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgValues)
+            if (imgUri != null) {
+                resolver.openOutputStream(imgUri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    out.flush()
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    imgValues.clear()
+                    imgValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    resolver.update(imgUri, imgValues, null, null)
+                }
+            }
+            bitmap.recycle()
+
+            if (pdfUri != null && imgUri != null) {
+                val multiShareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(pdfUri, imgUri))
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(shareIntent, "Export Supplier Outstanding PDF"))
+                startActivity(Intent.createChooser(multiShareIntent, "Share Supplier Outstanding PDF & Image"))
+            } else if (pdfUri != null) {
+                val pdfShareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, pdfUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(pdfShareIntent, "Export Supplier Outstanding PDF"))
             } else {
-                pdfDoc.close()
-                Toast.makeText(this, "Unable to create PDF", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Unable to export files", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "PDF Export Error: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Export Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
