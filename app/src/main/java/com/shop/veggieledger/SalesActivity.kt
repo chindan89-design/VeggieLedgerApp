@@ -51,10 +51,15 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySalesBinding
     private val db = FirebaseFirestore.getInstance()
 
+    private lateinit var etStockLotId: EditText
     private lateinit var spSalesStockBatch: Spinner
     private lateinit var tvSelectedBatchAvail: TextView
     private lateinit var etSalesWeighCoolie: EditText
     private lateinit var btnSendWhatsappBill: Button
+
+    // Guard flags to prevent infinite feedback loop between TextBox and Dropdown
+    private var isSyncingLotBoxFromSpinner: Boolean = false
+    private var isSyncingSpinnerFromLotBox: Boolean = false
 
     // TableLayout rows for dynamic visibility (Non-Coconut fields & Cash Payer)
     private lateinit var rowWeighCoolie: TableRow
@@ -168,12 +173,48 @@ class SalesActivity : AppCompatActivity() {
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
+        // Dropdown -> TextBox sync
         spSalesStockBatch.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                if (!isSyncingSpinnerFromLotBox && pos in 0 until filteredBatchesJson.length()) {
+                    val bObj = filteredBatchesJson.getJSONObject(pos)
+                    val lotCode = bObj.optString("batchId", "")
+                    isSyncingLotBoxFromSpinner = true
+                    etStockLotId.setText(lotCode)
+                    isSyncingLotBoxFromSpinner = false
+                }
                 updateSelectedBatchAvailabilityBanner()
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
+
+        // TextBox -> Dropdown sync
+        etStockLotId.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (isSyncingLotBoxFromSpinner) return
+                val typedLot = s?.toString()?.trim() ?: ""
+                if (typedLot.isEmpty()) return
+
+                isSyncingSpinnerFromLotBox = true
+                var matchedIdx = -1
+                for (i in 0 until filteredBatchesJson.length()) {
+                    val bObj = filteredBatchesJson.getJSONObject(i)
+                    val code = bObj.optString("batchId", "")
+                    val dId = bObj.optString("docId", "")
+                    if (code.equals(typedLot, ignoreCase = true) || dId.equals(typedLot, ignoreCase = true)) {
+                        matchedIdx = i
+                        break
+                    }
+                }
+                if (matchedIdx in 0 until batchDisplayList.size) {
+                    spSalesStockBatch.setSelection(matchedIdx)
+                }
+                isSyncingSpinnerFromLotBox = false
+                updateSelectedBatchAvailabilityBanner()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         fetchNextBillNo()
         loadCustomers()
@@ -217,18 +258,36 @@ class SalesActivity : AppCompatActivity() {
             val isCoconut = itemName.equals("Coconut", ignoreCase = true)
             val isOnion = itemName.equals("Onion", ignoreCase = true)
 
+            val typedLotBox = etStockLotId.text.toString().trim()
             val batchPos = spSalesStockBatch.selectedItemPosition
-            if (filteredBatchesJson.length() == 0 || batchPos < 0 || batchPos >= filteredBatchesJson.length()) {
-                Toast.makeText(this, "No available stock batch for $itemName! Add Purchase first.", Toast.LENGTH_LONG).show()
+
+            // Resolve batch by TextBox Lot ID first if typed, otherwise by Spinner selection
+            var resolvedBatchObj: JSONObject? = null
+            if (typedLotBox.isNotEmpty()) {
+                for (i in 0 until filteredBatchesJson.length()) {
+                    val candidate = filteredBatchesJson.getJSONObject(i)
+                    if (candidate.optString("batchId", "").equals(typedLotBox, ignoreCase = true) ||
+                        candidate.optString("docId", "").equals(typedLotBox, ignoreCase = true)
+                    ) {
+                        resolvedBatchObj = candidate
+                        break
+                    }
+                }
+            }
+            if (resolvedBatchObj == null && filteredBatchesJson.length() > 0 && batchPos in 0 until filteredBatchesJson.length()) {
+                resolvedBatchObj = filteredBatchesJson.getJSONObject(batchPos)
+            }
+
+            if (resolvedBatchObj == null) {
+                Toast.makeText(this, "No available stock batch for $itemName! Check Lot ID or Add Purchase.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
 
-            val selectedBatchObj = filteredBatchesJson.getJSONObject(batchPos)
-            val stockDocId = selectedBatchObj.optString("docId", "")
-            val batchId = selectedBatchObj.optString("batchId", "")
-            val supplierName = selectedBatchObj.optString("supplierName", "Unknown Supplier")
-            val availBags = selectedBatchObj.optInt("availableBags", 0)
-            val availKgs = selectedBatchObj.optDouble("availableKgs", 0.0)
+            val stockDocId = resolvedBatchObj.optString("docId", "")
+            val batchId = resolvedBatchObj.optString("batchId", "").ifEmpty { typedLotBox }
+            val supplierName = resolvedBatchObj.optString("supplierName", "Unknown Supplier")
+            val availBags = resolvedBatchObj.optInt("availableBags", 0)
+            val availKgs = resolvedBatchObj.optDouble("availableKgs", 0.0)
 
             var alreadyUsedBags = 0
             var alreadyUsedKgs = 0.0
@@ -419,7 +478,6 @@ class SalesActivity : AppCompatActivity() {
             }
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
-                // 1. Return old items' stock back to their original purchase stock_batches
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockToSpecificBatch(
@@ -431,7 +489,6 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                // 2. Deduct updated items' stock from their selected (possibly changed) Stock Lot ID
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
                     deductStockFromSpecificBatch(
@@ -578,6 +635,10 @@ class SalesActivity : AppCompatActivity() {
         pendingEditBatchDocId = sDocId
         pendingEditBatchId = bId
 
+        isSyncingLotBoxFromSpinner = true
+        etStockLotId.setText(bId)
+        isSyncingLotBoxFromSpinner = false
+
         val itemPos = itemNames.indexOfFirst { it.equals(iName, ignoreCase = true) }
         if (itemPos >= 0) {
             binding.spSalesItem.setSelection(itemPos)
@@ -598,7 +659,7 @@ class SalesActivity : AppCompatActivity() {
         binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
         updateLineAmountPreview()
         updateSelectedBatchAvailabilityBanner()
-        Toast.makeText(this, "Row #${rowIdx + 1}: Change '3. Select Stock' Lot ID & tap UPDATE", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Row #${rowIdx + 1}: Lot ID '$bId' loaded in TextBox & Dropdown", Toast.LENGTH_LONG).show()
     }
 
     private fun selectBatchInSpinner(targetDocId: String, targetBatchId: String) {
@@ -616,12 +677,22 @@ class SalesActivity : AppCompatActivity() {
             }
         }
         if (batchPos in 0 until batchDisplayList.size) {
+            isSyncingSpinnerFromLotBox = true
             spSalesStockBatch.setSelection(batchPos)
+            isSyncingSpinnerFromLotBox = false
         }
     }
 
     private fun populateFormTableRows() {
         val formTable = binding.tlSalesEntryForm
+
+        etStockLotId = EditText(this)
+        etStockLotId.hint = "Stock Lot ID (type or pick below)"
+        etStockLotId.textSize = 13f
+        etStockLotId.setTypeface(null, Typeface.BOLD)
+        etStockLotId.setSingleLine(true)
+        etStockLotId.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        etStockLotId.setBackgroundResource(android.R.drawable.edit_text)
 
         spSalesStockBatch = Spinner(this)
         spSalesStockBatch.setBackgroundResource(android.R.drawable.btn_dropdown)
@@ -717,13 +788,19 @@ class SalesActivity : AppCompatActivity() {
             return tr
         }
 
+        // 3. Select Stock: TextBox (Stock Lot ID) + Dropdown (Spinner) + Availability banner
         val stockBox = LinearLayout(this)
         stockBox.orientation = LinearLayout.VERTICAL
+        etStockLotId.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
         spSalesStockBatch.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             (42 * resources.displayMetrics.density).toInt()
         )
         tvSelectedBatchAvail.setPadding(4, 2, 4, 2)
+        stockBox.addView(etStockLotId)
         stockBox.addView(spSalesStockBatch)
         stockBox.addView(tvSelectedBatchAvail)
         val rowStock = createTableRow("3. Select Stock", stockBox)
@@ -1235,9 +1312,16 @@ class SalesActivity : AppCompatActivity() {
         }
 
         batchSpinnerAdapter.notifyDataSetChanged()
+        isSyncingSpinnerFromLotBox = true
         spSalesStockBatch.setSelection(0)
+        isSyncingSpinnerFromLotBox = false
+
         if (pendingEditBatchDocId.isNotEmpty() || pendingEditBatchId.isNotEmpty()) {
             selectBatchInSpinner(pendingEditBatchDocId, pendingEditBatchId)
+        } else if (filteredBatchesJson.length() > 0 && etStockLotId.text.toString().trim().isEmpty()) {
+            isSyncingLotBoxFromSpinner = true
+            etStockLotId.setText(filteredBatchesJson.getJSONObject(0).optString("batchId", ""))
+            isSyncingLotBoxFromSpinner = false
         }
         updateSelectedBatchAvailabilityBanner()
     }
@@ -1620,7 +1704,7 @@ class SalesActivity : AppCompatActivity() {
         if (billItemsArray.length() > 0) {
             loadGridRowIntoForm(0)
         }
-        Toast.makeText(this, "Loaded $bNo — Stock Lot ID dropdown ready to change", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Loaded $bNo — Stock Lot ID synced with TextBox & Dropdown", Toast.LENGTH_SHORT).show()
     }
 
     private fun adjustCustomerBalance(custId: String, delta: Double) {
@@ -2381,6 +2465,9 @@ class SalesActivity : AppCompatActivity() {
         selectedCustomerPhone = ""
         selectedCustomerBalance = 0.0
         clearGridRowEditState()
+        isSyncingLotBoxFromSpinner = true
+        etStockLotId.setText("")
+        isSyncingLotBoxFromSpinner = false
         etSplitCash.setText("")
         etSplitGpay.setText("")
         etSplitCredit.setText("Cr: 0.00")
