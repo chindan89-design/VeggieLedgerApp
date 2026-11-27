@@ -317,18 +317,15 @@ class SalesActivity : AppCompatActivity() {
 
             val bags = if (isCoconut) 0 else (binding.etSalesBags.text.toString().toIntOrNull() ?: 0)
             val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
+            // Allow 0 or blank Rate when Kgs or Bags are entered
             val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
 
             if (kgs <= 0.0 && bags <= 0) {
                 Toast.makeText(this, "Enter valid Bags or Net Kgs", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (rate <= 0.0) {
-                Toast.makeText(this, "Enter valid Rate", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
 
-            if (remainingKgs != Double.MAX_VALUE && kgs > remainingKgs + 0.01) {
+            if (kgs > remainingKgs + 0.01) {
                 Toast.makeText(
                     this,
                     String.format(Locale.getDefault(), "Insufficient Stock! Lot %s (%s) only has %.2f Kgs left.", batchId, supplierName, remainingKgs),
@@ -764,7 +761,7 @@ class SalesActivity : AppCompatActivity() {
 
         binding.etSalesBags.setText(if (bgs > 0) "$bgs" else "")
         binding.etSalesKgs.setText(if (kgs > 0.0) String.format(Locale.getDefault(), "%.2f", kgs) else "")
-        binding.etSalesRate.setText(if (rt > 0.0) String.format(Locale.getDefault(), "%.2f", rt) else "")
+        binding.etSalesRate.setText(String.format(Locale.getDefault(), "%.2f", rt))
         binding.etSalesBagCharge.setText(if (bChg > 0.0) String.format(Locale.getDefault(), "%.2f", bChg) else "")
         etSalesWeighCoolie.setText(if (wCoolie > 0.0) String.format(Locale.getDefault(), "%.2f", wCoolie) else "")
 
@@ -927,7 +924,6 @@ class SalesActivity : AppCompatActivity() {
             return tr
         }
 
-        // 3. Select Stock: TextBox (Stock Lot ID) + Dropdown (Spinner) + Availability banner
         val stockBox = LinearLayout(this)
         stockBox.orientation = LinearLayout.VERTICAL
         etStockLotId.layoutParams = LinearLayout.LayoutParams(
@@ -954,7 +950,6 @@ class SalesActivity : AppCompatActivity() {
             formTable.addView(rowWeighCoolie)
         }
 
-        // Insert Roundoff and Total right after Amount row (tvLineAmountPreview)
         val rowRoundoff = createTableRow("Roundoff", etLineRoundoff, "#E8EAF6")
         val rowFinalTotal = createTableRow("Total", tvLineFinalTotal, "#C8E6C9")
 
@@ -970,7 +965,6 @@ class SalesActivity : AppCompatActivity() {
         formTable.addView(rowRoundoff, afterAmountInsertIdx)
         formTable.addView(rowFinalTotal, afterAmountInsertIdx + 1)
 
-        // 6. Pay Mode & Cash Person Name right after Total row
         val paySingleLine = LinearLayout(this)
         paySingleLine.orientation = LinearLayout.HORIZONTAL
         paySingleLine.weightSum = 3f
