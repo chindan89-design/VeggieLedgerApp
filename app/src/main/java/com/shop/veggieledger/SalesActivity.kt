@@ -45,6 +45,7 @@ import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.zip.ZipInputStream
+import kotlin.math.roundToLong
 
 class SalesActivity : AppCompatActivity() {
 
@@ -55,11 +56,15 @@ class SalesActivity : AppCompatActivity() {
     private lateinit var spSalesStockBatch: Spinner
     private lateinit var tvSelectedBatchAvail: TextView
     private lateinit var etSalesWeighCoolie: EditText
+    private lateinit var etLineRoundoff: EditText
+    private lateinit var tvLineFinalTotal: TextView
     private lateinit var btnSendWhatsappBill: Button
 
-    // Guard flags to prevent infinite feedback loop between TextBox and Dropdown
+    // Guard flags to prevent infinite feedback loop between TextBox, Dropdown, Amount, and Roundoff
     private var isSyncingLotBoxFromSpinner: Boolean = false
     private var isSyncingSpinnerFromLotBox: Boolean = false
+    private var isUpdatingRoundoffAuto: Boolean = false
+    private var isManualRoundoffEdited: Boolean = false
 
     // TableLayout rows for dynamic visibility (Non-Coconut fields & Cash Payer)
     private lateinit var rowWeighCoolie: TableRow
@@ -236,6 +241,7 @@ class SalesActivity : AppCompatActivity() {
                         if (bags > 0) String.format(Locale.getDefault(), "%.2f", autoBagChg) else ""
                     )
                 }
+                isManualRoundoffEdited = false
                 updateLineAmountPreview()
             }
             override fun afterTextChanged(s: Editable?) {}
@@ -244,6 +250,7 @@ class SalesActivity : AppCompatActivity() {
         val lineCalcWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                isManualRoundoffEdited = false
                 updateLineAmountPreview()
             }
             override fun afterTextChanged(s: Editable?) {}
@@ -253,19 +260,28 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesBagCharge.addTextChangedListener(lineCalcWatcher)
         etSalesWeighCoolie.addTextChangedListener(lineCalcWatcher)
 
+        etLineRoundoff.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (!isUpdatingRoundoffAuto) {
+                    isManualRoundoffEdited = true
+                    updateFinalTotalFromAmountAndRoundoff()
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
         binding.btnAddSalesItem.setOnClickListener {
             val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
             val isCoconut = itemName.equals("Coconut", ignoreCase = true)
             val isOnion = itemName.equals("Onion", ignoreCase = true)
 
-            // Stock Lot ID TextBox is the primary source for Stock ID
             val stockIdFromBox = etStockLotId.text.toString().trim()
             if (stockIdFromBox.isEmpty()) {
                 Toast.makeText(this, "Enter or select Stock Lot ID in '3. Select Stock'!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // Look up matching batch across all batches (or filtered batches) using the TextBox Lot ID
             var matchedBatchObj: JSONObject? = findBatchByLotId(stockIdFromBox, itemName)
             if (matchedBatchObj == null) {
                 val batchPos = spSalesStockBatch.selectedItemPosition
@@ -345,7 +361,9 @@ class SalesActivity : AppCompatActivity() {
             }
 
             val baseAmt = kgs * rate
-            val rowTotal = baseAmt + bagChg + weighCoolie
+            val rawLineAmt = baseAmt + bagChg + weighCoolie
+            val roundoffVal = etLineRoundoff.text.toString().toDoubleOrNull() ?: computeAutoRoundoff(rawLineAmt)
+            val rowTotal = rawLineAmt + roundoffVal
 
             val rowObj = JSONObject()
             rowObj.put("itemName", itemName)
@@ -358,6 +376,7 @@ class SalesActivity : AppCompatActivity() {
             rowObj.put("amount", baseAmt)
             rowObj.put("bagCharge", bagChg)
             rowObj.put("weighCoolie", weighCoolie)
+            rowObj.put("roundoff", roundoffVal)
             rowObj.put("rowTotal", rowTotal)
 
             if (editingGridRowIndex in 0 until billItemsArray.length()) {
@@ -371,12 +390,17 @@ class SalesActivity : AppCompatActivity() {
             refreshBillItemsGrid()
             updateSelectedBatchAvailabilityBanner()
 
+            isManualRoundoffEdited = false
             binding.etSalesBags.setText("")
             binding.etSalesKgs.setText("")
             binding.etSalesRate.setText("")
             binding.etSalesBagCharge.setText("")
             etSalesWeighCoolie.setText("")
             binding.tvLineAmountPreview.text = "Rs. 0.00"
+            isUpdatingRoundoffAuto = true
+            etLineRoundoff.setText("0.00")
+            isUpdatingRoundoffAuto = false
+            tvLineFinalTotal.text = "Rs. 0.00"
         }
 
         binding.btnSaveSalesBill.setOnClickListener {
@@ -395,7 +419,6 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // If user modified the Stock Lot ID TextBox directly without clicking Update Row, apply it to active/first grid item
             val activeLotBoxVal = etStockLotId.text.toString().trim()
             if (activeLotBoxVal.isNotEmpty() && billItemsArray.length() > 0) {
                 val targetIdx = if (editingGridRowIndex in 0 until billItemsArray.length()) editingGridRowIndex else 0
@@ -448,6 +471,7 @@ class SalesActivity : AppCompatActivity() {
             var totalKgsAll = 0.0
             var totalBagChargesAll = 0.0
             var totalWeighCoolieAll = 0.0
+            var totalRoundoffAll = 0.0
             var firstItemName = ""
             var firstBatchId = ""
             var firstSupplierName = ""
@@ -466,6 +490,7 @@ class SalesActivity : AppCompatActivity() {
                 val amt = obj.getDouble("amount")
                 val bChg = obj.getDouble("bagCharge")
                 val wCoolie = obj.optDouble("weighCoolie", 0.0)
+                val rndOff = obj.optDouble("roundoff", 0.0)
 
                 if (i == 0) {
                     firstItemName = iName
@@ -476,6 +501,7 @@ class SalesActivity : AppCompatActivity() {
                 totalKgsAll += kgs
                 totalBagChargesAll += bChg
                 totalWeighCoolieAll += wCoolie
+                totalRoundoffAll += rndOff
 
                 val itemMap = hashMapOf<String, Any>(
                     "itemName" to iName,
@@ -488,13 +514,13 @@ class SalesActivity : AppCompatActivity() {
                     "rate" to rt,
                     "amount" to amt,
                     "bagCharge" to bChg,
-                    "weighCoolie" to wCoolie
+                    "weighCoolie" to wCoolie,
+                    "roundoff" to rndOff
                 )
                 itemsForDb.add(itemMap)
             }
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
-                // 1. Restore old items' stock back to their original purchase stock_batches
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockToSpecificBatch(
@@ -506,7 +532,6 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
-                // 2. Deduct updated items' stock using the Stock Lot ID from TextBox
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
                     val iName = obj.getString("itemName")
@@ -552,6 +577,7 @@ class SalesActivity : AppCompatActivity() {
                     "netKgs" to totalKgsAll,
                     "totalBagCharges" to totalBagChargesAll,
                     "totalWeighCoolie" to totalWeighCoolieAll,
+                    "roundoff" to totalRoundoffAll,
                     "grandTotal" to grandTotalBill,
                     "paidAmount" to totalPaid,
                     "balanceAmount" to creditBal,
@@ -613,6 +639,7 @@ class SalesActivity : AppCompatActivity() {
                     "netKgs" to totalKgsAll,
                     "totalBagCharges" to totalBagChargesAll,
                     "totalWeighCoolie" to totalWeighCoolieAll,
+                    "roundoff" to totalRoundoffAll,
                     "grandTotal" to grandTotalBill,
                     "paidAmount" to totalPaid,
                     "balanceAmount" to creditBal,
@@ -640,11 +667,35 @@ class SalesActivity : AppCompatActivity() {
         refreshBillItemsGrid()
     }
 
+    private fun computeAutoRoundoff(rawAmount: Double): Double {
+        if (rawAmount <= 0.0) return 0.0
+        val nearestRupee = rawAmount.roundToLong().toDouble()
+        val diff = nearestRupee - rawAmount
+        return if (kotlin.math.abs(diff) < 0.004) 0.0 else diff
+    }
+
+    private fun computeCurrentRawAmount(): Double {
+        val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
+        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
+        val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
+        val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
+        val weighCoolie = if (isCoconut) 0.0 else (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0)
+        return (kgs * rate) + bagChg + weighCoolie
+    }
+
+    private fun updateFinalTotalFromAmountAndRoundoff() {
+        val rawAmt = computeCurrentRawAmount()
+        val rnd = etLineRoundoff.text.toString().toDoubleOrNull() ?: 0.0
+        val finalTot = rawAmt + rnd
+        tvLineFinalTotal.text = String.format(Locale.getDefault(), "Rs. %.2f", finalTot)
+        recalculateSplitCredit()
+    }
+
     private fun findBatchByLotId(lotId: String, itemName: String = ""): JSONObject? {
         val cleanLot = lotId.trim()
         if (cleanLot.isEmpty()) return null
 
-        // First match by itemName + batchId/docId
         if (itemName.isNotEmpty()) {
             for (i in 0 until allStockBatchesJson.length()) {
                 val obj = allStockBatchesJson.getJSONObject(i)
@@ -659,7 +710,6 @@ class SalesActivity : AppCompatActivity() {
             }
         }
 
-        // Fallback match across all items by batchId or docId
         for (i in 0 until allStockBatchesJson.length()) {
             val obj = allStockBatchesJson.getJSONObject(i)
             val bId = obj.optString("batchId", "")
@@ -692,6 +742,8 @@ class SalesActivity : AppCompatActivity() {
         val rt = obj.optDouble("rate", 0.0)
         val bChg = obj.optDouble("bagCharge", 0.0)
         val wCoolie = obj.optDouble("weighCoolie", 0.0)
+        val hasSavedRoundoff = obj.has("roundoff")
+        val savedRoundoff = obj.optDouble("roundoff", 0.0)
 
         pendingEditBatchDocId = sDocId
         pendingEditBatchId = bId
@@ -716,9 +768,17 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesBagCharge.setText(if (bChg > 0.0) String.format(Locale.getDefault(), "%.2f", bChg) else "")
         etSalesWeighCoolie.setText(if (wCoolie > 0.0) String.format(Locale.getDefault(), "%.2f", wCoolie) else "")
 
+        updateLineAmountPreview()
+        if (hasSavedRoundoff) {
+            isManualRoundoffEdited = true
+            isUpdatingRoundoffAuto = true
+            etLineRoundoff.setText(String.format(Locale.getDefault(), "%.2f", savedRoundoff))
+            isUpdatingRoundoffAuto = false
+            updateFinalTotalFromAmountAndRoundoff()
+        }
+
         binding.btnAddSalesItem.text = "UPDATE ROW #${rowIdx + 1} (LOT ID)"
         binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
-        updateLineAmountPreview()
         updateSelectedBatchAvailabilityBanner()
         Toast.makeText(this, "Row #${rowIdx + 1}: Edit Stock Lot ID '$bId' in TextBox & tap UPDATE", Toast.LENGTH_LONG).show()
     }
@@ -771,6 +831,24 @@ class SalesActivity : AppCompatActivity() {
         etSalesWeighCoolie.hint = "0.00"
         etSalesWeighCoolie.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         etSalesWeighCoolie.setBackgroundResource(android.R.drawable.edit_text)
+
+        etLineRoundoff = EditText(this)
+        etLineRoundoff.hint = "0.00"
+        etLineRoundoff.textSize = 14f
+        etLineRoundoff.setTypeface(null, Typeface.BOLD)
+        etLineRoundoff.setTextColor(Color.parseColor("#0D47A1"))
+        etLineRoundoff.setText("0.00")
+        etLineRoundoff.inputType = InputType.TYPE_CLASS_NUMBER or
+            InputType.TYPE_NUMBER_FLAG_DECIMAL or
+            InputType.TYPE_NUMBER_FLAG_SIGNED
+        etLineRoundoff.setBackgroundResource(android.R.drawable.edit_text)
+
+        tvLineFinalTotal = TextView(this)
+        tvLineFinalTotal.text = "Rs. 0.00"
+        tvLineFinalTotal.textSize = 15.5f
+        tvLineFinalTotal.setTypeface(null, Typeface.BOLD)
+        tvLineFinalTotal.setTextColor(Color.parseColor("#1B5E20"))
+        tvLineFinalTotal.setPadding(6, 10, 6, 10)
 
         fun buildInlinePayBox(hintLabel: String, readOnly: Boolean): EditText {
             val et = EditText(this)
@@ -876,6 +954,23 @@ class SalesActivity : AppCompatActivity() {
             formTable.addView(rowWeighCoolie)
         }
 
+        // Insert Roundoff and Total right after Amount row (tvLineAmountPreview)
+        val rowRoundoff = createTableRow("Roundoff", etLineRoundoff, "#E8EAF6")
+        val rowFinalTotal = createTableRow("Total", tvLineFinalTotal, "#C8E6C9")
+
+        var amountRowIdx = -1
+        for (i in 0 until formTable.childCount) {
+            val child = formTable.getChildAt(i)
+            if (child is ViewGroup && child.findViewById<View>(binding.tvLineAmountPreview.id) != null) {
+                amountRowIdx = i
+                break
+            }
+        }
+        val afterAmountInsertIdx = if (amountRowIdx >= 0) amountRowIdx + 1 else formTable.childCount
+        formTable.addView(rowRoundoff, afterAmountInsertIdx)
+        formTable.addView(rowFinalTotal, afterAmountInsertIdx + 1)
+
+        // 6. Pay Mode & Cash Person Name right after Total row
         val paySingleLine = LinearLayout(this)
         paySingleLine.orientation = LinearLayout.HORIZONTAL
         paySingleLine.weightSum = 3f
@@ -887,21 +982,8 @@ class SalesActivity : AppCompatActivity() {
         rowCashPayer = createTableRow("Cash Person Name", etCashPayerName, "#E3F2FD")
         rowCashPayer.visibility = View.GONE
 
-        var amountRowIdx = -1
-        for (i in 0 until formTable.childCount) {
-            val child = formTable.getChildAt(i)
-            if (child is ViewGroup && child.findViewById<View>(binding.tvLineAmountPreview.id) != null) {
-                amountRowIdx = i
-                break
-            }
-        }
-        if (amountRowIdx >= 0) {
-            formTable.addView(rowPayMode, amountRowIdx + 1)
-            formTable.addView(rowCashPayer, amountRowIdx + 2)
-        } else {
-            formTable.addView(rowPayMode)
-            formTable.addView(rowCashPayer)
-        }
+        formTable.addView(rowPayMode, afterAmountInsertIdx + 2)
+        formTable.addView(rowCashPayer, afterAmountInsertIdx + 3)
     }
 
     private fun enforceBottomOrderForSaveAndJpg() {
@@ -946,17 +1028,13 @@ class SalesActivity : AppCompatActivity() {
         val gpayVal = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
         val paidSum = cashVal + gpayVal
 
-        val liveLineAmt = run {
-            val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
-            val isCoconut = itemName.equals("Coconut", ignoreCase = true)
-            val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
-            val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
-            val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
-            val wCoolie = if (isCoconut) 0.0 else (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0)
-            (kgs * rate) + bagChg + wCoolie
+        val liveTotalAmt = run {
+            val rawAmt = computeCurrentRawAmount()
+            val rnd = etLineRoundoff.text.toString().toDoubleOrNull() ?: 0.0
+            rawAmt + rnd
         }
 
-        val effectiveTarget = if (grandTotalBill > 0.0) grandTotalBill else liveLineAmt
+        val effectiveTarget = if (grandTotalBill > 0.0) grandTotalBill else liveTotalAmt
         val creditBal = (effectiveTarget - paidSum).coerceAtLeast(0.0)
 
         val typedName = etCashPayerName.text.toString().trim()
@@ -1467,17 +1545,17 @@ class SalesActivity : AppCompatActivity() {
     }
 
     private fun updateLineAmountPreview() {
-        val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
-        val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val rawAmt = computeCurrentRawAmount()
+        binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Rs. %.2f", rawAmt)
 
-        val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
-        val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
-        val bagChg = if (isCoconut) 0.0 else (binding.etSalesBagCharge.text.toString().toDoubleOrNull() ?: 0.0)
-        val weighCoolie = if (isCoconut) 0.0 else (etSalesWeighCoolie.text.toString().toDoubleOrNull() ?: 0.0)
+        if (!isManualRoundoffEdited) {
+            val autoRnd = computeAutoRoundoff(rawAmt)
+            isUpdatingRoundoffAuto = true
+            etLineRoundoff.setText(String.format(Locale.getDefault(), "%.2f", autoRnd))
+            isUpdatingRoundoffAuto = false
+        }
 
-        val lineTot = (kgs * rate) + bagChg + weighCoolie
-        binding.tvLineAmountPreview.text = String.format(Locale.getDefault(), "Rs. %.2f", lineTot)
-        recalculateSplitCredit()
+        updateFinalTotalFromAmountAndRoundoff()
     }
 
     private fun switchToNewMode() {
@@ -1728,6 +1806,8 @@ class SalesActivity : AppCompatActivity() {
                 val amt = (m["amount"] as? Number)?.toDouble() ?: (kgs * rt)
                 val bChg = (m["bagCharge"] as? Number)?.toDouble() ?: 0.0
                 val wCoolie = (m["weighCoolie"] as? Number)?.toDouble() ?: 0.0
+                val rawRow = amt + bChg + wCoolie
+                val rndOff = (m["roundoff"] as? Number)?.toDouble() ?: computeAutoRoundoff(rawRow)
 
                 val obj = JSONObject()
                 obj.put("itemName", iName)
@@ -1740,7 +1820,8 @@ class SalesActivity : AppCompatActivity() {
                 obj.put("amount", amt)
                 obj.put("bagCharge", bChg)
                 obj.put("weighCoolie", wCoolie)
-                obj.put("rowTotal", amt + bChg + wCoolie)
+                obj.put("roundoff", rndOff)
+                obj.put("rowTotal", rawRow + rndOff)
                 billItemsArray.put(obj)
 
                 val oldCopy = JSONObject(obj.toString())
@@ -1753,6 +1834,7 @@ class SalesActivity : AppCompatActivity() {
             val bgs = (data["bags"] as? Number)?.toInt() ?: 0
             val kgs = (data["netKgs"] as? Number)?.toDouble() ?: 0.0
             val rt = if (kgs > 0.0) oldGrandTotal / kgs else 0.0
+            val rndOff = (data["roundoff"] as? Number)?.toDouble() ?: 0.0
 
             val obj = JSONObject()
             obj.put("itemName", iName)
@@ -1762,9 +1844,10 @@ class SalesActivity : AppCompatActivity() {
             obj.put("bags", bgs)
             obj.put("netKgs", kgs)
             obj.put("rate", rt)
-            obj.put("amount", oldGrandTotal)
+            obj.put("amount", oldGrandTotal - rndOff)
             obj.put("bagCharge", 0.0)
             obj.put("weighCoolie", 0.0)
+            obj.put("roundoff", rndOff)
             obj.put("rowTotal", oldGrandTotal)
             billItemsArray.put(obj)
             oldSaleItemsJson.put(JSONObject(obj.toString()))
@@ -2447,6 +2530,7 @@ class SalesActivity : AppCompatActivity() {
             val rt = obj.getDouble("rate")
             val bChg = obj.getDouble("bagCharge")
             val wCoolie = obj.optDouble("weighCoolie", 0.0)
+            val rndOff = obj.optDouble("roundoff", 0.0)
             val rowTot = obj.getDouble("rowTotal")
             grandTotalBill += rowTot
 
@@ -2465,7 +2549,7 @@ class SalesActivity : AppCompatActivity() {
             else iName
 
             val bagDisplay = if (iName.equals("Coconut", ignoreCase = true) || bgs <= 0) "-" else "$bgs"
-            val extraCharges = bChg + wCoolie
+            val extraCharges = bChg + wCoolie + rndOff
             val extraDisplay = if (wCoolie > 0.0) {
                 String.format(Locale.getDefault(), "%.0f+%.0f", bChg, wCoolie)
             } else {
@@ -2572,6 +2656,7 @@ class SalesActivity : AppCompatActivity() {
         selectedCustomerPhone = ""
         selectedCustomerBalance = 0.0
         clearGridRowEditState()
+        isManualRoundoffEdited = false
         isSyncingLotBoxFromSpinner = true
         etStockLotId.setText("")
         isSyncingLotBoxFromSpinner = false
@@ -2590,6 +2675,11 @@ class SalesActivity : AppCompatActivity() {
         binding.etSalesRate.setText("")
         binding.etSalesBagCharge.setText("")
         etSalesWeighCoolie.setText("")
+        binding.tvLineAmountPreview.text = "Rs. 0.00"
+        isUpdatingRoundoffAuto = true
+        etLineRoundoff.setText("0.00")
+        isUpdatingRoundoffAuto = false
+        tvLineFinalTotal.text = "Rs. 0.00"
         binding.btnSaveSalesBill.isEnabled = true
         if (!isEditMode) fetchNextBillNo() else binding.etSalesBillNo.setText("")
         loadCustomers()
