@@ -265,6 +265,43 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
     }
 
+    private fun extractAnyDescription(doc: DocumentSnapshot): String {
+        val candidateKeys = listOf(
+            "description",
+            "desc",
+            "expenseDescription",
+            "remarks",
+            "remark",
+            "particulars",
+            "particular",
+            "note",
+            "notes",
+            "narration",
+            "details",
+            "reason",
+            "purpose",
+            "title",
+            "name"
+        )
+        for (key in candidateKeys) {
+            val valStr = safeString(doc, key)
+            if (valStr.isNotEmpty()) return valStr
+        }
+        val skipKeys = setOf(
+            "date", "type", "category", "expenseCategory", "account", "accountName",
+            "expense", "expenseName", "head", "payMode", "paymentMode", "mode",
+            "amount", "expenseAmount", "timestamp", "createdAt", "updatedAt", "id"
+        )
+        val data = doc.data ?: return ""
+        for ((k, v) in data) {
+            if (k in skipKeys) continue
+            if (v is String && v.trim().isNotEmpty()) {
+                return v.trim()
+            }
+        }
+        return ""
+    }
+
     private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
         val expPart = safeString(doc, "expense")
             .ifEmpty { safeString(doc, "expenseName") }
@@ -273,11 +310,13 @@ class CoconutDayBookActivity : AppCompatActivity() {
             .ifEmpty { safeString(doc, "head") }
             .ifEmpty { categoryLabel }
 
-        val descPart = safeString(doc, "description")
-            .ifEmpty { safeString(doc, "desc") }
-            .ifEmpty { safeString(doc, "remarks") }
-            .ifEmpty { safeString(doc, "particulars") }
-            .ifEmpty { safeString(doc, "note") }
+        val descPart = extractAnyDescription(doc).let { found ->
+            if (found.equals(expPart, ignoreCase = true) || found.equals(categoryLabel, ignoreCase = true)) {
+                ""
+            } else {
+                found
+            }
+        }
 
         return if (descPart.isNotEmpty()) {
             "$expPart - $descPart"
@@ -785,7 +824,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
         )
         htmlSb.append("<tr class='op'><td colspan='2'>1. OPENING BALANCE (OP. BAL)</td><td class='r'>${fmt(opBal)}</td></tr>")
 
-        // 2. Collection section: Cash Sales total only + other tree categories
         val colCard = LinearLayout(this)
         colCard.orientation = LinearLayout.VERTICAL
         colCard.setBackgroundColor(Color.WHITE)
@@ -852,7 +890,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
         contentContainer.addView(colCard)
 
-        // 3. Expenses section: Separate Category-wise cards with "Expense - Description" inside each
         val expSectionCard = LinearLayout(this)
         expSectionCard.orientation = LinearLayout.VERTICAL
         expSectionCard.setBackgroundColor(Color.WHITE)
