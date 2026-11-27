@@ -258,50 +258,46 @@ class SalesActivity : AppCompatActivity() {
             val isCoconut = itemName.equals("Coconut", ignoreCase = true)
             val isOnion = itemName.equals("Onion", ignoreCase = true)
 
-            val typedLotBox = etStockLotId.text.toString().trim()
-            val batchPos = spSalesStockBatch.selectedItemPosition
-
-            // Resolve batch by TextBox Lot ID first if typed, otherwise by Spinner selection
-            var resolvedBatchObj: JSONObject? = null
-            if (typedLotBox.isNotEmpty()) {
-                for (i in 0 until filteredBatchesJson.length()) {
-                    val candidate = filteredBatchesJson.getJSONObject(i)
-                    if (candidate.optString("batchId", "").equals(typedLotBox, ignoreCase = true) ||
-                        candidate.optString("docId", "").equals(typedLotBox, ignoreCase = true)
-                    ) {
-                        resolvedBatchObj = candidate
-                        break
-                    }
-                }
-            }
-            if (resolvedBatchObj == null && filteredBatchesJson.length() > 0 && batchPos in 0 until filteredBatchesJson.length()) {
-                resolvedBatchObj = filteredBatchesJson.getJSONObject(batchPos)
-            }
-
-            if (resolvedBatchObj == null) {
-                Toast.makeText(this, "No available stock batch for $itemName! Check Lot ID or Add Purchase.", Toast.LENGTH_LONG).show()
+            // Stock Lot ID TextBox is the primary source for Stock ID
+            val stockIdFromBox = etStockLotId.text.toString().trim()
+            if (stockIdFromBox.isEmpty()) {
+                Toast.makeText(this, "Enter or select Stock Lot ID in '3. Select Stock'!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            val stockDocId = resolvedBatchObj.optString("docId", "")
-            val batchId = resolvedBatchObj.optString("batchId", "").ifEmpty { typedLotBox }
-            val supplierName = resolvedBatchObj.optString("supplierName", "Unknown Supplier")
-            val availBags = resolvedBatchObj.optInt("availableBags", 0)
-            val availKgs = resolvedBatchObj.optDouble("availableKgs", 0.0)
+            // Look up matching batch across all batches (or filtered batches) using the TextBox Lot ID
+            var matchedBatchObj: JSONObject? = findBatchByLotId(stockIdFromBox, itemName)
+            if (matchedBatchObj == null) {
+                val batchPos = spSalesStockBatch.selectedItemPosition
+                if (filteredBatchesJson.length() > 0 && batchPos in 0 until filteredBatchesJson.length()) {
+                    val spObj = filteredBatchesJson.getJSONObject(batchPos)
+                    if (spObj.optString("batchId", "").equals(stockIdFromBox, ignoreCase = true)) {
+                        matchedBatchObj = spObj
+                    }
+                }
+            }
+
+            val stockDocId = matchedBatchObj?.optString("docId", "") ?: ""
+            val batchId = matchedBatchObj?.optString("batchId", "").orEmpty().ifEmpty { stockIdFromBox }
+            val supplierName = matchedBatchObj?.optString("supplierName", "Stock Lot") ?: "Stock Lot"
+            val availBags = matchedBatchObj?.optInt("availableBags", Int.MAX_VALUE) ?: Int.MAX_VALUE
+            val availKgs = matchedBatchObj?.optDouble("availableKgs", Double.MAX_VALUE) ?: Double.MAX_VALUE
 
             var alreadyUsedBags = 0
             var alreadyUsedKgs = 0.0
             for (k in 0 until billItemsArray.length()) {
                 if (k == editingGridRowIndex) continue
                 val existing = billItemsArray.getJSONObject(k)
-                if (existing.optString("stockDocId", "") == stockDocId) {
+                val exLot = existing.optString("batchId", "")
+                val exDoc = existing.optString("stockDocId", "")
+                if ((stockDocId.isNotEmpty() && exDoc == stockDocId) || exLot.equals(batchId, ignoreCase = true)) {
                     alreadyUsedBags += existing.optInt("bags", 0)
                     alreadyUsedKgs += existing.optDouble("netKgs", 0.0)
                 }
             }
 
-            val remainingBags = (availBags - alreadyUsedBags).coerceAtLeast(0)
-            val remainingKgs = (availKgs - alreadyUsedKgs).coerceAtLeast(0.0)
+            val remainingBags = if (availBags == Int.MAX_VALUE) Int.MAX_VALUE else (availBags - alreadyUsedBags).coerceAtLeast(0)
+            val remainingKgs = if (availKgs == Double.MAX_VALUE) Double.MAX_VALUE else (availKgs - alreadyUsedKgs).coerceAtLeast(0.0)
 
             val bags = if (isCoconut) 0 else (binding.etSalesBags.text.toString().toIntOrNull() ?: 0)
             val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
@@ -316,7 +312,7 @@ class SalesActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            if (kgs > remainingKgs + 0.01) {
+            if (remainingKgs != Double.MAX_VALUE && kgs > remainingKgs + 0.01) {
                 Toast.makeText(
                     this,
                     String.format(Locale.getDefault(), "Insufficient Stock! Lot %s (%s) only has %.2f Kgs left.", batchId, supplierName, remainingKgs),
@@ -324,7 +320,7 @@ class SalesActivity : AppCompatActivity() {
                 ).show()
                 return@setOnClickListener
             }
-            if (!isCoconut && bags > remainingBags) {
+            if (!isCoconut && remainingBags != Int.MAX_VALUE && bags > remainingBags) {
                 Toast.makeText(
                     this,
                     "Insufficient Bags! Lot $batchId ($supplierName) only has $remainingBags Bags left.",
@@ -366,7 +362,7 @@ class SalesActivity : AppCompatActivity() {
 
             if (editingGridRowIndex in 0 until billItemsArray.length()) {
                 billItemsArray.put(editingGridRowIndex, rowObj)
-                Toast.makeText(this, "Updated Row in Grid -> Lot ID: $batchId", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Row updated with Stock ID: $batchId", Toast.LENGTH_SHORT).show()
             } else {
                 billItemsArray.put(rowObj)
             }
@@ -397,6 +393,24 @@ class SalesActivity : AppCompatActivity() {
             if (isEditMode && editingSaleDocId.isEmpty()) {
                 Toast.makeText(this, "Please select a bill above to edit", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
+            }
+
+            // If user modified the Stock Lot ID TextBox directly without clicking Update Row, apply it to active/first grid item
+            val activeLotBoxVal = etStockLotId.text.toString().trim()
+            if (activeLotBoxVal.isNotEmpty() && billItemsArray.length() > 0) {
+                val targetIdx = if (editingGridRowIndex in 0 until billItemsArray.length()) editingGridRowIndex else 0
+                val targetRow = billItemsArray.getJSONObject(targetIdx)
+                val currentRowLot = targetRow.optString("batchId", "")
+                if (!currentRowLot.equals(activeLotBoxVal, ignoreCase = true)) {
+                    val resolvedObj = findBatchByLotId(activeLotBoxVal, targetRow.optString("itemName", ""))
+                    targetRow.put("batchId", resolvedObj?.optString("batchId", activeLotBoxVal) ?: activeLotBoxVal)
+                    targetRow.put("stockDocId", resolvedObj?.optString("docId", "") ?: "")
+                    if (resolvedObj != null) {
+                        targetRow.put("supplierName", resolvedObj.optString("supplierName", targetRow.optString("supplierName", "")))
+                    }
+                    billItemsArray.put(targetIdx, targetRow)
+                    refreshBillItemsGrid()
+                }
             }
 
             val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
@@ -441,9 +455,11 @@ class SalesActivity : AppCompatActivity() {
             for (i in 0 until billItemsArray.length()) {
                 val obj = billItemsArray.getJSONObject(i)
                 val iName = obj.getString("itemName")
-                val sDocId = obj.optString("stockDocId", "")
                 val bId = obj.optString("batchId", "")
-                val sName = obj.optString("supplierName", "")
+                val resolvedFromBox = findBatchByLotId(bId, iName)
+                val sDocId = resolvedFromBox?.optString("docId", "") ?: obj.optString("stockDocId", "")
+                val finalBatchId = resolvedFromBox?.optString("batchId", bId)?.ifEmpty { bId } ?: bId
+                val sName = resolvedFromBox?.optString("supplierName", obj.optString("supplierName", "")) ?: obj.optString("supplierName", "")
                 val bgs = obj.getInt("bags")
                 val kgs = obj.getDouble("netKgs")
                 val rt = obj.getDouble("rate")
@@ -453,7 +469,7 @@ class SalesActivity : AppCompatActivity() {
 
                 if (i == 0) {
                     firstItemName = iName
-                    firstBatchId = bId
+                    firstBatchId = finalBatchId
                     firstSupplierName = sName
                 }
                 totalBagsAll += bgs
@@ -464,8 +480,8 @@ class SalesActivity : AppCompatActivity() {
                 val itemMap = hashMapOf<String, Any>(
                     "itemName" to iName,
                     "stockDocId" to sDocId,
-                    "stockId" to bId,
-                    "batchId" to bId,
+                    "stockId" to finalBatchId,
+                    "batchId" to finalBatchId,
                     "supplierName" to sName,
                     "bags" to bgs,
                     "netKgs" to kgs,
@@ -478,6 +494,7 @@ class SalesActivity : AppCompatActivity() {
             }
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
+                // 1. Restore old items' stock back to their original purchase stock_batches
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockToSpecificBatch(
@@ -489,12 +506,19 @@ class SalesActivity : AppCompatActivity() {
                     )
                 }
 
+                // 2. Deduct updated items' stock using the Stock Lot ID from TextBox
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
+                    val iName = obj.getString("itemName")
+                    val bId = obj.optString("batchId", "")
+                    val resolvedFromBox = findBatchByLotId(bId, iName)
+                    val sDocId = resolvedFromBox?.optString("docId", "") ?: obj.optString("stockDocId", "")
+                    val finalBatchId = resolvedFromBox?.optString("batchId", bId)?.ifEmpty { bId } ?: bId
+
                     deductStockFromSpecificBatch(
-                        obj.optString("stockDocId", ""),
-                        obj.optString("batchId", ""),
-                        obj.getString("itemName"),
+                        sDocId,
+                        finalBatchId,
+                        iName,
                         obj.getInt("bags"),
                         obj.getDouble("netKgs")
                     )
@@ -536,7 +560,7 @@ class SalesActivity : AppCompatActivity() {
 
                 db.collection("sales").document(editingSaleDocId).update(updateData)
                     .addOnSuccessListener {
-                        Toast.makeText(this, "Sales Bill $billNo & Stock Lot Updated!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Sales Bill $billNo Updated with Stock ID: $firstBatchId!", Toast.LENGTH_SHORT).show()
                         editingSaleDocId = ""
                         oldSaleCreditBalance = 0.0
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -551,10 +575,16 @@ class SalesActivity : AppCompatActivity() {
             } else {
                 for (i in 0 until billItemsArray.length()) {
                     val obj = billItemsArray.getJSONObject(i)
+                    val iName = obj.getString("itemName")
+                    val bId = obj.optString("batchId", "")
+                    val resolvedFromBox = findBatchByLotId(bId, iName)
+                    val sDocId = resolvedFromBox?.optString("docId", "") ?: obj.optString("stockDocId", "")
+                    val finalBatchId = resolvedFromBox?.optString("batchId", bId)?.ifEmpty { bId } ?: bId
+
                     deductStockFromSpecificBatch(
-                        obj.optString("stockDocId", ""),
-                        obj.optString("batchId", ""),
-                        obj.getString("itemName"),
+                        sDocId,
+                        finalBatchId,
+                        iName,
                         obj.getInt("bags"),
                         obj.getDouble("netKgs")
                     )
@@ -610,6 +640,37 @@ class SalesActivity : AppCompatActivity() {
         refreshBillItemsGrid()
     }
 
+    private fun findBatchByLotId(lotId: String, itemName: String = ""): JSONObject? {
+        val cleanLot = lotId.trim()
+        if (cleanLot.isEmpty()) return null
+
+        // First match by itemName + batchId/docId
+        if (itemName.isNotEmpty()) {
+            for (i in 0 until allStockBatchesJson.length()) {
+                val obj = allStockBatchesJson.getJSONObject(i)
+                val bItem = obj.optString("itemName", "")
+                val bId = obj.optString("batchId", "")
+                val dId = obj.optString("docId", "")
+                if (bItem.equals(itemName, ignoreCase = true) &&
+                    (bId.equals(cleanLot, ignoreCase = true) || dId.equals(cleanLot, ignoreCase = true))
+                ) {
+                    return obj
+                }
+            }
+        }
+
+        // Fallback match across all items by batchId or docId
+        for (i in 0 until allStockBatchesJson.length()) {
+            val obj = allStockBatchesJson.getJSONObject(i)
+            val bId = obj.optString("batchId", "")
+            val dId = obj.optString("docId", "")
+            if (bId.equals(cleanLot, ignoreCase = true) || dId.equals(cleanLot, ignoreCase = true)) {
+                return obj
+            }
+        }
+        return null
+    }
+
     private fun clearGridRowEditState() {
         editingGridRowIndex = -1
         pendingEditBatchDocId = ""
@@ -659,7 +720,7 @@ class SalesActivity : AppCompatActivity() {
         binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
         updateLineAmountPreview()
         updateSelectedBatchAvailabilityBanner()
-        Toast.makeText(this, "Row #${rowIdx + 1}: Lot ID '$bId' loaded in TextBox & Dropdown", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Row #${rowIdx + 1}: Edit Stock Lot ID '$bId' in TextBox & tap UPDATE", Toast.LENGTH_LONG).show()
     }
 
     private fun selectBatchInSpinner(targetDocId: String, targetBatchId: String) {
@@ -1329,15 +1390,24 @@ class SalesActivity : AppCompatActivity() {
     private fun updateSelectedBatchAvailabilityBanner() {
         val itemName = binding.spSalesItem.selectedItem?.toString() ?: "Coconut"
         val isCoconut = itemName.equals("Coconut", ignoreCase = true)
+        val typedLot = etStockLotId.text.toString().trim()
         val pos = spSalesStockBatch.selectedItemPosition
 
-        if (filteredBatchesJson.length() == 0 || pos < 0 || pos >= filteredBatchesJson.length()) {
-            tvSelectedBatchAvail.text = "Lot ID: None | Avail: 0.00 Kgs"
-            tvSelectedBatchAvail.setTextColor(Color.RED)
+        val obj: JSONObject? = findBatchByLotId(typedLot, itemName)
+            ?: if (filteredBatchesJson.length() > 0 && pos in 0 until filteredBatchesJson.length()) {
+                filteredBatchesJson.getJSONObject(pos)
+            } else null
+
+        if (obj == null) {
+            tvSelectedBatchAvail.text = if (typedLot.isNotEmpty()) {
+                "Lot ID: $typedLot (Direct TextBox ID)"
+            } else {
+                "Lot ID: None | Avail: 0.00 Kgs"
+            }
+            tvSelectedBatchAvail.setTextColor(if (typedLot.isNotEmpty()) Color.parseColor("#1565C0") else Color.RED)
             return
         }
 
-        val obj = filteredBatchesJson.getJSONObject(pos)
         val stockDocId = obj.optString("docId", "")
         val sup = obj.optString("supplierName", "")
         val bId = obj.optString("batchId", "")
@@ -1350,7 +1420,7 @@ class SalesActivity : AppCompatActivity() {
         for (k in 0 until billItemsArray.length()) {
             if (k == editingGridRowIndex) continue
             val row = billItemsArray.getJSONObject(k)
-            if (row.optString("stockDocId", "") == stockDocId) {
+            if (row.optString("stockDocId", "") == stockDocId || row.optString("batchId", "").equals(bId, ignoreCase = true)) {
                 usedBags += row.optInt("bags", 0)
                 usedKgs += row.optDouble("netKgs", 0.0)
             }
@@ -1750,6 +1820,42 @@ class SalesActivity : AppCompatActivity() {
             return
         }
 
+        if (batchId.isNotEmpty()) {
+            db.collection("stock_batches").get().addOnSuccessListener { snap ->
+                val targetDoc = snap.documents.firstOrNull { d ->
+                    val bCode = d.getString("batchId") ?: ""
+                    val sameItem = itemName.isEmpty() || (d.getString("itemName") ?: "").equals(itemName, ignoreCase = true)
+                    sameItem && (bCode.equals(batchId, ignoreCase = true) || d.id.equals(batchId, ignoreCase = true))
+                } ?: snap.documents.firstOrNull { d ->
+                    val bCode = d.getString("batchId") ?: ""
+                    bCode.equals(batchId, ignoreCase = true) || d.id.equals(batchId, ignoreCase = true)
+                }
+
+                if (targetDoc != null) {
+                    val batchRef = db.collection("stock_batches").document(targetDoc.id)
+                    db.runTransaction { tr ->
+                        val sSnap = tr.get(batchRef)
+                        if (sSnap.exists()) {
+                            val availBags = (sSnap.getLong("availableBags") ?: 0L).toInt()
+                            val availKgs = sSnap.getDouble("availableKgs") ?: 0.0
+                            tr.update(
+                                batchRef,
+                                hashMapOf<String, Any>(
+                                    "availableBags" to (availBags - bagsToDeduct).coerceAtLeast(0),
+                                    "availableKgs" to (availKgs - kgsToDeduct).coerceAtLeast(0.0)
+                                )
+                            )
+                        }
+                    }.addOnCompleteListener {
+                        loadAvailableStockBatches()
+                    }
+                } else {
+                    deductStockFifo(itemName, bagsToDeduct, kgsToDeduct)
+                }
+            }
+            return
+        }
+
         deductStockFifo(itemName, bagsToDeduct, kgsToDeduct)
     }
 
@@ -1786,7 +1892,8 @@ class SalesActivity : AppCompatActivity() {
         db.collection("stock_batches").get().addOnSuccessListener { snap ->
             val byBatch = if (batchId.isNotEmpty()) {
                 snap.documents.firstOrNull { d ->
-                    (d.getString("batchId") ?: "").equals(batchId, ignoreCase = true)
+                    (d.getString("batchId") ?: "").equals(batchId, ignoreCase = true) ||
+                        d.id.equals(batchId, ignoreCase = true)
                 }
             } else null
 
