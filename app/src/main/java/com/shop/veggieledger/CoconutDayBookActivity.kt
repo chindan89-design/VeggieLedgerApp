@@ -46,12 +46,13 @@ class CoconutDayBookActivity : AppCompatActivity() {
     private var printableHtml: String = ""
 
     private var lastOpBal: Double = 0.0
+    private var lastCashSalesTotal: Double = 0.0
     private var lastTodayCollection: Double = 0.0
     private var lastTotalAvailable: Double = 0.0
     private var lastTotalExpense: Double = 0.0
     private var lastClosingBal: Double = 0.0
     private val lastCollectionTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
-    private val lastExpenseTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
+    private val lastExpenseItems = ArrayList<TreeEntry>()
 
     data class TreeEntry(val label: String, val subInfo: String, val amount: Double)
 
@@ -281,13 +282,13 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
                         var prevCashIn = 0.0
                         var prevCashOut = 0.0
+                        var todayCashSalesSum = 0.0
 
                         val collectionTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
-                        collectionTree["Cash Sales"] = arrayListOf()
                         collectionTree["Credit Bill Received by Cash"] = arrayListOf()
                         collectionTree["Other Incomes"] = arrayListOf()
 
-                                               // 1. Cash Sales (Coconut) — reads `cash` field directly
+                        // 1. Cash Sales (Coconut) — total only (no TreeView)
                         for (sDoc in salSnap.documents) {
                             val cocoAmt = getCoconutAmountFromSaleDoc(sDoc)
                             if (cocoAmt <= 0.0) continue
@@ -310,16 +311,12 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             val ratio = if (grandTot > 0.0) (cocoAmt / grandTot).coerceIn(0.0, 1.0) else 1.0
                             val cocoCashAmt = rawCashIn * ratio
 
-                            val cName = safeString(sDoc, "customerName", "Customer")
-                            val bNo = safeString(sDoc, "billNo", sDoc.id)
-
                             if (dYmd in 1 until targetYmd) {
                                 prevCashIn += cocoCashAmt
                             } else if (dYmd == targetYmd) {
-                                collectionTree["Cash Sales"]?.add(TreeEntry("$cName ($bNo)", "Cash", cocoCashAmt))
+                                todayCashSalesSum += cocoCashAmt
                             }
                         }
-
 
                         // 2. Credit Bill Received by Cash
                         for (rDoc in recSnap.documents) {
@@ -335,7 +332,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             val rNo = safeString(rDoc, "receiptNo", rDoc.id)
 
                             var matchesCoconut = (cid.isNotEmpty() && coconutCustomerIds.contains(cid)) ||
-                                    (cname.isNotEmpty() && coconutCustomerNames.contains(cname.lowercase(Locale.getDefault())))
+                                (cname.isNotEmpty() && coconutCustomerNames.contains(cname.lowercase(Locale.getDefault())))
 
                             val rawAllocs = rDoc.get("billAllocations") as? List<*>
                             if (rawAllocs != null) {
@@ -358,68 +355,66 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & 3 Expense Categories (Shop, Other, Vehicle)
-                        val expenseTree = LinkedHashMap<String, ArrayList<TreeEntry>>()
-                        expenseTree["Shop Expenses"] = arrayListOf()
-                        expenseTree["Other Expenses"] = arrayListOf()
-                        expenseTree["Vehicle Expenses"] = arrayListOf()
+                        // 3. Other Incomes & Expenses (Account - Description with separate '-')
+                        val expenseItems = ArrayList<TreeEntry>()
 
                         for (eDoc in expSnap.documents) {
                             val dYmd = dateToYmd(safeString(eDoc, "date"))
                             val type = safeString(eDoc, "type", "Expense")
-                            val cat = safeString(eDoc, "category", "Other Expenses")
+                            val acc = safeString(eDoc, "account")
+                                .ifEmpty { safeString(eDoc, "accountName") }
+                                .ifEmpty { safeString(eDoc, "category", "Expense") }
                             val desc = safeString(eDoc, "description")
+                                .ifEmpty { safeString(eDoc, "desc") }
                                 .ifEmpty { safeString(eDoc, "particulars") }
                                 .ifEmpty { safeString(eDoc, "remarks") }
-                                .ifEmpty { cat }
-                            val amt = safeDouble(eDoc, "amount")
+                            val amt = safeDouble(eDoc, "amount").let {
+                                if (it > 0.0) it else safeDouble(eDoc, "expenseAmount")
+                            }
                             val mode = safeString(eDoc, "payMode", "Cash")
                             if (amt <= 0.0) continue
 
                             if (type.equals("Income", ignoreCase = true)) {
+                                val labelText = if (desc.isNotEmpty()) "$acc - $desc" else acc
                                 if (dYmd in 1 until targetYmd) {
                                     prevCashIn += amt
                                 } else if (dYmd == targetYmd) {
-                                    collectionTree["Other Incomes"]?.add(TreeEntry(desc, "$cat | $mode", amt))
+                                    collectionTree["Other Incomes"]?.add(TreeEntry(labelText, mode, amt))
                                 }
                             } else {
                                 if (dYmd in 1 until targetYmd) {
                                     prevCashOut += amt
                                 } else if (dYmd == targetYmd) {
-                                    val targetCat = when {
-                                        cat.equals("Shop Expenses", ignoreCase = true) -> "Shop Expenses"
-                                        cat.equals("Vehicle Expenses", ignoreCase = true) -> "Vehicle Expenses"
-                                        else -> "Other Expenses"
-                                    }
-                                    expenseTree[targetCat]?.add(TreeEntry(desc, mode, amt))
+                                    val accountAndDesc = if (desc.isNotEmpty()) "$acc - $desc" else acc
+                                    expenseItems.add(TreeEntry(accountAndDesc, mode, amt))
                                 }
                             }
                         }
 
                         val openingBalance = (prevCashIn - prevCashOut).coerceAtLeast(0.0)
 
-                        var todayCollectionTotal = 0.0
+                        var otherCollectionTotal = 0.0
                         for ((_, list) in collectionTree) {
-                            for (item in list) todayCollectionTotal += item.amount
+                            for (item in list) otherCollectionTotal += item.amount
                         }
+                        val todayCollectionTotal = todayCashSalesSum + otherCollectionTotal
 
                         var todayExpenseTotal = 0.0
-                        for ((_, list) in expenseTree) {
-                            for (item in list) todayExpenseTotal += item.amount
-                        }
+                        for (item in expenseItems) todayExpenseTotal += item.amount
 
                         val totalAvailable = openingBalance + todayCollectionTotal
                         val closingBalance = totalAvailable - todayExpenseTotal
 
                         lastOpBal = openingBalance
+                        lastCashSalesTotal = todayCashSalesSum
                         lastTodayCollection = todayCollectionTotal
                         lastTotalAvailable = totalAvailable
                         lastTotalExpense = todayExpenseTotal
                         lastClosingBal = closingBalance
                         lastCollectionTree.clear()
                         lastCollectionTree.putAll(collectionTree)
-                        lastExpenseTree.clear()
-                        lastExpenseTree.putAll(expenseTree)
+                        lastExpenseItems.clear()
+                        lastExpenseItems.addAll(expenseItems)
 
                         tvSummaryStrip.text = String.format(
                             Locale.getDefault(),
@@ -429,10 +424,11 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
                         renderDayBookCards(
                             openingBalance,
+                            todayCashSalesSum,
                             collectionTree,
                             todayCollectionTotal,
                             totalAvailable,
-                            expenseTree,
+                            expenseItems,
                             todayExpenseTotal,
                             closingBalance
                         )
@@ -451,7 +447,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
     }
 
     private fun generateAndShareDayBookPdf() {
-        if (lastCollectionTree.isEmpty() && lastExpenseTree.isEmpty()) {
+        if (lastCollectionTree.isEmpty() && lastExpenseItems.isEmpty() && abs(lastCashSalesTotal) < 0.005) {
             Toast.makeText(this, "Please wait for Day Book data to load", Toast.LENGTH_SHORT).show()
             return
         }
@@ -556,94 +552,95 @@ class CoconutDayBookActivity : AppCompatActivity() {
             canvas.drawText("Rs. ${fmt(lastOpBal)}", pageWidth - margin - 8f, y + 16f, pCatRight)
             y += 32f
 
-            fun drawPdfTreeSection(
-                secTitle: String,
-                hdrColorHex: String,
-                subBgHex: String,
-                tree: LinkedHashMap<String, ArrayList<TreeEntry>>,
-                subTotalLbl: String?,
-                subTotalVal: Double,
-                totalLbl: String,
-                totalVal: Double
-            ) {
-                y = newPageIfNeeded(y, 44f)
-                pFill.color = Color.parseColor(hdrColorHex)
-                canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
-                canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
-                canvas.drawText(secTitle, margin + 8f, y + 15f, pSecHdr)
-                y += 22f
+            // Collection section: Cash Sales total only + other tree nodes
+            y = newPageIfNeeded(y, 44f)
+            pFill.color = Color.parseColor("#1B5E20")
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
+            canvas.drawText("2. INCOMES / COLLECTION", margin + 8f, y + 15f, pSecHdr)
+            y += 22f
 
-                for ((catName, children) in tree) {
-                    y = newPageIfNeeded(y, 22f)
-                    var catSum = 0.0
-                    for (c in children) catSum += c.amount
+            pFill.color = Color.parseColor("#F1F8E9")
+            canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pFill)
+            canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pBorder)
+            pCatLeft.color = Color.parseColor("#1B5E20")
+            pCatRight.color = Color.BLACK
+            canvas.drawText("Cash Sales", margin + 8f, y + 14f, pCatLeft)
+            canvas.drawText("Rs. ${fmt(lastCashSalesTotal)}", pageWidth - margin - 8f, y + 14f, pCatRight)
+            y += 20f
 
-                    pFill.color = Color.parseColor(subBgHex)
-                    canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pFill)
-                    canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pBorder)
-                    pCatLeft.color = Color.parseColor(hdrColorHex)
-                    pCatRight.color = Color.BLACK
-
-                    val arrow = if (children.isNotEmpty()) "▼" else "•"
-                    canvas.drawText("$arrow  $catName (${children.size})", margin + 8f, y + 14f, pCatLeft)
-                    canvas.drawText("Rs. ${fmt(catSum)}", pageWidth - margin - 8f, y + 14f, pCatRight)
-                    y += 20f
-
-                    for (idx in children.indices) {
-                        y = newPageIfNeeded(y, 18f)
-                        val item = children[idx]
-                        val branch = if (idx == children.size - 1) "└── " else "├── "
-                        canvas.drawRect(margin, y, pageWidth - margin, y + 18f, pBorder)
-                        canvas.drawText("$branch${item.label} (${item.subInfo})", margin + 22f, y + 13f, pChildLeft)
-                        canvas.drawText(fmt(item.amount), pageWidth - margin - 8f, y + 13f, pChildRight)
-                        y += 18f
-                    }
-                }
-
-                if (subTotalLbl != null) {
-                    y = newPageIfNeeded(y, 20f)
-                    pFill.color = Color.parseColor("#E8F5E9")
-                    canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pFill)
-                    canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pBorder)
-                    pCatLeft.color = Color.BLACK
-                    pCatRight.color = Color.parseColor("#1B5E20")
-                    canvas.drawText(subTotalLbl, margin + 8f, y + 14f, pCatLeft)
-                    canvas.drawText("Rs. ${fmt(subTotalVal)}", pageWidth - margin - 8f, y + 14f, pCatRight)
-                    y += 20f
-                }
-
+            for ((catName, children) in lastCollectionTree) {
                 y = newPageIfNeeded(y, 22f)
-                pFill.color = Color.parseColor("#FFF9C4")
-                canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
-                canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
-                pCatLeft.color = Color.BLACK
-                pCatRight.color = Color.parseColor(hdrColorHex)
-                canvas.drawText(totalLbl, margin + 8f, y + 15f, pCatLeft)
-                canvas.drawText("Rs. ${fmt(totalVal)}", pageWidth - margin - 8f, y + 15f, pCatRight)
-                y += 30f
+                var catSum = 0.0
+                for (c in children) catSum += c.amount
+
+                pFill.color = Color.parseColor("#F1F8E9")
+                canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pFill)
+                canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pBorder)
+                pCatLeft.color = Color.parseColor("#1B5E20")
+                pCatRight.color = Color.BLACK
+
+                val arrow = if (children.isNotEmpty()) "▼" else "•"
+                canvas.drawText("$arrow  $catName (${children.size})", margin + 8f, y + 14f, pCatLeft)
+                canvas.drawText("Rs. ${fmt(catSum)}", pageWidth - margin - 8f, y + 14f, pCatRight)
+                y += 20f
+
+                for (idx in children.indices) {
+                    y = newPageIfNeeded(y, 18f)
+                    val item = children[idx]
+                    val branch = if (idx == children.size - 1) "└── " else "├── "
+                    canvas.drawRect(margin, y, pageWidth - margin, y + 18f, pBorder)
+                    canvas.drawText("$branch${item.label} (${item.subInfo})", margin + 22f, y + 13f, pChildLeft)
+                    canvas.drawText(fmt(item.amount), pageWidth - margin - 8f, y + 13f, pChildRight)
+                    y += 18f
+                }
             }
 
-            drawPdfTreeSection(
-                secTitle = "2. INCOMES / COLLECTION",
-                hdrColorHex = "#1B5E20",
-                subBgHex = "#F1F8E9",
-                tree = lastCollectionTree,
-                subTotalLbl = "Today Collection Total",
-                subTotalVal = lastTodayCollection,
-                totalLbl = "Total (Op.Bal + Collection)",
-                totalVal = lastTotalAvailable
-            )
+            y = newPageIfNeeded(y, 20f)
+            pFill.color = Color.parseColor("#E8F5E9")
+            canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pFill)
+            canvas.drawRect(margin, y, pageWidth - margin, y + 20f, pBorder)
+            pCatLeft.color = Color.BLACK
+            pCatRight.color = Color.parseColor("#1B5E20")
+            canvas.drawText("Today Collection Total", margin + 8f, y + 14f, pCatLeft)
+            canvas.drawText("Rs. ${fmt(lastTodayCollection)}", pageWidth - margin - 8f, y + 14f, pCatRight)
+            y += 20f
 
-            drawPdfTreeSection(
-                secTitle = "3. EXPENSES (CATEGORY-WISE TREE VIEW)",
-                hdrColorHex = "#C62828",
-                subBgHex = "#FFEBEE",
-                tree = lastExpenseTree,
-                subTotalLbl = null,
-                subTotalVal = 0.0,
-                totalLbl = "Total Expenses (-)",
-                totalVal = lastTotalExpense
-            )
+            y = newPageIfNeeded(y, 22f)
+            pFill.color = Color.parseColor("#FFF9C4")
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
+            pCatLeft.color = Color.BLACK
+            pCatRight.color = Color.parseColor("#1B5E20")
+            canvas.drawText("Total (Op.Bal + Collection)", margin + 8f, y + 15f, pCatLeft)
+            canvas.drawText("Rs. ${fmt(lastTotalAvailable)}", pageWidth - margin - 8f, y + 15f, pCatRight)
+            y += 30f
+
+            // Expenses section: Account - Description
+            y = newPageIfNeeded(y, 44f)
+            pFill.color = Color.parseColor("#C62828")
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
+            canvas.drawText("3. EXPENSES (ACCOUNT - DESCRIPTION)", margin + 8f, y + 15f, pSecHdr)
+            y += 22f
+
+            for (item in lastExpenseItems) {
+                y = newPageIfNeeded(y, 19f)
+                canvas.drawRect(margin, y, pageWidth - margin, y + 19f, pBorder)
+                canvas.drawText(item.label, margin + 10f, y + 13.5f, pChildLeft)
+                canvas.drawText(fmt(item.amount), pageWidth - margin - 8f, y + 13.5f, pChildRight)
+                y += 19f
+            }
+
+            y = newPageIfNeeded(y, 22f)
+            pFill.color = Color.parseColor("#FFF9C4")
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
+            canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pBorder)
+            pCatLeft.color = Color.BLACK
+            pCatRight.color = Color.parseColor("#C62828")
+            canvas.drawText("Total Expenses (-)", margin + 8f, y + 15f, pCatLeft)
+            canvas.drawText("Rs. ${fmt(lastTotalExpense)}", pageWidth - margin - 8f, y + 15f, pCatRight)
+            y += 30f
 
             y = newPageIfNeeded(y, 28f)
             val clHex = if (lastClosingBal >= 0.0) "#1B5E20" else "#C62828"
@@ -723,10 +720,11 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
     private fun renderDayBookCards(
         opBal: Double,
+        cashSalesTotal: Double,
         collectionTree: LinkedHashMap<String, ArrayList<TreeEntry>>,
         todayCollection: Double,
         totalWithOpBal: Double,
-        expenseTree: LinkedHashMap<String, ArrayList<TreeEntry>>,
+        expenseItems: ArrayList<TreeEntry>,
         totalExpense: Double,
         closingBal: Double
     ) {
@@ -741,37 +739,137 @@ class CoconutDayBookActivity : AppCompatActivity() {
         )
         htmlSb.append("<tr class='op'><td colspan='2'>1. OPENING BALANCE (OP. BAL)</td><td class='r'>${fmt(opBal)}</td></tr>")
 
-        contentContainer.addView(
-            makeTreeSectionCard(
-                sectionTitle = "2. INCOMES / COLLECTION",
-                headerBgHex = "#1B5E20",
-                branchBgHex = "#F1F8E9",
-                treeData = collectionTree,
-                subTotalLabel = "Today Collection Total",
-                subTotalValue = todayCollection,
-                grandLabel = "Total (Op.Bal + Collection)",
-                grandValue = totalWithOpBal,
-                showZeroNodes = true,
-                shareSb = shareSb,
-                htmlSb = htmlSb
-            )
+        // 2. Collection section: Cash Sales total only + other tree categories
+        val colCard = LinearLayout(this)
+        colCard.orientation = LinearLayout.VERTICAL
+        colCard.setBackgroundColor(Color.WHITE)
+        colCard.setPadding(14, 14, 14, 14)
+        val colLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
         )
+        colLp.setMargins(0, 0, 0, 12)
+        colCard.layoutParams = colLp
 
-        contentContainer.addView(
-            makeTreeSectionCard(
-                sectionTitle = "3. EXPENSES (CATEGORY-WISE TREE VIEW)",
-                headerBgHex = "#C62828",
-                branchBgHex = "#FFEBEE",
-                treeData = expenseTree,
-                subTotalLabel = null,
-                subTotalValue = 0.0,
-                grandLabel = "Total Expenses (-)",
-                grandValue = totalExpense,
-                showZeroNodes = true,
-                shareSb = shareSb,
-                htmlSb = htmlSb
-            )
+        val tvColHdr = TextView(this)
+        tvColHdr.text = "2. INCOMES / COLLECTION"
+        tvColHdr.textSize = 14f
+        tvColHdr.setTypeface(null, Typeface.BOLD)
+        tvColHdr.setTextColor(Color.WHITE)
+        tvColHdr.setBackgroundColor(Color.parseColor("#1B5E20"))
+        tvColHdr.setPadding(14, 12, 14, 12)
+        colCard.addView(tvColHdr)
+
+        shareSb.append("=== 2. INCOMES / COLLECTION ===\n")
+
+        // Cash Sales total only (no TreeView)
+        val cashSalesRow = LinearLayout(this)
+        cashSalesRow.orientation = LinearLayout.HORIZONTAL
+        cashSalesRow.gravity = Gravity.CENTER_VERTICAL
+        cashSalesRow.setBackgroundColor(Color.parseColor("#F1F8E9"))
+        cashSalesRow.setPadding(14, 14, 14, 14)
+        val csLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
         )
+        csLp.setMargins(0, 8, 0, 2)
+        cashSalesRow.layoutParams = csLp
+
+        val tvCashLbl = TextView(this)
+        tvCashLbl.text = "Cash Sales"
+        tvCashLbl.textSize = 13.5f
+        tvCashLbl.setTypeface(null, Typeface.BOLD)
+        tvCashLbl.setTextColor(Color.parseColor("#1B5E20"))
+        tvCashLbl.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+        val tvCashAmt = TextView(this)
+        tvCashAmt.text = "Rs. ${fmt(cashSalesTotal)}"
+        tvCashAmt.textSize = 13.5f
+        tvCashAmt.setTypeface(null, Typeface.BOLD)
+        tvCashAmt.setTextColor(Color.BLACK)
+        tvCashAmt.gravity = Gravity.END
+
+        cashSalesRow.addView(tvCashLbl)
+        cashSalesRow.addView(tvCashAmt)
+        colCard.addView(cashSalesRow)
+
+        shareSb.append("• Cash Sales : Rs. ${fmt(cashSalesTotal)}\n")
+        htmlSb.append("<tr class='cat'><td>Cash Sales</td><td>Total Cash Sales</td><td class='r'>${fmt(cashSalesTotal)}</td></tr>")
+
+        appendTreeBranches(colCard, "#1B5E20", "#F1F8E9", collectionTree, shareSb, htmlSb)
+
+        colCard.addView(makeSummaryStripRow("Today Collection Total", "Rs. ${fmt(todayCollection)}", "#E8F5E9", "#1B5E20"))
+        htmlSb.append("<tr class='tot'><td colspan='2'>Today Collection Total</td><td class='r'>${fmt(todayCollection)}</td></tr>")
+
+        colCard.addView(makeSummaryStripRow("Total (Op.Bal + Collection)", "Rs. ${fmt(totalWithOpBal)}", "#FFF9C4", "#1B5E20"))
+        shareSb.append("Total (Op.Bal + Collection) : Rs. ${fmt(totalWithOpBal)}\n\n")
+        htmlSb.append("<tr class='tot'><td colspan='2'>Total (Op.Bal + Collection)</td><td class='r'>${fmt(totalWithOpBal)}</td></tr>")
+
+        contentContainer.addView(colCard)
+
+        // 3. Expenses section: Account - Description (no TreeView)
+        val expCard = LinearLayout(this)
+        expCard.orientation = LinearLayout.VERTICAL
+        expCard.setBackgroundColor(Color.WHITE)
+        expCard.setPadding(14, 14, 14, 14)
+        val expLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        expLp.setMargins(0, 0, 0, 12)
+        expCard.layoutParams = expLp
+
+        val tvExpHdr = TextView(this)
+        tvExpHdr.text = "3. EXPENSES (ACCOUNT - DESCRIPTION)"
+        tvExpHdr.textSize = 14f
+        tvExpHdr.setTypeface(null, Typeface.BOLD)
+        tvExpHdr.setTextColor(Color.WHITE)
+        tvExpHdr.setBackgroundColor(Color.parseColor("#C62828"))
+        tvExpHdr.setPadding(14, 12, 14, 12)
+        expCard.addView(tvExpHdr)
+
+        shareSb.append("=== 3. EXPENSES (ACCOUNT - DESCRIPTION) ===\n")
+
+        for (item in expenseItems) {
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.HORIZONTAL
+            row.gravity = Gravity.CENTER_VERTICAL
+            row.setBackgroundColor(Color.parseColor("#FFEBEE"))
+            row.setPadding(14, 11, 14, 11)
+            val rLp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            rLp.setMargins(0, 4, 0, 0)
+            row.layoutParams = rLp
+
+            val tvLbl = TextView(this)
+            tvLbl.text = item.label
+            tvLbl.textSize = 13f
+            tvLbl.setTypeface(null, Typeface.BOLD)
+            tvLbl.setTextColor(Color.BLACK)
+            tvLbl.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+            val tvAmt = TextView(this)
+            tvAmt.text = fmt(item.amount)
+            tvAmt.textSize = 13f
+            tvAmt.setTypeface(null, Typeface.BOLD)
+            tvAmt.setTextColor(Color.parseColor("#C62828"))
+            tvAmt.gravity = Gravity.END
+
+            row.addView(tvLbl)
+            row.addView(tvAmt)
+            expCard.addView(row)
+
+            shareSb.append("• ${item.label} : Rs. ${fmt(item.amount)}\n")
+            htmlSb.append("<tr class='child'><td>${item.label}</td><td>${item.subInfo}</td><td class='r'>${fmt(item.amount)}</td></tr>")
+        }
+
+        expCard.addView(makeSummaryStripRow("Total Expenses (-)", "Rs. ${fmt(totalExpense)}", "#FFF9C4", "#C62828"))
+        shareSb.append("Total Expenses (-) : Rs. ${fmt(totalExpense)}\n\n")
+        htmlSb.append("<tr class='tot'><td colspan='2'>Total Expenses (-)</td><td class='r'>${fmt(totalExpense)}</td></tr>")
+
+        contentContainer.addView(expCard)
 
         val clColor = if (closingBal >= 0.0) "#1B5E20" else "#C62828"
         val clBg = if (closingBal >= 0.0) "#C8E6C9" else "#FFCDD2"
@@ -830,76 +928,15 @@ class CoconutDayBookActivity : AppCompatActivity() {
         """.trimIndent()
     }
 
-    private fun makeSingleBannerCard(label: String, value: String, textColorHex: String, bgHex: String): LinearLayout {
-        val card = LinearLayout(this)
-        card.orientation = LinearLayout.HORIZONTAL
-        card.gravity = Gravity.CENTER_VERTICAL
-        card.setBackgroundColor(Color.parseColor(bgHex))
-        card.setPadding(20, 18, 20, 18)
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        lp.setMargins(0, 0, 0, 12)
-        card.layoutParams = lp
-
-        val tvL = TextView(this)
-        tvL.text = label
-        tvL.textSize = 14.5f
-        tvL.setTypeface(null, Typeface.BOLD)
-        tvL.setTextColor(Color.parseColor(textColorHex))
-        tvL.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-
-        val tvR = TextView(this)
-        tvR.text = value
-        tvR.textSize = 16.5f
-        tvR.setTypeface(null, Typeface.BOLD)
-        tvR.setTextColor(Color.parseColor(textColorHex))
-        tvR.gravity = Gravity.END
-
-        card.addView(tvL)
-        card.addView(tvR)
-        return card
-    }
-
-    private fun makeTreeSectionCard(
-        sectionTitle: String,
+    private fun appendTreeBranches(
+        card: LinearLayout,
         headerBgHex: String,
         branchBgHex: String,
         treeData: LinkedHashMap<String, ArrayList<TreeEntry>>,
-        subTotalLabel: String?,
-        subTotalValue: Double,
-        grandLabel: String,
-        grandValue: Double,
-        showZeroNodes: Boolean,
         shareSb: StringBuilder,
         htmlSb: StringBuilder
-    ): LinearLayout {
-        val card = LinearLayout(this)
-        card.orientation = LinearLayout.VERTICAL
-        card.setBackgroundColor(Color.WHITE)
-        card.setPadding(14, 14, 14, 14)
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        lp.setMargins(0, 0, 0, 12)
-        card.layoutParams = lp
-
-        val tvSec = TextView(this)
-        tvSec.text = sectionTitle
-        tvSec.textSize = 14f
-        tvSec.setTypeface(null, Typeface.BOLD)
-        tvSec.setTextColor(Color.WHITE)
-        tvSec.setBackgroundColor(Color.parseColor(headerBgHex))
-        tvSec.setPadding(14, 12, 14, 12)
-        card.addView(tvSec)
-
-        shareSb.append("=== $sectionTitle ===\n")
-
+    ) {
         for ((categoryName, children) in treeData) {
-            if (!showZeroNodes && children.isEmpty()) continue
-
             var catSum = 0.0
             for (c in children) catSum += c.amount
 
@@ -987,16 +1024,37 @@ class CoconutDayBookActivity : AppCompatActivity() {
                 card.addView(childrenBox)
             }
         }
+    }
 
-        if (subTotalLabel != null) {
-            card.addView(makeSummaryStripRow(subTotalLabel, "Rs. ${fmt(subTotalValue)}", "#E8F5E9", "#1B5E20"))
-            htmlSb.append("<tr class='tot'><td colspan='2'>$subTotalLabel</td><td class='r'>${fmt(subTotalValue)}</td></tr>")
-        }
+    private fun makeSingleBannerCard(label: String, value: String, textColorHex: String, bgHex: String): LinearLayout {
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.HORIZONTAL
+        card.gravity = Gravity.CENTER_VERTICAL
+        card.setBackgroundColor(Color.parseColor(bgHex))
+        card.setPadding(20, 18, 20, 18)
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 0, 0, 12)
+        card.layoutParams = lp
 
-        card.addView(makeSummaryStripRow(grandLabel, "Rs. ${fmt(grandValue)}", "#FFF9C4", headerBgHex))
-        shareSb.append("$grandLabel : Rs. ${fmt(grandValue)}\n\n")
-        htmlSb.append("<tr class='tot'><td colspan='2'>$grandLabel</td><td class='r'>${fmt(grandValue)}</td></tr>")
+        val tvL = TextView(this)
+        tvL.text = label
+        tvL.textSize = 14.5f
+        tvL.setTypeface(null, Typeface.BOLD)
+        tvL.setTextColor(Color.parseColor(textColorHex))
+        tvL.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 
+        val tvR = TextView(this)
+        tvR.text = value
+        tvR.textSize = 16.5f
+        tvR.setTypeface(null, Typeface.BOLD)
+        tvR.setTextColor(Color.parseColor(textColorHex))
+        tvR.gravity = Gravity.END
+
+        card.addView(tvL)
+        card.addView(tvR)
         return card
     }
 
