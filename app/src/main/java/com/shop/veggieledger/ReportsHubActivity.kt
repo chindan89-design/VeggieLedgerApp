@@ -78,6 +78,7 @@ class ReportsHubActivity : AppCompatActivity() {
         val rate: Double,
         val amount: Double,
         val payment: Double,
+        val less: Double,
         val closingBal: Double
     )
 
@@ -266,7 +267,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
     private fun renderMinimalHeaderOnly() {
         minTableLayout.removeAllViews()
-        val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Closing Bal")
+        val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Less", "Closing Bal")
         val headerRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#1B5E20")) }
         for (h in headers) {
             val tv = TextView(this).apply {
@@ -370,6 +371,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                     rate = rateVal,
                                     amount = amtVal,
                                     payment = 0.0,
+                                    less = 0.0,
                                     closingBal = 0.0
                                 )
                             )
@@ -395,6 +397,7 @@ class ReportsHubActivity : AppCompatActivity() {
                                 rate = rateVal,
                                 amount = amtVal,
                                 payment = 0.0,
+                                less = 0.0,
                                 closingBal = 0.0
                             )
                         )
@@ -419,6 +422,12 @@ class ReportsHubActivity : AppCompatActivity() {
                         ?: doc.getDouble("payment")
                         ?: 0.0)
 
+                    val lessAmt = (doc.getDouble("discount")
+                        ?: doc.getDouble("less")
+                        ?: doc.getDouble("discAmount")
+                        ?: doc.getDouble("deduction")
+                        ?: 0.0)
+
                     events.add(
                         MinSupplierRow(
                             sortKey = sortKey,
@@ -432,6 +441,7 @@ class ReportsHubActivity : AppCompatActivity() {
                             rate = 0.0,
                             amount = 0.0,
                             payment = paidAmt,
+                            less = lessAmt,
                             closingBal = 0.0
                         )
                     )
@@ -446,7 +456,7 @@ class ReportsHubActivity : AppCompatActivity() {
                     val isAfterTo = toYmd != -1 && ev.ymdDate > 0L && ev.ymdDate > toYmd.toLong()
 
                     val rowOp = runningOp
-                    val rowClosing = (rowOp + ev.amount - ev.payment).coerceAtLeast(0.0)
+                    val rowClosing = (rowOp + ev.amount - ev.payment - ev.less).coerceAtLeast(0.0)
 
                     if (isBeforeFrom) {
                         runningOp = rowClosing
@@ -469,6 +479,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 var sumNetQty = 0.0
                 var sumAmount = 0.0
                 var sumPayment = 0.0
+                var sumLess = 0.0
                 var lastClosing = baseOpBal
 
                 filteredRows.forEachIndexed { idx, r ->
@@ -478,6 +489,7 @@ class ReportsHubActivity : AppCompatActivity() {
                     sumNetQty += r.netQty
                     sumAmount += r.amount
                     sumPayment += r.payment
+                    sumLess += r.less
                     lastClosing = r.closingBal
 
                     val tr = TableRow(this).apply {
@@ -493,6 +505,7 @@ class ReportsHubActivity : AppCompatActivity() {
                         "%.2f".format(Locale.getDefault(), r.rate),
                         "%.2f".format(Locale.getDefault(), r.amount),
                         "%.2f".format(Locale.getDefault(), r.payment),
+                        "%.2f".format(Locale.getDefault(), r.less),
                         "%.2f".format(Locale.getDefault(), r.closingBal)
                     )
                     vals.forEachIndexed { cIdx, txt ->
@@ -502,7 +515,7 @@ class ReportsHubActivity : AppCompatActivity() {
                             textSize = 12f
                             setPadding(12, 10, 12, 10)
                             gravity = if (cIdx == 0) Gravity.START else Gravity.END
-                            if (cIdx == 0 || cIdx == 5 || cIdx == 7 || cIdx == 9) setTypeface(null, Typeface.BOLD)
+                            if (cIdx == 0 || cIdx == 5 || cIdx == 7 || cIdx == 10) setTypeface(null, Typeface.BOLD)
                         }
                         tr.addView(tv)
                     }
@@ -520,6 +533,7 @@ class ReportsHubActivity : AppCompatActivity() {
                     "",
                     "%.2f".format(Locale.getDefault(), sumAmount),
                     "%.2f".format(Locale.getDefault(), sumPayment),
+                    "%.2f".format(Locale.getDefault(), sumLess),
                     "%.2f".format(Locale.getDefault(), lastClosing)
                 )
                 totalVals.forEachIndexed { cIdx, txt ->
@@ -560,21 +574,21 @@ class ReportsHubActivity : AppCompatActivity() {
             }
             val headPaint = Paint().apply {
                 color = Color.BLACK
-                textSize = 10f
+                textSize = 9.5f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val bodyPaint = Paint().apply {
                 color = Color.BLACK
-                textSize = 10f
+                textSize = 9.5f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
 
             var y = 36f
-            canvas.drawText("SUPPLIER STATEMENT : $supName ($fromDateStr to $toDateStr)", 24f, y, titlePaint)
+            canvas.drawText("SUPPLIER STATEMENT : $supName ($fromDateStr to $toDateStr)", 20f, y, titlePaint)
             y += 26f
 
-            val colsX = floatArrayOf(24f, 105f, 185f, 255f, 325f, 400f, 475f, 555f, 640f, 725f)
-            val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Closing Bal")
+            val colsX = floatArrayOf(20f, 92f, 165f, 225f, 285f, 350f, 415f, 485f, 565f, 640f, 715f)
+            val headers = listOf("Date", "Op.Bal", "Qty", "Suit", "Kudumi", "NetQty", "Rate", "Amount", "Payment", "Less", "Closing Bal")
             headers.forEachIndexed { i, h -> canvas.drawText(h, colsX[i], y, headPaint) }
 
             y += 18f
@@ -590,6 +604,7 @@ class ReportsHubActivity : AppCompatActivity() {
                     "%.2f".format(Locale.getDefault(), r.rate),
                     "%.2f".format(Locale.getDefault(), r.amount),
                     "%.2f".format(Locale.getDefault(), r.payment),
+                    "%.2f".format(Locale.getDefault(), r.less),
                     "%.2f".format(Locale.getDefault(), r.closingBal)
                 )
                 rowVals.forEachIndexed { i, v -> canvas.drawText(v, colsX[i], y, bodyPaint) }
