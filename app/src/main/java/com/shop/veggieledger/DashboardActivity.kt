@@ -158,16 +158,72 @@ class DashboardActivity : AppCompatActivity() {
     private fun handleMenuAction(itemId: Int): Boolean {
         when (itemId) {
             // MASTERS
-            ID_SUPPLIER -> openScreenByName("com.shop.veggieledger.SupplierMasterActivity", "SUPPLIER")
-            ID_CUSTOMER -> openScreenByName("com.shop.veggieledger.CustomerMasterActivity", "CUSTOMER")
-            ID_ITEMS -> openScreenByName("com.shop.veggieledger.ItemMasterActivity", "ITEMS")
+            ID_SUPPLIER -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.SupplierMasterActivity",
+                    "com.shop.veggieledger.SuppliersActivity",
+                    "com.shop.veggieledger.SupplierActivity"
+                ),
+                "SUPPLIER"
+            )
+            ID_CUSTOMER -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.CustomerMasterActivity",
+                    "com.shop.veggieledger.CustomersActivity",
+                    "com.shop.veggieledger.CustomerActivity"
+                ),
+                "CUSTOMER"
+            )
+            ID_ITEMS -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.ItemMasterActivity",
+                    "com.shop.veggieledger.ItemsActivity",
+                    "com.shop.veggieledger.ItemActivity"
+                ),
+                "ITEMS"
+            )
 
             // ENTRIES
-            ID_PURCHASE -> openScreenByName("com.shop.veggieledger.PurchaseEntryActivity", "PURCHASE")
-            ID_SALES -> openScreenByName("com.shop.veggieledger.SalesEntryActivity", "SALES")
-            ID_PAYMENT -> openScreenByName("com.shop.veggieledger.PaymentEntryActivity", "PAYMENT")
-            ID_RECEIPT -> openScreenByName("com.shop.veggieledger.ReceiptEntryActivity", "RECEIPT")
-            ID_INCOME_EXPENSE -> openScreenByName("com.shop.veggieledger.IncomeExpenseActivity", "INCOME AND EXPENSES")
+            ID_PURCHASE -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.PurchaseEntryActivity",
+                    "com.shop.veggieledger.AddPurchaseActivity",
+                    "com.shop.veggieledger.PurchaseActivity"
+                ),
+                "PURCHASE"
+            )
+            ID_SALES -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.SalesEntryActivity",
+                    "com.shop.veggieledger.AddSalesActivity",
+                    "com.shop.veggieledger.SalesActivity"
+                ),
+                "SALES"
+            )
+            ID_PAYMENT -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.PaymentEntryActivity",
+                    "com.shop.veggieledger.AddPaymentActivity",
+                    "com.shop.veggieledger.PaymentActivity"
+                ),
+                "PAYMENT"
+            )
+            ID_RECEIPT -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.ReceiptEntryActivity",
+                    "com.shop.veggieledger.AddReceiptActivity",
+                    "com.shop.veggieledger.ReceiptActivity"
+                ),
+                "RECEIPT"
+            )
+            ID_INCOME_EXPENSE -> openScreenSmart(
+                listOf(
+                    "com.shop.veggieledger.IncomeExpenseActivity",
+                    "com.shop.veggieledger.ExpenseEntryActivity",
+                    "com.shop.veggieledger.ExpenseActivity"
+                ),
+                "INCOME AND EXPENSES"
+            )
 
             // PURCHASE REPORT
             ID_PUR_DATEWISE -> openReport("PUR_DETAILS")
@@ -201,12 +257,31 @@ class DashboardActivity : AppCompatActivity() {
         )
     }
 
-    private fun openScreenByName(className: String, label: String) {
-        try {
-            val clazz = Class.forName(className)
-            startActivity(Intent(this, clazz))
-        } catch (_: Exception) {
-            Toast.makeText(this, "$label screen opening...", Toast.LENGTH_SHORT).show()
+    private fun openScreenSmart(
+        candidates: List<String>,
+        fallbackLabel: String,
+        reportTypeIfMissing: String? = null
+    ) {
+        for (clsName in candidates) {
+            try {
+                val clazz = Class.forName(clsName)
+                startActivity(Intent(this, clazz))
+                return
+            } catch (_: ClassNotFoundException) {
+                // Try next candidate class name
+            } catch (e: Exception) {
+                Toast.makeText(this, "Error opening $fallbackLabel: ${e.message}", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        if (reportTypeIfMissing != null) {
+            openReport(reportTypeIfMissing)
+        } else {
+            Toast.makeText(
+                this,
+                "$fallbackLabel screen not found. Check class name in DashboardActivity.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -268,7 +343,14 @@ class DashboardActivity : AppCompatActivity() {
                 setMargins(0, 0, 8, 0)
             }
             setOnClickListener {
-                openScreenByName("com.shop.veggieledger.SalesEntryActivity", "SALES")
+                openScreenSmart(
+                    listOf(
+                        "com.shop.veggieledger.SalesEntryActivity",
+                        "com.shop.veggieledger.AddSalesActivity",
+                        "com.shop.veggieledger.SalesActivity"
+                    ),
+                    "SALES"
+                )
             }
         }
 
@@ -281,7 +363,14 @@ class DashboardActivity : AppCompatActivity() {
                 setMargins(8, 0, 0, 0)
             }
             setOnClickListener {
-                openScreenByName("com.shop.veggieledger.PurchaseEntryActivity", "PURCHASE")
+                openScreenSmart(
+                    listOf(
+                        "com.shop.veggieledger.PurchaseEntryActivity",
+                        "com.shop.veggieledger.AddPurchaseActivity",
+                        "com.shop.veggieledger.PurchaseActivity"
+                    ),
+                    "PURCHASE"
+                )
             }
         }
 
