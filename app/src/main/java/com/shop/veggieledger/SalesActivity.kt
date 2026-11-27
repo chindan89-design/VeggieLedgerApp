@@ -45,7 +45,6 @@ import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.zip.ZipInputStream
-import kotlin.math.abs
 
 class SalesActivity : AppCompatActivity() {
 
@@ -78,6 +77,9 @@ class SalesActivity : AppCompatActivity() {
     private val itemNames = arrayListOf("Coconut", "Onion", "Garlic")
     private lateinit var itemAdapter: ArrayAdapter<String>
     private val billItemsArray = JSONArray()
+
+    // When editing a specific row inside GridView: -1 means adding new row
+    private var editingGridRowIndex: Int = -1
 
     private var selectedDateStr: String = ""
     private var editFilterDateStr: String = ""
@@ -229,6 +231,7 @@ class SalesActivity : AppCompatActivity() {
             var alreadyUsedBags = 0
             var alreadyUsedKgs = 0.0
             for (k in 0 until billItemsArray.length()) {
+                if (k == editingGridRowIndex) continue
                 val existing = billItemsArray.getJSONObject(k)
                 if (existing.optString("stockDocId", "") == stockDocId) {
                     alreadyUsedBags += existing.optInt("bags", 0)
@@ -300,7 +303,14 @@ class SalesActivity : AppCompatActivity() {
             rowObj.put("weighCoolie", weighCoolie)
             rowObj.put("rowTotal", rowTotal)
 
-            billItemsArray.put(rowObj)
+            if (editingGridRowIndex in 0 until billItemsArray.length()) {
+                billItemsArray.put(editingGridRowIndex, rowObj)
+                Toast.makeText(this, "Updated item in grid ($batchId)", Toast.LENGTH_SHORT).show()
+            } else {
+                billItemsArray.put(rowObj)
+            }
+
+            clearGridRowEditState()
             refreshBillItemsGrid()
             updateSelectedBatchAvailabilityBanner()
 
@@ -315,7 +325,6 @@ class SalesActivity : AppCompatActivity() {
         binding.btnSaveSalesBill.setOnClickListener {
             val billNo = binding.etSalesBillNo.text.toString().trim()
 
-            // Must add item(s) to the Grid View first before saving bill
             if (billItemsArray.length() == 0) {
                 Toast.makeText(this, "Add item(s) to the bill grid first using + ADD ITEM TO BILL!", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
@@ -331,7 +340,8 @@ class SalesActivity : AppCompatActivity() {
 
             val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
             val gpayPaid = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
-            val cashPayerName = if (cashPaid > 0.0) etCashPayerName.text.toString().trim() else ""
+            val typedPayer = etCashPayerName.text.toString().trim()
+            val cashPayerName = if (typedPayer.isNotEmpty()) typedPayer else if (cashPaid > 0.0) selectedCustomerName else ""
             val totalPaid = cashPaid + gpayPaid
 
             if (totalPaid > grandTotalBill + 0.01) {
@@ -464,7 +474,7 @@ class SalesActivity : AppCompatActivity() {
 
                 db.collection("sales").document(editingSaleDocId).update(updateData)
                     .addOnSuccessListener {
-                        Toast.makeText(this, "Sales Bill $billNo Updated ($computedPayMode Sales)!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Sales Bill $billNo & Purchase Stock Updated!", Toast.LENGTH_SHORT).show()
                         editingSaleDocId = ""
                         oldSaleCreditBalance = 0.0
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -537,6 +547,59 @@ class SalesActivity : AppCompatActivity() {
         refreshBillItemsGrid()
     }
 
+    private fun clearGridRowEditState() {
+        editingGridRowIndex = -1
+        binding.btnAddSalesItem.text = "+ ADD ITEM TO BILL"
+        binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32"))
+    }
+
+    private fun loadGridRowIntoForm(rowIdx: Int) {
+        if (rowIdx !in 0 until billItemsArray.length()) return
+        val obj = billItemsArray.getJSONObject(rowIdx)
+        editingGridRowIndex = rowIdx
+
+        val iName = obj.optString("itemName", "Coconut")
+        val sDocId = obj.optString("stockDocId", "")
+        val bId = obj.optString("batchId", "")
+        val bgs = obj.optInt("bags", 0)
+        val kgs = obj.optDouble("netKgs", 0.0)
+        val rt = obj.optDouble("rate", 0.0)
+        val bChg = obj.optDouble("bagCharge", 0.0)
+        val wCoolie = obj.optDouble("weighCoolie", 0.0)
+
+        val itemPos = itemNames.indexOfFirst { it.equals(iName, ignoreCase = true) }
+        if (itemPos >= 0) {
+            binding.spSalesItem.setSelection(itemPos)
+            filterBatchesForSelectedItem(iName)
+        }
+
+        var batchPos = -1
+        for (i in 0 until filteredBatchesJson.length()) {
+            val bObj = filteredBatchesJson.getJSONObject(i)
+            val dId = bObj.optString("docId", "")
+            val code = bObj.optString("batchId", "")
+            if ((sDocId.isNotEmpty() && dId == sDocId) || (bId.isNotEmpty() && code.equals(bId, ignoreCase = true))) {
+                batchPos = i
+                break
+            }
+        }
+        if (batchPos >= 0 && batchPos < batchDisplayList.size) {
+            spSalesStockBatch.setSelection(batchPos)
+        }
+
+        binding.etSalesBags.setText(if (bgs > 0) "$bgs" else "")
+        binding.etSalesKgs.setText(if (kgs > 0.0) String.format(Locale.getDefault(), "%.2f", kgs) else "")
+        binding.etSalesRate.setText(if (rt > 0.0) String.format(Locale.getDefault(), "%.2f", rt) else "")
+        binding.etSalesBagCharge.setText(if (bChg > 0.0) String.format(Locale.getDefault(), "%.2f", bChg) else "")
+        etSalesWeighCoolie.setText(if (wCoolie > 0.0) String.format(Locale.getDefault(), "%.2f", wCoolie) else "")
+
+        binding.btnAddSalesItem.text = "UPDATE ROW #${rowIdx + 1} IN GRID"
+        binding.btnAddSalesItem.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#1565C0"))
+        updateLineAmountPreview()
+        updateSelectedBatchAvailabilityBanner()
+        Toast.makeText(this, "Editing Row #${rowIdx + 1} — change stock/qty & tap UPDATE ROW", Toast.LENGTH_SHORT).show()
+    }
+
     private fun populateFormTableRows() {
         val formTable = binding.tlSalesEntryForm
 
@@ -582,7 +645,7 @@ class SalesActivity : AppCompatActivity() {
         etSplitCredit = buildInlinePayBox("Credit", true)
 
         etCashPayerName = EditText(this)
-        etCashPayerName.hint = "Enter cash payer name..."
+        etCashPayerName.hint = "Enter person name..."
         etCashPayerName.textSize = 13f
         etCashPayerName.setSingleLine(true)
         etCashPayerName.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
@@ -634,7 +697,6 @@ class SalesActivity : AppCompatActivity() {
             return tr
         }
 
-        // 3. Select Stock row right after 2. Select Item (index 2)
         val stockBox = LinearLayout(this)
         stockBox.orientation = LinearLayout.VERTICAL
         spSalesStockBatch.layoutParams = LinearLayout.LayoutParams(
@@ -647,7 +709,6 @@ class SalesActivity : AppCompatActivity() {
         val rowStock = createTableRow("3. Select Stock", stockBox)
         formTable.addView(rowStock, 2)
 
-        // Weigh Coolie row right after trSalesBagRate
         rowWeighCoolie = createTableRow("Weigh Coolie", etSalesWeighCoolie, "#FFFDE7")
         rowWeighCoolie.visibility = View.GONE
         val bagRateIdx = formTable.indexOfChild(binding.trSalesBagRate)
@@ -657,7 +718,6 @@ class SalesActivity : AppCompatActivity() {
             formTable.addView(rowWeighCoolie)
         }
 
-        // 6. Pay Mode row right after Amount row (tvLineAmountPreview)
         val paySingleLine = LinearLayout(this)
         paySingleLine.orientation = LinearLayout.HORIZONTAL
         paySingleLine.weightSum = 3f
@@ -666,7 +726,7 @@ class SalesActivity : AppCompatActivity() {
         paySingleLine.addView(etSplitCredit)
         rowPayMode = createTableRow("6. Pay Mode", paySingleLine, "#E3F2FD")
 
-        rowCashPayer = createTableRow("Cash Given By", etCashPayerName, "#E3F2FD")
+        rowCashPayer = createTableRow("Cash Person Name", etCashPayerName, "#E3F2FD")
         rowCashPayer.visibility = View.GONE
 
         var amountRowIdx = -1
@@ -686,10 +746,6 @@ class SalesActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Ensures bottom order is always:
-     * Form Table -> + ADD ITEM TO BILL -> Grid View -> Grand Total -> SAVE SALES BILL -> SEND JPG BILL
-     */
     private fun enforceBottomOrderForSaveAndJpg() {
         val rootCol = binding.llSalesRootColumn
 
@@ -719,7 +775,6 @@ class SalesActivity : AppCompatActivity() {
             shareBitmapJpgToWhatsapp(bmp, billNo, selectedCustomerPhone)
         }
 
-        // Move Grand Total, SAVE SALES BILL, and SEND JPG BILL to the very bottom of llSalesRootColumn
         (binding.tvSalesGrandTotal.parent as? ViewGroup)?.removeView(binding.tvSalesGrandTotal)
         (binding.btnSaveSalesBill.parent as? ViewGroup)?.removeView(binding.btnSaveSalesBill)
 
@@ -746,7 +801,8 @@ class SalesActivity : AppCompatActivity() {
         val effectiveTarget = if (grandTotalBill > 0.0) grandTotalBill else liveLineAmt
         val creditBal = (effectiveTarget - paidSum).coerceAtLeast(0.0)
 
-        rowCashPayer.visibility = if (cashVal > 0.005) View.VISIBLE else View.GONE
+        val typedName = etCashPayerName.text.toString().trim()
+        rowCashPayer.visibility = if (cashVal > 0.005 || typedName.isNotEmpty()) View.VISIBLE else View.GONE
         etSplitCredit.setText(String.format(Locale.getDefault(), "Cr: %.2f", creditBal))
     }
 
@@ -831,11 +887,11 @@ class SalesActivity : AppCompatActivity() {
         val cx = width / 2f
         var y = 42f
 
-        canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)
+        canvas.drawText("THIRUVENI COCONUTS", cx, y, pTitle)[span_0](start_span)[span_0](end_span)
         y += 25f
-        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)
+        canvas.drawText("Shop No B98, Periyar Vegetable Market", cx, y, pSub)[span_1](start_span)[span_1](end_span)
         y += 22f
-        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)
+        canvas.drawText("Koyambedu , Chennai - 107", cx, y, pSub)[span_2](start_span)[span_2](end_span)
         y += 28f
         canvas.drawText("9841666651", pad, y, pPhoneLeft)
         canvas.drawText("9840457613", width - pad, y, pPhoneRight)
@@ -851,8 +907,8 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawLine(width - 145f, y + 5f, width - pad, y + 5f, pSolid)
 
         val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
-        val payerName = if (cashPaid > 0.0) etCashPayerName.text.toString().trim() else ""
-        if (payerName.isNotEmpty()) {
+        val payerName = etCashPayerName.text.toString().trim()
+        if (payerName.isNotEmpty() && !payerName.equals(custDisplay, ignoreCase = true)) {
             y += 24f
             canvas.drawText("Cash By : $payerName", pad, y, pBodyReg)
         }
@@ -1176,6 +1232,7 @@ class SalesActivity : AppCompatActivity() {
         var usedBags = 0
         var usedKgs = 0.0
         for (k in 0 until billItemsArray.length()) {
+            if (k == editingGridRowIndex) continue
             val row = billItemsArray.getJSONObject(k)
             if (row.optString("stockDocId", "") == stockDocId) {
                 usedBags += row.optInt("bags", 0)
@@ -1241,6 +1298,7 @@ class SalesActivity : AppCompatActivity() {
         isEditMode = false
         editingSaleDocId = ""
         oldSaleCreditBalance = 0.0
+        clearGridRowEditState()
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
         binding.layoutEditSalesPanel.visibility = View.GONE
         binding.btnImportSalesCsv.visibility = View.VISIBLE
@@ -1256,6 +1314,7 @@ class SalesActivity : AppCompatActivity() {
         isEditMode = true
         editingSaleDocId = ""
         oldSaleCreditBalance = 0.0
+        clearGridRowEditState()
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
         binding.layoutEditSalesPanel.visibility = View.VISIBLE
         binding.btnImportSalesCsv.visibility = View.GONE
@@ -1424,6 +1483,8 @@ class SalesActivity : AppCompatActivity() {
     private fun populateFormFromSaleDoc(docId: String, data: Map<String, Any>) {
         editingSaleDocId = docId
         oldSaleCustomerId = data["customerId"]?.toString() ?: ""
+        clearGridRowEditState()
+
         val oldPayMode = data["payMode"]?.toString() ?: "Credit"
         val oldGrandTotal = (data["grandTotal"] as? Number)?.toDouble() ?: 0.0
         val oldPaidAmount = (data["paidAmount"] as? Number)?.toDouble() ?: 0.0
@@ -1524,7 +1585,7 @@ class SalesActivity : AppCompatActivity() {
         }
 
         refreshBillItemsGrid()
-        Toast.makeText(this, "Loaded $bNo for editing", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Loaded $bNo — tap EDIT on any grid row to modify", Toast.LENGTH_SHORT).show()
     }
 
     private fun adjustCustomerBalance(custId: String, delta: Double) {
@@ -1545,6 +1606,8 @@ class SalesActivity : AppCompatActivity() {
         bagsToDeduct: Int,
         kgsToDeduct: Double
     ) {
+        if (bagsToDeduct <= 0 && kgsToDeduct <= 0.0) return
+
         if (stockDocId.isNotEmpty()) {
             val batchRef = db.collection("stock_batches").document(stockDocId)
             db.runTransaction { tr ->
@@ -2048,22 +2111,68 @@ class SalesActivity : AppCompatActivity() {
 
         listView.setOnItemClickListener { _, _, pos, _ ->
             val chosen = filtered[pos]
-            selectedCustomerId = chosen.id
-            selectedCustomerName = chosen.name
-            selectedCustomerPhone = chosen.phone
-            selectedCustomerBalance = chosen.balance
-            binding.etSalesCustomer.setText(chosen.name)
-            val phInfo = if (chosen.phone.isNotEmpty()) "  |  Ph: ${chosen.phone}" else ""
-            binding.tvSalesCustBalance.text = String.format(
-                Locale.getDefault(),
-                "Previous Balance: Rs. %.2f%s",
-                chosen.balance,
-                phInfo
-            )
             dialog.dismiss()
+
+            val isCashCustomer = chosen.name.equals("Cash", ignoreCase = true) ||
+                chosen.name.startsWith("Cash ", ignoreCase = true) ||
+                chosen.name.contains("Cash Customer", ignoreCase = true)
+
+            if (isCashCustomer) {
+                promptCashPayerNameDialog(chosen)
+            } else {
+                applySelectedCustomer(chosen, chosen.name, showCashPayerRow = false)
+            }
         }
 
         dialog.show()
+    }
+
+    private fun promptCashPayerNameDialog(chosen: CustomerItem) {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(36, 20, 36, 10)
+
+        val nameInput = EditText(this)
+        nameInput.hint = "Enter person name giving cash..."
+        nameInput.setSingleLine(true)
+        nameInput.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        if (etCashPayerName.text.toString().trim().isNotEmpty()) {
+            nameInput.setText(etCashPayerName.text.toString().trim())
+        }
+        box.addView(nameInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Cash Customer Name")
+            .setMessage("Enter the name of the person paying cash:")
+            .setView(box)
+            .setPositiveButton("OK") { _, _ ->
+                val enteredName = nameInput.text.toString().trim()
+                val finalDisplay = if (enteredName.isNotEmpty()) enteredName else chosen.name
+                etCashPayerName.setText(enteredName)
+                applySelectedCustomer(chosen, finalDisplay, showCashPayerRow = true)
+            }
+            .setNegativeButton("Skip") { _, _ ->
+                etCashPayerName.setText("")
+                applySelectedCustomer(chosen, chosen.name, showCashPayerRow = true)
+            }
+            .show()
+    }
+
+    private fun applySelectedCustomer(chosen: CustomerItem, displayName: String, showCashPayerRow: Boolean) {
+        selectedCustomerId = chosen.id
+        selectedCustomerName = displayName
+        selectedCustomerPhone = chosen.phone
+        selectedCustomerBalance = chosen.balance
+        binding.etSalesCustomer.setText(displayName)
+        rowCashPayer.visibility = if (showCashPayerRow) View.VISIBLE else View.GONE
+
+        val phInfo = if (chosen.phone.isNotEmpty()) "  |  Ph: ${chosen.phone}" else ""
+        binding.tvSalesCustBalance.text = String.format(
+            Locale.getDefault(),
+            "Previous Balance: Rs. %.2f%s",
+            chosen.balance,
+            phInfo
+        )
     }
 
     private fun makeCell(text: String, alignRight: Boolean = false, bold: Boolean = false): TextView {
@@ -2093,7 +2202,7 @@ class SalesActivity : AppCompatActivity() {
             tv.setTextColor(Color.GRAY)
             tv.setPadding(16, 16, 16, 16)
             val lp = TableRow.LayoutParams()
-            lp.span = 7
+            lp.span = 8
             tv.layoutParams = lp
             emptyRow.addView(tv)
             binding.tlSalesItemsGrid.addView(emptyRow)
@@ -2105,6 +2214,7 @@ class SalesActivity : AppCompatActivity() {
         for (i in 0 until billItemsArray.length()) {
             val obj = billItemsArray.getJSONObject(i)
             val iName = obj.getString("itemName")
+            val bId = obj.optString("batchId", "")
             val supName = obj.optString("supplierName", "")
             val bgs = obj.getInt("bags")
             val kgs = obj.getDouble("netKgs")
@@ -2115,9 +2225,19 @@ class SalesActivity : AppCompatActivity() {
             grandTotalBill += rowTot
 
             val tr = TableRow(this)
-            tr.setBackgroundColor(if (i % 2 == 0) Color.WHITE else Color.parseColor("#F1F8E9"))
+            tr.setBackgroundColor(
+                when {
+                    i == editingGridRowIndex -> Color.parseColor("#BBDEFB")
+                    i % 2 == 0 -> Color.WHITE
+                    else -> Color.parseColor("#F1F8E9")
+                }
+            )
 
-            val itemWithSup = if (supName.isNotEmpty()) "$iName ($supName)" else iName
+            val lotLabel = if (bId.isNotEmpty() && supName.isNotEmpty()) "$iName [$bId - $supName]"
+            else if (bId.isNotEmpty()) "$iName [$bId]"
+            else if (supName.isNotEmpty()) "$iName ($supName)"
+            else iName
+
             val bagDisplay = if (iName.equals("Coconut", ignoreCase = true) || bgs <= 0) "-" else "$bgs"
             val extraCharges = bChg + wCoolie
             val extraDisplay = if (wCoolie > 0.0) {
@@ -2126,20 +2246,44 @@ class SalesActivity : AppCompatActivity() {
                 String.format(Locale.getDefault(), "%.2f", extraCharges)
             }
 
-            tr.addView(makeCell(itemWithSup, bold = true))
+            tr.addView(makeCell(lotLabel, bold = true))
             tr.addView(makeCell(bagDisplay, alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", kgs), alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rt), alignRight = true))
             tr.addView(makeCell(extraDisplay, alignRight = true))
             tr.addView(makeCell(String.format(Locale.getDefault(), "%.2f", rowTot), alignRight = true, bold = true))
 
+            // GridView EDIT button for each item row
+            val editRowBtn = TextView(this)
+            editRowBtn.text = "EDIT"
+            editRowBtn.setTextColor(Color.WHITE)
+            editRowBtn.setBackgroundColor(Color.parseColor("#1565C0"))
+            editRowBtn.setTypeface(null, Typeface.BOLD)
+            editRowBtn.textSize = 11f
+            editRowBtn.gravity = Gravity.CENTER
+            editRowBtn.setPadding(16, 10, 16, 10)
+            val editRowLp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
+            editRowLp.setMargins(4, 4, 4, 4)
+            editRowBtn.layoutParams = editRowLp
+            editRowBtn.setOnClickListener {
+                loadGridRowIntoForm(i)
+            }
+            tr.addView(editRowBtn)
+
+            // GridView DEL (Delete) button for each item row
             val delBtn = TextView(this)
-            delBtn.text = "X"
-            delBtn.setTextColor(Color.RED)
+            delBtn.text = "DEL"
+            delBtn.setTextColor(Color.WHITE)
+            delBtn.setBackgroundColor(Color.parseColor("#C62828"))
             delBtn.setTypeface(null, Typeface.BOLD)
+            delBtn.textSize = 11f
             delBtn.gravity = Gravity.CENTER
-            delBtn.setPadding(16, 14, 16, 14)
+            delBtn.setPadding(16, 10, 16, 10)
+            val delRowLp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
+            delRowLp.setMargins(4, 4, 4, 4)
+            delBtn.layoutParams = delRowLp
             delBtn.setOnClickListener {
+                if (editingGridRowIndex == i) clearGridRowEditState()
                 billItemsArray.remove(i)
                 refreshBillItemsGrid()
                 updateSelectedBatchAvailabilityBanner()
@@ -2203,6 +2347,7 @@ class SalesActivity : AppCompatActivity() {
         selectedCustomerName = ""
         selectedCustomerPhone = ""
         selectedCustomerBalance = 0.0
+        clearGridRowEditState()
         etSplitCash.setText("")
         etSplitGpay.setText("")
         etSplitCredit.setText("Cr: 0.00")
