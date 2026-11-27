@@ -31,8 +31,11 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.QuerySnapshot
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 class SupplierOutstandingActivity : AppCompatActivity() {
 
@@ -308,6 +311,15 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         tlOutstandingGrid.addView(headerRow)
     }
 
+    private fun isAllZero(r: SupplierOutstandingRow): Boolean {
+        val eps = 0.005
+        return abs(r.opBalance) < eps &&
+            abs(r.purchase) < eps &&
+            abs(r.payment) < eps &&
+            abs(r.less) < eps &&
+            abs(r.outstanding) < eps
+    }
+
     private fun generateSupplierOutstanding() {
         val selectedSup = spSupplierName.selectedItem?.toString()?.trim().orEmpty()
         if (selectedSup.isEmpty()) {
@@ -407,16 +419,18 @@ class SupplierOutstandingActivity : AppCompatActivity() {
                     val opBal = (baseOp + beforePur - beforePay - beforeLess).coerceAtLeast(0.0)
                     val outAmt = (opBal + periodPur - periodPay - periodLess).coerceAtLeast(0.0)
 
-                    rows.add(
-                        SupplierOutstandingRow(
-                            supplierName = supName,
-                            opBalance = opBal,
-                            purchase = periodPur,
-                            payment = periodPay,
-                            less = periodLess,
-                            outstanding = outAmt
-                        )
+                    val row = SupplierOutstandingRow(
+                        supplierName = supName,
+                        opBalance = opBal,
+                        purchase = periodPur,
+                        payment = periodPay,
+                        less = periodLess,
+                        outstanding = outAmt
                     )
+
+                    if (!isAllZero(row)) {
+                        rows.add(row)
+                    }
                 }
 
                 currentRows.clear()
@@ -676,6 +690,42 @@ class SupplierOutstandingActivity : AppCompatActivity() {
         }
     }
 
+    private fun saveBitmapAsImageFile(bitmap: Bitmap, fileName: String): Uri? {
+        val outDir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES) ?: cacheDir
+        if (!outDir.exists()) outDir.mkdirs()
+        val localFile = File(outDir, fileName)
+        FileOutputStream(localFile).use { fos ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos)
+            fos.flush()
+        }
+
+        val resolver = contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VeggieReports")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+
+        val mediaUri: Uri? = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        if (mediaUri != null) {
+            resolver.openOutputStream(mediaUri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                out.flush()
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(mediaUri, values, null, null)
+            }
+            return mediaUri
+        }
+
+        return Uri.fromFile(localFile)
+    }
+
     private fun exportSupplierOutstandingPdfAndImage() {
         if (currentRows.isEmpty()) {
             Toast.makeText(this, "Tap SUBMIT first to generate report", Toast.LENGTH_SHORT).show()
@@ -687,7 +737,6 @@ class SupplierOutstandingActivity : AppCompatActivity() {
             val sheetWidth = 842
             val sheetHeight = 595
 
-            // 1. Generate Table-Formatted PDF
             val pdfDoc = PdfDocument()
             val pageInfo = PdfDocument.PageInfo.Builder(sheetWidth, sheetHeight, 1).create()
             val page = pdfDoc.startPage(pageInfo)
@@ -716,51 +765,30 @@ class SupplierOutstandingActivity : AppCompatActivity() {
             }
             pdfDoc.close()
 
-            // 2. Generate Matching Table-Formatted Image (PNG)
             val bitmap = Bitmap.createBitmap(sheetWidth, sheetHeight, Bitmap.Config.ARGB_8888)
             val imgCanvas = Canvas(bitmap)
             drawTableSheetOnCanvas(imgCanvas, sheetWidth, sheetHeight)
 
-            val imgFileName = "SupplierOutstanding_$stamp.png"
-            val imgValues = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, imgFileName)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VeggieReports")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
-                }
-            }
-
-            val imgUri: Uri? = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgValues)
-            if (imgUri != null) {
-                resolver.openOutputStream(imgUri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                    out.flush()
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    imgValues.clear()
-                    imgValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-                    resolver.update(imgUri, imgValues, null, null)
-                }
-            }
+            val imgFileName = "SupplierOutstanding_$stamp.jpg"
+            val imgUri: Uri? = saveBitmapAsImageFile(bitmap, imgFileName)
             bitmap.recycle()
 
-            if (pdfUri != null && imgUri != null) {
-                val multiShareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                    type = "*/*"
-                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(pdfUri, imgUri))
+            Toast.makeText(this, "PDF & Image generated: $imgFileName", Toast.LENGTH_SHORT).show()
+
+            if (imgUri != null) {
+                val imgShareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/jpeg"
+                    putExtra(Intent.EXTRA_STREAM, imgUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(multiShareIntent, "Share Supplier Outstanding PDF & Image"))
+                startActivity(Intent.createChooser(imgShareIntent, "Share Supplier Outstanding Image"))
             } else if (pdfUri != null) {
                 val pdfShareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/pdf"
                     putExtra(Intent.EXTRA_STREAM, pdfUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(pdfShareIntent, "Export Supplier Outstanding PDF"))
-            } else {
-                Toast.makeText(this, "Unable to export files", Toast.LENGTH_SHORT).show()
+                startActivity(Intent.createChooser(pdfShareIntent, "Share Supplier Outstanding PDF"))
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Export Error: ${e.message}", Toast.LENGTH_LONG).show()
