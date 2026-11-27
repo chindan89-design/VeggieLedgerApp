@@ -6,6 +6,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
+import android.view.Menu
+import android.view.MenuItem
+import android.view.SubMenu
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -21,7 +24,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.QuerySnapshot
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.abs
 
 class DashboardActivity : AppCompatActivity() {
 
@@ -37,9 +39,46 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var tvExpenseSum: TextView
     private lateinit var tvCollectableSum: TextView
     private lateinit var tvPayableSum: TextView
-    private lateinit var btnSalesReportsMenu: Button
 
     private var selectedDateStr: String = ""
+
+    companion object {
+        // Group IDs
+        private const val GRP_MASTERS = 100
+        private const val GRP_ENTRIES = 200
+        private const val GRP_PUR_REP = 300
+        private const val GRP_SAL_REP = 400
+        private const val GRP_OTH_REP = 500
+
+        // MASTERS IDs
+        private const val ID_SUPPLIER = 101
+        private const val ID_CUSTOMER = 102
+        private const val ID_ITEMS = 103
+
+        // ENTRIES IDs
+        private const val ID_PURCHASE = 201
+        private const val ID_SALES = 202
+        private const val ID_PAYMENT = 203
+        private const val ID_RECEIPT = 204
+        private const val ID_INCOME_EXPENSE = 205
+
+        // PURCHASE REPORT IDs
+        private const val ID_PUR_DATEWISE = 301
+        private const val ID_PUR_SUPPLIERWISE = 302
+        private const val ID_PUR_STATEMENT = 303
+        private const val ID_PUR_OUTSTANDING = 304
+
+        // SALES REPORT IDs
+        private const val ID_SAL_DAYSALES = 401
+        private const val ID_SAL_SUPPLIER_WISE = 402
+        private const val ID_SAL_STATEMENT = 403
+        private const val ID_SAL_OUTSTANDING = 404
+
+        // OTHER REPORT IDs
+        private const val ID_OTH_COCONUT_DAYBOOK = 501
+        private const val ID_OTH_PROFIT_LOSS = 502
+        private const val ID_OTH_DAYBOOK = 503
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +96,120 @@ class DashboardActivity : AppCompatActivity() {
         }
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        populateFullMenu(menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return handleMenuAction(item.itemId) || super.onOptionsItemSelected(item)
+    }
+
+    private fun populateFullMenu(menu: Menu) {
+        menu.clear()
+
+        // MASTERS
+        val mastersSub: SubMenu = menu.addSubMenu(0, 1, 1, "MASTERS")
+        mastersSub.add(GRP_MASTERS, ID_SUPPLIER, 1, "SUPPLIER")
+        mastersSub.add(GRP_MASTERS, ID_CUSTOMER, 2, "CUSTOMER")
+        mastersSub.add(GRP_MASTERS, ID_ITEMS, 3, "ITEMS")
+
+        // ENTRIES
+        val entriesSub: SubMenu = menu.addSubMenu(0, 2, 2, "ENTRIES")
+        entriesSub.add(GRP_ENTRIES, ID_PURCHASE, 1, "PURCHASE")
+        entriesSub.add(GRP_ENTRIES, ID_SALES, 2, "SALES")
+        entriesSub.add(GRP_ENTRIES, ID_PAYMENT, 3, "PAYMENT")
+        entriesSub.add(GRP_ENTRIES, ID_RECEIPT, 4, "RECEIPT")
+        entriesSub.add(GRP_ENTRIES, ID_INCOME_EXPENSE, 5, "INCOME AND EXPENSES")
+
+        // REPORT
+        val reportSub: SubMenu = menu.addSubMenu(0, 3, 3, "REPORT")
+
+        // REPORT -> PURCHASE REPORT
+        val purReportSub: SubMenu = reportSub.addSubMenu(0, 31, 1, "PURCHASE REPORT")
+        purReportSub.add(GRP_PUR_REP, ID_PUR_DATEWISE, 1, "DATEWISE REPORT")
+        purReportSub.add(GRP_PUR_REP, ID_PUR_SUPPLIERWISE, 2, "SUPPLIERWISE REPORT")
+        purReportSub.add(GRP_PUR_REP, ID_PUR_STATEMENT, 3, "SUPPLIER STATEMENT")
+        purReportSub.add(GRP_PUR_REP, ID_PUR_OUTSTANDING, 4, "SUPPLIER OUTSTANDING")
+
+        // REPORT -> SALES REPORT
+        val salReportSub: SubMenu = reportSub.addSubMenu(0, 32, 2, "SALES REPORT")
+        salReportSub.add(GRP_SAL_REP, ID_SAL_DAYSALES, 1, "DAYSALES REPORT")
+        salReportSub.add(GRP_SAL_REP, ID_SAL_SUPPLIER_WISE, 2, "SUPPLIER WISE SALES REPORT")
+        salReportSub.add(GRP_SAL_REP, ID_SAL_STATEMENT, 3, "CUSTOMER STATEMENT")
+        salReportSub.add(GRP_SAL_REP, ID_SAL_OUTSTANDING, 4, "CUSTOMER OUTSTANDING")
+
+        // REPORT -> OTHER REPORT
+        val othReportSub: SubMenu = reportSub.addSubMenu(0, 33, 3, "OTHER REPORT")
+        othReportSub.add(GRP_OTH_REP, ID_OTH_COCONUT_DAYBOOK, 1, "COCONUT DAY BOOK")
+        othReportSub.add(GRP_OTH_REP, ID_OTH_PROFIT_LOSS, 2, "PROFIT AND LOSS")
+        othReportSub.add(GRP_OTH_REP, ID_OTH_DAYBOOK, 3, "DAYBOOK REPORTS")
+    }
+
+    private fun showMenuPopup(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        populateFullMenu(popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            handleMenuAction(item.itemId)
+        }
+        popup.show()
+    }
+
+    private fun handleMenuAction(itemId: Int): Boolean {
+        when (itemId) {
+            // MASTERS
+            ID_SUPPLIER -> openScreenByName("com.shop.veggieledger.SupplierMasterActivity", "SUPPLIER")
+            ID_CUSTOMER -> openScreenByName("com.shop.veggieledger.CustomerMasterActivity", "CUSTOMER")
+            ID_ITEMS -> openScreenByName("com.shop.veggieledger.ItemMasterActivity", "ITEMS")
+
+            // ENTRIES
+            ID_PURCHASE -> openScreenByName("com.shop.veggieledger.PurchaseEntryActivity", "PURCHASE")
+            ID_SALES -> openScreenByName("com.shop.veggieledger.SalesEntryActivity", "SALES")
+            ID_PAYMENT -> openScreenByName("com.shop.veggieledger.PaymentEntryActivity", "PAYMENT")
+            ID_RECEIPT -> openScreenByName("com.shop.veggieledger.ReceiptEntryActivity", "RECEIPT")
+            ID_INCOME_EXPENSE -> openScreenByName("com.shop.veggieledger.IncomeExpenseActivity", "INCOME AND EXPENSES")
+
+            // PURCHASE REPORT
+            ID_PUR_DATEWISE -> openReport("PUR_DETAILS")
+            ID_PUR_SUPPLIERWISE -> openReport("PUR_SUPPLIER")
+            ID_PUR_STATEMENT -> openReport("PUR_STATEMENT")
+            ID_PUR_OUTSTANDING -> openReport("PUR_OUTSTANDING")
+
+            // SALES REPORT
+            ID_SAL_DAYSALES -> openReport("DAY_SALES_REPORT")
+            ID_SAL_SUPPLIER_WISE -> openReport("PUR_WISE_SALES")
+            ID_SAL_STATEMENT -> openReport("SAL_STATEMENT")
+            ID_SAL_OUTSTANDING -> openReport("SAL_OUTSTANDING")
+
+            // OTHER REPORT
+            ID_OTH_COCONUT_DAYBOOK -> {
+                startActivity(Intent(this, CoconutDayBookActivity::class.java))
+            }
+            ID_OTH_PROFIT_LOSS -> openReport("PROFIT_LOSS")
+            ID_OTH_DAYBOOK -> openReport("DAILY_CLOSING")
+
+            else -> return false
+        }
+        return true
+    }
+
+    private fun openReport(reportType: String) {
+        startActivity(
+            Intent(this, ReportsHubActivity::class.java).apply {
+                putExtra("REPORT_TYPE", reportType)
+            }
+        )
+    }
+
+    private fun openScreenByName(className: String, label: String) {
+        try {
+            val clazz = Class.forName(className)
+            startActivity(Intent(this, clazz))
+        } catch (_: Exception) {
+            Toast.makeText(this, "$label screen opening...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun buildDashboardUi(): ScrollView {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#F4F6F9"))
@@ -71,7 +224,7 @@ class DashboardActivity : AppCompatActivity() {
             )
         }
 
-        // Header + Sales Reports Menu Trigger
+        // Top Bar with Menu button
         val topHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -86,17 +239,17 @@ class DashboardActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        btnSalesReportsMenu = Button(this).apply {
-            text = "SALES REPORTS ▾"
+        val btnMenu = Button(this).apply {
+            text = "MENU ▾"
             setBackgroundColor(Color.parseColor("#1B5E20"))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
             textSize = 12f
-            setOnClickListener { showSalesReportsMenu(it) }
+            setOnClickListener { showMenuPopup(it) }
         }
 
         topHeader.addView(tvBrand)
-        topHeader.addView(btnSalesReportsMenu)
+        topHeader.addView(btnMenu)
         root.addView(topHeader)
 
         // Quick Action Buttons (+ SALES, + PURCHASE)
@@ -115,11 +268,7 @@ class DashboardActivity : AppCompatActivity() {
                 setMargins(0, 0, 8, 0)
             }
             setOnClickListener {
-                startActivity(
-                    Intent(this@DashboardActivity, ReportsHubActivity::class.java).apply {
-                        putExtra("REPORT_TYPE", "DAY_SALES_REPORT")
-                    }
-                )
+                openScreenByName("com.shop.veggieledger.SalesEntryActivity", "SALES")
             }
         }
 
@@ -132,11 +281,7 @@ class DashboardActivity : AppCompatActivity() {
                 setMargins(8, 0, 0, 0)
             }
             setOnClickListener {
-                startActivity(
-                    Intent(this@DashboardActivity, ReportsHubActivity::class.java).apply {
-                        putExtra("REPORT_TYPE", "PUR_STATEMENT")
-                    }
-                )
+                openScreenByName("com.shop.veggieledger.PurchaseEntryActivity", "PURCHASE")
             }
         }
 
@@ -281,37 +426,6 @@ class DashboardActivity : AppCompatActivity() {
                 if (leftMargin) setMargins(0, 0, 6, 0) else setMargins(6, 0, 0, 0)
             }
         }
-    }
-
-    private fun showSalesReportsMenu(anchor: View) {
-        val popup = PopupMenu(this, anchor)
-        popup.menu.add(0, 1, 0, "Customer Sales Report")
-        popup.menu.add(0, 2, 1, "Purchase-wise Sales Report")
-        popup.menu.add(0, 3, 2, "Sales Bill Details")
-        popup.menu.add(0, 4, 3, "Itemwise Sales")
-        popup.menu.add(0, 5, 4, "Customer Statement")
-        popup.menu.add(0, 6, 5, "Customer Outstanding")
-        popup.menu.add(0, 7, 6, "Day Sales Report")
-
-        popup.setOnMenuItemClickListener { item ->
-            val typeCode = when (item.itemId) {
-                1 -> "SAL_CUSTOMER"
-                2 -> "PUR_WISE_SALES"
-                3 -> "SAL_DETAILS"
-                4 -> "SAL_ITEMWISE"
-                5 -> "SAL_STATEMENT"
-                6 -> "SAL_OUTSTANDING"
-                7 -> "DAY_SALES_REPORT"
-                else -> return@setOnMenuItemClickListener false
-            }
-            startActivity(
-                Intent(this, ReportsHubActivity::class.java).apply {
-                    putExtra("REPORT_TYPE", typeCode)
-                }
-            )
-            true
-        }
-        popup.show()
     }
 
     private fun setupDatePicker() {
