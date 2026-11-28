@@ -60,9 +60,8 @@ class DashboardActivity : AppCompatActivity() {
         private const val ID_INCOME_EXPENSE = 205
 
         private const val ID_PUR_DATEWISE = 301
-        private const val ID_PUR_SUPPLIERWISE = 302
-        private const val ID_PUR_STATEMENT = 303
-        private const val ID_PUR_OUTSTANDING = 304
+        private const val ID_PUR_STATEMENT = 302
+        private const val ID_PUR_OUTSTANDING = 303
 
         private const val ID_SAL_DAYSALES = 401
         private const val ID_SAL_SUPPLIER_WISE = 402
@@ -118,9 +117,8 @@ class DashboardActivity : AppCompatActivity() {
 
         val purReportSub: SubMenu = reportSub.addSubMenu(0, 31, 1, "PURCHASE REPORT")
         purReportSub.add(GRP_PUR_REP, ID_PUR_DATEWISE, 1, "DATEWISE REPORT")
-        purReportSub.add(GRP_PUR_REP, ID_PUR_SUPPLIERWISE, 2, "SUPPLIERWISE REPORT")
-        purReportSub.add(GRP_PUR_REP, ID_PUR_STATEMENT, 3, "SUPPLIER STATEMENT")
-        purReportSub.add(GRP_PUR_REP, ID_PUR_OUTSTANDING, 4, "SUPPLIER OUTSTANDING")
+        purReportSub.add(GRP_PUR_REP, ID_PUR_STATEMENT, 2, "SUPPLIER STATEMENT")
+        purReportSub.add(GRP_PUR_REP, ID_PUR_OUTSTANDING, 3, "SUPPLIER OUTSTANDING")
 
         val salReportSub: SubMenu = reportSub.addSubMenu(0, 32, 2, "SALES REPORT")
         salReportSub.add(GRP_SAL_REP, ID_SAL_DAYSALES, 1, "DAYSALES REPORT")
@@ -183,7 +181,6 @@ class DashboardActivity : AppCompatActivity() {
 
             // PURCHASE REPORT
             ID_PUR_DATEWISE -> openReport("PUR_DETAILS")
-            ID_PUR_SUPPLIERWISE -> openReport("PUR_SUPPLIER")
             ID_PUR_STATEMENT -> openScreenSmart(
                 listOf("com.shop.veggieledger.SupplierStatementActivity", "com.shop.veggieledger.ReportsHubActivity"),
                 "SUPPLIER STATEMENT",
