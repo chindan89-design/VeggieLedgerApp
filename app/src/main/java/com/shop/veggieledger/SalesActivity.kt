@@ -317,7 +317,6 @@ class SalesActivity : AppCompatActivity() {
 
             val bags = if (isCoconut) 0 else (binding.etSalesBags.text.toString().toIntOrNull() ?: 0)
             val kgs = binding.etSalesKgs.text.toString().toDoubleOrNull() ?: 0.0
-            // Allow 0 or blank Rate when Kgs or Bags are entered
             val rate = binding.etSalesRate.text.toString().toDoubleOrNull() ?: 0.0
 
             if (kgs <= 0.0 && bags <= 0) {
@@ -450,7 +449,11 @@ class SalesActivity : AppCompatActivity() {
 
             val creditBal = (grandTotalBill - totalPaid).coerceAtLeast(0.0)
             val isCreditSale = creditBal > 0.005
-            val computedPayMode = if (isCreditSale) "Credit" else "Cash"
+
+            // Clearly distinguish GPay vs Cash vs Cash + GPay vs Credit
+            val computedPayMode = resolvePayModeLabel(cashPaid, gpayPaid, creditBal)
+            val receiptModeLabel = resolveReceiptModeLabel(cashPaid, gpayPaid)
+
             val status = if (isCreditSale) {
                 if (totalPaid > 0.005) "Partial" else "Unpaid"
             } else {
@@ -462,6 +465,8 @@ class SalesActivity : AppCompatActivity() {
             val billBitmap = generateBillReceiptBitmap()
             val targetPhone = selectedCustomerPhone
             val targetCustName = selectedCustomerName
+            val targetCustId = selectedCustomerId
+            val targetDate = selectedDateStr
 
             val itemsForDb = arrayListOf<Any>()
             var totalBagsAll = 0
@@ -518,6 +523,8 @@ class SalesActivity : AppCompatActivity() {
             }
 
             if (isEditMode && editingSaleDocId.isNotEmpty()) {
+                val saleDocIdForReceipt = editingSaleDocId
+
                 for (i in 0 until oldSaleItemsJson.length()) {
                     val oldObj = oldSaleItemsJson.getJSONObject(i)
                     restoreStockToSpecificBatch(
@@ -559,6 +566,7 @@ class SalesActivity : AppCompatActivity() {
                     "customerId" to selectedCustomerId,
                     "customerName" to selectedCustomerName,
                     "payMode" to computedPayMode,
+                    "paymentMode" to computedPayMode,
                     "cash" to cashPaid,
                     "gpay" to gpayPaid,
                     "credit" to creditBal,
@@ -583,7 +591,19 @@ class SalesActivity : AppCompatActivity() {
 
                 db.collection("sales").document(editingSaleDocId).update(updateData)
                     .addOnSuccessListener {
-                        Toast.makeText(this, "Sales Bill $billNo Updated with Stock ID: $firstBatchId!", Toast.LENGTH_SHORT).show()
+                        syncAutoReceiptForSale(
+                            saleDocId = saleDocIdForReceipt,
+                            billNo = billNo,
+                            dateStr = targetDate,
+                            custId = targetCustId,
+                            custName = targetCustName,
+                            cashPaid = cashPaid,
+                            gpayPaid = gpayPaid,
+                            receiptMode = receiptModeLabel,
+                            payerName = cashPayerName
+                        )
+                        val recMsg = if (totalPaid > 0.005) " + Auto Receipt ($receiptModeLabel)" else ""
+                        Toast.makeText(this, "Sales Bill $billNo Updated ($computedPayMode)$recMsg!", Toast.LENGTH_SHORT).show()
                         editingSaleDocId = ""
                         oldSaleCreditBalance = 0.0
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -621,6 +641,7 @@ class SalesActivity : AppCompatActivity() {
                     "customerId" to selectedCustomerId,
                     "customerName" to selectedCustomerName,
                     "payMode" to computedPayMode,
+                    "paymentMode" to computedPayMode,
                     "cash" to cashPaid,
                     "gpay" to gpayPaid,
                     "credit" to creditBal,
@@ -649,7 +670,19 @@ class SalesActivity : AppCompatActivity() {
                         if (selectedCustomerId.isNotEmpty() && creditBal > 0.0) {
                             adjustCustomerBalance(selectedCustomerId, creditBal)
                         }
-                        Toast.makeText(this, "Saved as $computedPayMode Sales ($billNo)!", Toast.LENGTH_SHORT).show()
+                        syncAutoReceiptForSale(
+                            saleDocId = saleId,
+                            billNo = billNo,
+                            dateStr = targetDate,
+                            custId = targetCustId,
+                            custName = targetCustName,
+                            cashPaid = cashPaid,
+                            gpayPaid = gpayPaid,
+                            receiptMode = receiptModeLabel,
+                            payerName = cashPayerName
+                        )
+                        val recMsg = if (totalPaid > 0.005) " & Auto Receipt ($receiptModeLabel) Added!" else "!"
+                        Toast.makeText(this, "Saved as $computedPayMode Sales ($billNo)$recMsg", Toast.LENGTH_SHORT).show()
                         resetForm()
                         promptWhatsappJpgAfterSave(billNo, targetCustName, targetPhone, billBitmap)
                     }
@@ -662,6 +695,87 @@ class SalesActivity : AppCompatActivity() {
 
         onSalesItemChanged(binding.spSalesItem.selectedItem?.toString() ?: "Coconut")
         refreshBillItemsGrid()
+    }
+
+    private fun resolvePayModeLabel(cashPaid: Double, gpayPaid: Double, creditBal: Double): String {
+        val hasCash = cashPaid > 0.005
+        val hasGpay = gpayPaid > 0.005
+        val hasCredit = creditBal > 0.005
+
+        return when {
+            hasCredit && !hasCash && !hasGpay -> "Credit"
+            hasCredit && hasGpay && !hasCash -> "Credit + GPay"
+            hasCredit && hasCash && !hasGpay -> "Credit + Cash"
+            hasCredit && hasCash && hasGpay -> "Credit + Cash/GPay"
+            hasGpay && !hasCash -> "GPay / UPI"
+            hasCash && hasGpay -> "Cash + GPay"
+            hasCash -> "Cash"
+            else -> "Cash"
+        }
+    }
+
+    private fun resolveReceiptModeLabel(cashPaid: Double, gpayPaid: Double): String {
+        val hasCash = cashPaid > 0.005
+        val hasGpay = gpayPaid > 0.005
+        return when {
+            hasCash && hasGpay -> "Cash + GPay"
+            hasGpay -> "GPay / UPI"
+            hasCash -> "Cash"
+            else -> ""
+        }
+    }
+
+    private fun syncAutoReceiptForSale(
+        saleDocId: String,
+        billNo: String,
+        dateStr: String,
+        custId: String,
+        custName: String,
+        cashPaid: Double,
+        gpayPaid: Double,
+        receiptMode: String,
+        payerName: String
+    ) {
+        val autoReceiptDocId = "AUTO_SAL_$saleDocId"
+        val totalReceived = cashPaid + gpayPaid
+
+        if (totalReceived <= 0.005) {
+            db.collection("receipts").document(autoReceiptDocId).delete()
+            return
+        }
+
+        val cleanBillNo = billNo.ifEmpty { saleDocId.takeLast(6) }
+        val receiptNo = "REC-$cleanBillNo"
+        val remarksText = if (payerName.isNotEmpty() && !payerName.equals(custName, ignoreCase = true)) {
+            "Auto Receipt for $cleanBillNo ($receiptMode - By $payerName)"
+        } else {
+            "Auto Receipt for $cleanBillNo ($receiptMode)"
+        }
+
+        val receiptData = hashMapOf<String, Any>(
+            "id" to autoReceiptDocId,
+            "receiptNo" to receiptNo,
+            "date" to dateStr,
+            "customerId" to custId,
+            "customerName" to custName,
+            "payMode" to receiptMode,
+            "paymentMode" to receiptMode,
+            "mode" to receiptMode,
+            "cash" to cashPaid,
+            "gpay" to gpayPaid,
+            "cashAmount" to cashPaid,
+            "gpayAmount" to gpayPaid,
+            "amount" to totalReceived,
+            "discount" to 0.0,
+            "less" to 0.0,
+            "billNo" to cleanBillNo,
+            "saleDocId" to saleDocId,
+            "source" to "AUTO_SALES",
+            "remarks" to remarksText,
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        db.collection("receipts").document(autoReceiptDocId).set(receiptData)
     }
 
     private fun computeAutoRoundoff(rawAmount: Double): Double {
@@ -1703,6 +1817,9 @@ class SalesActivity : AppCompatActivity() {
 
         db.collection("sales").document(docId).delete()
             .addOnSuccessListener {
+                // Also remove auto-generated receipt linked to this sale bill
+                db.collection("receipts").document("AUTO_SAL_$docId").delete()
+
                 if (rawItems != null) {
                     for (entry in rawItems) {
                         val m = entry as? Map<*, *> ?: continue
@@ -2144,7 +2261,7 @@ class SalesActivity : AppCompatActivity() {
                         val cashAmt = if (!isCredit && !isGpay) grandTotal else 0.0
                         val gpayAmt = if (isGpay) grandTotal else 0.0
                         val creditAmt = if (isCredit) grandTotal else 0.0
-                        val finalMode = if (isCredit) "Credit" else "Cash"
+                        val finalMode = resolvePayModeLabel(cashAmt, gpayAmt, creditAmt)
 
                         val docId = db.collection("sales").document().id
                         val saleData = hashMapOf<String, Any>(
@@ -2154,6 +2271,7 @@ class SalesActivity : AppCompatActivity() {
                             "customerId" to custId,
                             "customerName" to custName,
                             "payMode" to finalMode,
+                            "paymentMode" to finalMode,
                             "cash" to cashAmt,
                             "gpay" to gpayAmt,
                             "credit" to creditAmt,
@@ -2176,6 +2294,36 @@ class SalesActivity : AppCompatActivity() {
 
                         batch.set(db.collection("sales").document(docId), saleData)
                         importedCount++
+
+                        // Auto-create receipt for imported Cash / GPay sales
+                        val totalRec = cashAmt + gpayAmt
+                        if (totalRec > 0.005) {
+                            val recMode = resolveReceiptModeLabel(cashAmt, gpayAmt)
+                            val autoRecId = "AUTO_SAL_$docId"
+                            val recData = hashMapOf<String, Any>(
+                                "id" to autoRecId,
+                                "receiptNo" to "REC-$billNo",
+                                "date" to dateStr,
+                                "customerId" to custId,
+                                "customerName" to custName,
+                                "payMode" to recMode,
+                                "paymentMode" to recMode,
+                                "mode" to recMode,
+                                "cash" to cashAmt,
+                                "gpay" to gpayAmt,
+                                "cashAmount" to cashAmt,
+                                "gpayAmount" to gpayAmt,
+                                "amount" to totalRec,
+                                "discount" to 0.0,
+                                "less" to 0.0,
+                                "billNo" to billNo,
+                                "saleDocId" to docId,
+                                "source" to "AUTO_SALES",
+                                "remarks" to "Auto Receipt for $billNo ($recMode)",
+                                "timestamp" to (System.currentTimeMillis() + i)
+                            )
+                            batch.set(db.collection("receipts").document(autoRecId), recData)
+                        }
 
                         if (isCredit && custId.isNotEmpty()) {
                             addedCreditPerCust[custId] = (addedCreditPerCust[custId] ?: 0.0) + grandTotal
