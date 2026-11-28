@@ -97,6 +97,7 @@ class SalesActivity : AppCompatActivity() {
     private var editFilterDateStr: String = ""
     private var selectedCustomerId: String = ""
     private var selectedCustomerName: String = ""
+    private var isCashCustomerSelected: Boolean = false
     private var selectedCustomerPhone: String = ""
     private var selectedCustomerBalance: Double = 0.0
     private var grandTotalBill: Double = 0.0
@@ -434,8 +435,7 @@ class SalesActivity : AppCompatActivity() {
 
             val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
             val gpayPaid = etSplitGpay.text.toString().toDoubleOrNull() ?: 0.0
-            val typedPayer = etCashPayerName.text.toString().trim()
-            val cashPayerName = if (typedPayer.isNotEmpty()) typedPayer else if (cashPaid > 0.0) selectedCustomerName else ""
+            val typedPayerName = etCashPayerName.text.toString().trim()
             val totalPaid = cashPaid + gpayPaid
 
             if (totalPaid > grandTotalBill + 0.01) {
@@ -450,7 +450,15 @@ class SalesActivity : AppCompatActivity() {
             val creditBal = (grandTotalBill - totalPaid).coerceAtLeast(0.0)
             val isCreditSale = creditBal > 0.005
 
-            // Clearly distinguish GPay vs Cash vs Cash + GPay vs Credit
+            val isCashSaleMode = isCashCustomerSelected ||
+                selectedCustomerName.equals("Cash", ignoreCase = true) ||
+                selectedCustomerName.startsWith("Cash ", ignoreCase = true) ||
+                cashPaid > 0.005
+
+            // For Cash sales, customerName is always saved as "Cash" and person name in separate field
+            val dbCustomerName = if (isCashSaleMode) "Cash" else selectedCustomerName
+            val dbPersonName = if (isCashSaleMode) typedPayerName else ""
+
             val computedPayMode = resolvePayModeLabel(cashPaid, gpayPaid, creditBal)
             val receiptModeLabel = resolveReceiptModeLabel(cashPaid, gpayPaid)
 
@@ -464,7 +472,6 @@ class SalesActivity : AppCompatActivity() {
 
             val billBitmap = generateBillReceiptBitmap()
             val targetPhone = selectedCustomerPhone
-            val targetCustName = selectedCustomerName
             val targetCustId = selectedCustomerId
             val targetDate = selectedDateStr
 
@@ -564,13 +571,14 @@ class SalesActivity : AppCompatActivity() {
                     "billNo" to billNo,
                     "date" to selectedDateStr,
                     "customerId" to selectedCustomerId,
-                    "customerName" to selectedCustomerName,
+                    "customerName" to dbCustomerName,
+                    "cashPersonName" to dbPersonName,
+                    "personName" to dbPersonName,
                     "payMode" to computedPayMode,
                     "paymentMode" to computedPayMode,
                     "cash" to cashPaid,
                     "gpay" to gpayPaid,
                     "credit" to creditBal,
-                    "cashPersonName" to cashPayerName,
                     "cashAmount" to cashPaid,
                     "gpayAmount" to gpayPaid,
                     "items" to itemsForDb,
@@ -596,11 +604,11 @@ class SalesActivity : AppCompatActivity() {
                             billNo = billNo,
                             dateStr = targetDate,
                             custId = targetCustId,
-                            custName = targetCustName,
+                            custName = dbCustomerName,
                             cashPaid = cashPaid,
                             gpayPaid = gpayPaid,
                             receiptMode = receiptModeLabel,
-                            payerName = cashPayerName
+                            personName = dbPersonName
                         )
                         val recMsg = if (totalPaid > 0.005) " + Auto Receipt ($receiptModeLabel)" else ""
                         Toast.makeText(this, "Sales Bill $billNo Updated ($computedPayMode)$recMsg!", Toast.LENGTH_SHORT).show()
@@ -609,7 +617,7 @@ class SalesActivity : AppCompatActivity() {
                         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
                         resetForm()
                         loadSalesForEditFilter()
-                        promptWhatsappJpgAfterSave(billNo, targetCustName, targetPhone, billBitmap)
+                        promptWhatsappJpgAfterSave(billNo, dbCustomerName, targetPhone, billBitmap)
                     }
                     .addOnFailureListener {
                         binding.btnSaveSalesBill.isEnabled = true
@@ -639,13 +647,14 @@ class SalesActivity : AppCompatActivity() {
                     "billNo" to billNo,
                     "date" to selectedDateStr,
                     "customerId" to selectedCustomerId,
-                    "customerName" to selectedCustomerName,
+                    "customerName" to dbCustomerName,
+                    "cashPersonName" to dbPersonName,
+                    "personName" to dbPersonName,
                     "payMode" to computedPayMode,
                     "paymentMode" to computedPayMode,
                     "cash" to cashPaid,
                     "gpay" to gpayPaid,
                     "credit" to creditBal,
-                    "cashPersonName" to cashPayerName,
                     "cashAmount" to cashPaid,
                     "gpayAmount" to gpayPaid,
                     "items" to itemsForDb,
@@ -675,16 +684,16 @@ class SalesActivity : AppCompatActivity() {
                             billNo = billNo,
                             dateStr = targetDate,
                             custId = targetCustId,
-                            custName = targetCustName,
+                            custName = dbCustomerName,
                             cashPaid = cashPaid,
                             gpayPaid = gpayPaid,
                             receiptMode = receiptModeLabel,
-                            payerName = cashPayerName
+                            personName = dbPersonName
                         )
                         val recMsg = if (totalPaid > 0.005) " & Auto Receipt ($receiptModeLabel) Added!" else "!"
                         Toast.makeText(this, "Saved as $computedPayMode Sales ($billNo)$recMsg", Toast.LENGTH_SHORT).show()
                         resetForm()
-                        promptWhatsappJpgAfterSave(billNo, targetCustName, targetPhone, billBitmap)
+                        promptWhatsappJpgAfterSave(billNo, dbCustomerName, targetPhone, billBitmap)
                     }
                     .addOnFailureListener {
                         binding.btnSaveSalesBill.isEnabled = true
@@ -734,7 +743,7 @@ class SalesActivity : AppCompatActivity() {
         cashPaid: Double,
         gpayPaid: Double,
         receiptMode: String,
-        payerName: String
+        personName: String
     ) {
         val autoReceiptDocId = "AUTO_SAL_$saleDocId"
         val totalReceived = cashPaid + gpayPaid
@@ -746,8 +755,8 @@ class SalesActivity : AppCompatActivity() {
 
         val cleanBillNo = billNo.ifEmpty { saleDocId.takeLast(6) }
         val receiptNo = "REC-$cleanBillNo"
-        val remarksText = if (payerName.isNotEmpty() && !payerName.equals(custName, ignoreCase = true)) {
-            "Auto Receipt for $cleanBillNo ($receiptMode - By $payerName)"
+        val remarksText = if (personName.isNotEmpty()) {
+            "Auto Receipt for $cleanBillNo ($receiptMode - Person: $personName)"
         } else {
             "Auto Receipt for $cleanBillNo ($receiptMode)"
         }
@@ -758,6 +767,8 @@ class SalesActivity : AppCompatActivity() {
             "date" to dateStr,
             "customerId" to custId,
             "customerName" to custName,
+            "cashPersonName" to personName,
+            "personName" to personName,
             "payMode" to receiptMode,
             "paymentMode" to receiptMode,
             "mode" to receiptMode,
@@ -1146,7 +1157,7 @@ class SalesActivity : AppCompatActivity() {
         val creditBal = (effectiveTarget - paidSum).coerceAtLeast(0.0)
 
         val typedName = etCashPayerName.text.toString().trim()
-        rowCashPayer.visibility = if (cashVal > 0.005 || typedName.isNotEmpty()) View.VISIBLE else View.GONE
+        rowCashPayer.visibility = if (isCashCustomerSelected || cashVal > 0.005 || typedName.isNotEmpty()) View.VISIBLE else View.GONE
         etSplitCredit.setText(String.format(Locale.getDefault(), "Cr: %.2f", creditBal))
     }
 
@@ -1244,7 +1255,7 @@ class SalesActivity : AppCompatActivity() {
         canvas.drawLine(pad, y, width - pad, y, pDash)
 
         y += 28f
-        val custDisplay = selectedCustomerName.ifEmpty { "Cash Customer" }.take(22)
+        val custDisplay = if (isCashCustomerSelected) "Cash" else selectedCustomerName.ifEmpty { "Cash" }.take(22)
         canvas.drawText("Name : $custDisplay", pad, y, pBodyBold)
         canvas.drawText("Date : $selectedDateStr", width - pad, y, pBodyRightBold)
         canvas.drawLine(pad + 60f, y + 5f, 345f, y + 5f, pSolid)
@@ -1252,9 +1263,9 @@ class SalesActivity : AppCompatActivity() {
 
         val cashPaid = etSplitCash.text.toString().toDoubleOrNull() ?: 0.0
         val payerName = etCashPayerName.text.toString().trim()
-        if (payerName.isNotEmpty() && !payerName.equals(custDisplay, ignoreCase = true)) {
+        if (payerName.isNotEmpty()) {
             y += 24f
-            canvas.drawText("Cash By : $payerName", pad, y, pBodyReg)
+            canvas.drawText("Person : $payerName", pad, y, pBodyReg)
         }
 
         y += 16f
@@ -1817,7 +1828,6 @@ class SalesActivity : AppCompatActivity() {
 
         db.collection("sales").document(docId).delete()
             .addOnSuccessListener {
-                // Also remove auto-generated receipt linked to this sale bill
                 db.collection("receipts").document("AUTO_SAL_$docId").delete()
 
                 if (rawItems != null) {
@@ -1870,7 +1880,7 @@ class SalesActivity : AppCompatActivity() {
         val savedGpay = (data["gpay"] as? Number)?.toDouble()
             ?: (data["gpayAmount"] as? Number)?.toDouble()
             ?: (if (oldPayMode.contains("GPay", ignoreCase = true) || oldPayMode.contains("UPI", ignoreCase = true)) oldPaidAmount else 0.0)
-        val savedPayerName = data["cashPersonName"]?.toString() ?: ""
+        val savedPayerName = data["cashPersonName"]?.toString() ?: data["personName"]?.toString() ?: ""
 
         oldSaleCreditBalance = (data["credit"] as? Number)?.toDouble()
             ?: (data["balanceAmount"] as? Number)?.toDouble()
@@ -1883,6 +1893,7 @@ class SalesActivity : AppCompatActivity() {
         selectedDateStr = bDate
         selectedCustomerId = oldSaleCustomerId
         selectedCustomerName = cName
+        isCashCustomerSelected = cName.equals("Cash", ignoreCase = true) || cName.startsWith("Cash ", ignoreCase = true)
 
         val foundCust = customerList.find { c -> c.id == oldSaleCustomerId || c.name.equals(cName, ignoreCase = true) }
         selectedCustomerBalance = foundCust?.balance ?: 0.0
@@ -1893,12 +1904,13 @@ class SalesActivity : AppCompatActivity() {
 
         binding.etSalesDate.setText(bDate)
         binding.etSalesBillNo.setText(bNo)
-        binding.etSalesCustomer.setText(cName)
+        binding.etSalesCustomer.setText(if (isCashCustomerSelected) "Cash" else cName)
         binding.tvSalesCustBalance.text = String.format(Locale.getDefault(), "Previous Balance: Rs. %.2f", selectedCustomerBalance)
 
         etSplitCash.setText(if (savedCash > 0.0) String.format(Locale.getDefault(), "%.2f", savedCash) else "")
         etSplitGpay.setText(if (savedGpay > 0.0) String.format(Locale.getDefault(), "%.2f", savedGpay) else "")
         etCashPayerName.setText(savedPayerName)
+        rowCashPayer.visibility = if (isCashCustomerSelected || savedCash > 0.0 || savedPayerName.isNotEmpty()) View.VISIBLE else View.GONE
 
         while (billItemsArray.length() > 0) billItemsArray.remove(0)
         while (oldSaleItemsJson.length() > 0) oldSaleItemsJson.remove(0)
@@ -2210,7 +2222,7 @@ class SalesActivity : AppCompatActivity() {
 
                         val dateStr = cols.getOrElse(0) { selectedDateStr }.trim().ifEmpty { selectedDateStr }
                         val billNo = cols.getOrElse(1) { "SAL-IMP-$i" }.trim()
-                        val custName = cols.getOrElse(2) { "" }.trim()
+                        val rawCustCol = cols.getOrElse(2) { "" }.trim()
                         val payMode = cols.getOrElse(3) { "Credit" }.trim().ifEmpty { "Credit" }
                         val itemName = cols.getOrElse(4) { "Coconut" }.trim()
 
@@ -2240,9 +2252,15 @@ class SalesActivity : AppCompatActivity() {
                             grandTotal = cleanNum(cols.getOrElse(10) { "0" }).let { if (it > 0.0) it else amount + bagCharge }
                         }
 
-                        if (custName.isEmpty() || (grandTotal <= 0.0 && netKgs <= 0.0 && bags <= 0)) continue
+                        if (rawCustCol.isEmpty() || (grandTotal <= 0.0 && netKgs <= 0.0 && bags <= 0)) continue
 
-                        val custKey = custName.lowercase(Locale.getDefault())
+                        val isCashRow = rawCustCol.equals("Cash", ignoreCase = true) || rawCustCol.startsWith("Cash ", ignoreCase = true)
+                        val dbCustName = if (isCashRow) "Cash" else rawCustCol
+                        val dbPersonName = if (isCashRow && !rawCustCol.equals("Cash", ignoreCase = true)) {
+                            rawCustCol.removePrefix("Cash ").removePrefix("Cash").trim()
+                        } else ""
+
+                        val custKey = dbCustName.lowercase(Locale.getDefault())
                         val custId = custIdMap[custKey] ?: ""
 
                         val itemEntry = hashMapOf<String, Any>(
@@ -2269,13 +2287,14 @@ class SalesActivity : AppCompatActivity() {
                             "date" to dateStr,
                             "billNo" to billNo,
                             "customerId" to custId,
-                            "customerName" to custName,
+                            "customerName" to dbCustName,
+                            "cashPersonName" to dbPersonName,
+                            "personName" to dbPersonName,
                             "payMode" to finalMode,
                             "paymentMode" to finalMode,
                             "cash" to cashAmt,
                             "gpay" to gpayAmt,
                             "credit" to creditAmt,
-                            "cashPersonName" to "",
                             "cashAmount" to cashAmt,
                             "gpayAmount" to gpayAmt,
                             "items" to arrayListOf(itemEntry),
@@ -2295,7 +2314,6 @@ class SalesActivity : AppCompatActivity() {
                         batch.set(db.collection("sales").document(docId), saleData)
                         importedCount++
 
-                        // Auto-create receipt for imported Cash / GPay sales
                         val totalRec = cashAmt + gpayAmt
                         if (totalRec > 0.005) {
                             val recMode = resolveReceiptModeLabel(cashAmt, gpayAmt)
@@ -2305,7 +2323,9 @@ class SalesActivity : AppCompatActivity() {
                                 "receiptNo" to "REC-$billNo",
                                 "date" to dateStr,
                                 "customerId" to custId,
-                                "customerName" to custName,
+                                "customerName" to dbCustName,
+                                "cashPersonName" to dbPersonName,
+                                "personName" to dbPersonName,
                                 "payMode" to recMode,
                                 "paymentMode" to recMode,
                                 "mode" to recMode,
@@ -2571,6 +2591,7 @@ class SalesActivity : AppCompatActivity() {
             if (isCashCustomer) {
                 promptCashPayerNameDialog(chosen)
             } else {
+                isCashCustomerSelected = false
                 applySelectedCustomer(chosen, chosen.name, showCashPayerRow = false)
             }
         }
@@ -2584,7 +2605,7 @@ class SalesActivity : AppCompatActivity() {
         box.setPadding(36, 20, 36, 10)
 
         val nameInput = EditText(this)
-        nameInput.hint = "Enter person name giving cash..."
+        nameInput.hint = "Enter cash person name..."
         nameInput.setSingleLine(true)
         nameInput.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
         if (etCashPayerName.text.toString().trim().isNotEmpty()) {
@@ -2593,18 +2614,19 @@ class SalesActivity : AppCompatActivity() {
         box.addView(nameInput)
 
         AlertDialog.Builder(this)
-            .setTitle("Cash Customer Name")
-            .setMessage("Enter the name of the person paying cash:")
+            .setTitle("Cash Person Name")
+            .setMessage("Customer Name will be saved as 'Cash'. Enter person name:")
             .setView(box)
             .setPositiveButton("OK") { _, _ ->
                 val enteredName = nameInput.text.toString().trim()
-                val finalDisplay = if (enteredName.isNotEmpty()) enteredName else chosen.name
                 etCashPayerName.setText(enteredName)
-                applySelectedCustomer(chosen, finalDisplay, showCashPayerRow = true)
+                isCashCustomerSelected = true
+                applySelectedCustomer(chosen, "Cash", showCashPayerRow = true)
             }
             .setNegativeButton("Skip") { _, _ ->
                 etCashPayerName.setText("")
-                applySelectedCustomer(chosen, chosen.name, showCashPayerRow = true)
+                isCashCustomerSelected = true
+                applySelectedCustomer(chosen, "Cash", showCashPayerRow = true)
             }
             .show()
     }
@@ -2795,6 +2817,7 @@ class SalesActivity : AppCompatActivity() {
     private fun resetForm() {
         selectedCustomerId = ""
         selectedCustomerName = ""
+        isCashCustomerSelected = false
         selectedCustomerPhone = ""
         selectedCustomerBalance = 0.0
         clearGridRowEditState()
