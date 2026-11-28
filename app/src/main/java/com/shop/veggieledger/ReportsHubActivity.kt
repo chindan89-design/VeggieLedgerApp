@@ -886,15 +886,13 @@ class ReportsHubActivity : AppCompatActivity() {
             "DAILY_CLOSING", "DAYBOOK" -> "Daybook Report"
             "DAY_SALES_REPORT", "DAILY_SALES_REPORT", "DAILY_SALES_EDIT", "SAL_DAY_REPORT" -> "Day Sales Report"
             "PUR_WISE_SALES" -> "Purchase-wise Sales Report (Lot Tracking)"
-            "PUR_SUPPLIER" -> "Supplier-wise Purchase Report"
-            "PUR_DETAILS" -> "Purchase Bill Details"
-            "PUR_ITEMWISE" -> "Itemwise Purchase Report"
+            "PUR_DETAILS", "PUR_ITEMWISE" -> "Datewise Purchase Report"
             "PUR_STATEMENT" -> "Supplier Statement"
             "SAL_CUSTOMER" -> "Customer Sales Report"
             "SAL_DETAILS" -> "Sales Bill Details"
             "SAL_ITEMWISE" -> "Itemwise Sales Report"
             "SAL_STATEMENT" -> "Customer Ledger Statement"
-            else -> "Purchase Bill Details"
+            else -> "Datewise Purchase Report"
         }
     }
 
@@ -1049,7 +1047,7 @@ class ReportsHubActivity : AppCompatActivity() {
         sheetBox.setPadding(18, 20, 18, 20)
 
         tvSheetShopName = TextView(this)
-        tvSheetShopName.text = "THIRUVENI COCONUTS"
+        tvSheetShopName.text = "THIRUVENI COCONUTS[span_0](start_span)"[span_0](end_span)
         tvSheetShopName.textSize = 20f
         tvSheetShopName.setTypeface(null, Typeface.BOLD)
         tvSheetShopName.setTextColor(Color.BLACK)
@@ -1057,7 +1055,7 @@ class ReportsHubActivity : AppCompatActivity() {
         sheetBox.addView(tvSheetShopName)
 
         tvSheetShopAddr = TextView(this)
-        tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
+        tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU[span_1](start_span)"[span_1](end_span)
         tvSheetShopAddr.textSize = 12.5f
         tvSheetShopAddr.setTypeface(null, Typeface.BOLD)
         tvSheetShopAddr.setTextColor(Color.DKGRAY)
@@ -1330,7 +1328,7 @@ class ReportsHubActivity : AppCompatActivity() {
         var totNetKgs = 0.0
         var totAmt = 0.0
 
-        val shareSb = StringBuilder("PURCHASE BILL DETAILS ($selectedSup)\nDate: $fromDateStr to $toDateStr\n\n")
+        val shareSb = StringBuilder("PURCHASE REPORT ($selectedSup)\nDate: $fromDateStr to $toDateStr\n\n")
 
         rows.forEachIndexed { idx, r ->
             totQty += r.qty
