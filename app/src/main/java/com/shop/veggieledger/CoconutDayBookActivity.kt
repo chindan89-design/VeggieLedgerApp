@@ -265,8 +265,8 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
     }
 
-    private fun extractAnyDescription(doc: DocumentSnapshot): String {
-        val candidateKeys = listOf(
+    private fun extractDescriptionField(doc: DocumentSnapshot): String {
+        val descKeys = listOf(
             "description",
             "desc",
             "expenseDescription",
@@ -278,27 +278,11 @@ class CoconutDayBookActivity : AppCompatActivity() {
             "note",
             "notes",
             "narration",
-            "details",
-            "reason",
-            "purpose",
-            "title",
-            "name"
+            "details"
         )
-        for (key in candidateKeys) {
-            val valStr = safeString(doc, key)
-            if (valStr.isNotEmpty()) return valStr
-        }
-        val skipKeys = setOf(
-            "date", "type", "category", "expenseCategory", "incomeCategory", "account", "accountName",
-            "expense", "expenseName", "income", "incomeName", "head", "payMode", "paymentMode", "mode",
-            "amount", "expenseAmount", "incomeAmount", "timestamp", "createdAt", "updatedAt", "id"
-        )
-        val data = doc.data ?: return ""
-        for ((k, v) in data) {
-            if (k in skipKeys) continue
-            if (v is String && v.trim().isNotEmpty()) {
-                return v.trim()
-            }
+        for (k in descKeys) {
+            val v = safeString(doc, k)
+            if (v.isNotEmpty() && v != "-") return v
         }
         return ""
     }
@@ -336,7 +320,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
             .ifEmpty { safeString(doc, "head") }
 
         val catPart = stripRedundantIncomePrefix(rawCat)
-        val descRaw = stripRedundantIncomePrefix(extractAnyDescription(doc))
+        val descRaw = stripRedundantIncomePrefix(extractDescriptionField(doc))
         val descPart = if (descRaw.equals(catPart, ignoreCase = true) ||
             descRaw.equals("Income", ignoreCase = true) ||
             descRaw.equals("Other Income", ignoreCase = true) ||
@@ -348,29 +332,42 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
 
         return if (descPart.isNotEmpty() && !catPart.equals(descPart, ignoreCase = true)) {
-            "$catPart - $descPart"
+            "$catPart $descPart"
         } else {
             catPart
         }
     }
 
     private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
-        val rawExpName = safeString(doc, "expense")
-            .ifEmpty { safeString(doc, "expenseName") }
-            .ifEmpty { safeString(doc, "account") }
-            .ifEmpty { safeString(doc, "accountName") }
-            .ifEmpty { safeString(doc, "head") }
-
-        val expName = if (rawExpName.equals(categoryLabel, ignoreCase = true) ||
-            rawExpName.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true)
-        ) {
-            ""
-        } else {
-            rawExpName
+        val expKeys = listOf(
+            "expense",
+            "expenses",
+            "expenseName",
+            "account",
+            "accountName",
+            "head",
+            "subCategory",
+            "title",
+            "name"
+        )
+        var expName = ""
+        for (k in expKeys) {
+            val v = safeString(doc, k)
+            if (v.isNotEmpty() &&
+                v != "-" &&
+                !v.equals(categoryLabel, ignoreCase = true) &&
+                !v.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true) &&
+                !v.equals("Expense", ignoreCase = true) &&
+                !v.equals("Expenses", ignoreCase = true)
+            ) {
+                expName = v
+                break
+            }
         }
 
-        val descText = extractAnyDescription(doc).let { found ->
-            if (found.equals(categoryLabel, ignoreCase = true) ||
+        val descText = extractDescriptionField(doc).let { found ->
+            if (found.isEmpty() ||
+                found.equals(categoryLabel, ignoreCase = true) ||
                 found.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true) ||
                 found.equals(expName, ignoreCase = true)
             ) {
@@ -381,7 +378,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
 
         return when {
-            expName.isNotEmpty() && descText.isNotEmpty() -> "$expName - $descText"
+            expName.isNotEmpty() && descText.isNotEmpty() -> "$expName $descText"
             expName.isNotEmpty() -> expName
             descText.isNotEmpty() -> descText
             else -> categoryLabel
@@ -497,7 +494,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & Category-wise Expenses (Expense/Account Name + Description)
+                        // 3. Other Incomes & Category-wise Expenses (Expense Name + Description)
                         val expenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
                         for (eDoc in expSnap.documents) {
