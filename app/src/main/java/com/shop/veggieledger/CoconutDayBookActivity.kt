@@ -326,34 +326,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
         return cleaned.ifEmpty { "Income" }
     }
 
-    private fun stripCategoryPrefix(rawText: String, categoryLabel: String): String {
-        var cleaned = rawText.trim()
-        val variants = linkedSetOf(
-            categoryLabel.trim(),
-            categoryLabel.removeSuffix("s").trim(),
-            "${categoryLabel.trim()}s",
-            "Shop Expenses",
-            "Shop Expense",
-            "Vehicle Expenses",
-            "Vehicle Expense",
-            "Other Expenses",
-            "Other Expense",
-            "Expenses",
-            "Expense"
-        )
-        for (base in variants) {
-            if (base.isEmpty()) continue
-            for (sep in listOf(" - ", "-", " : ", ":", " ")) {
-                val prefix = "$base$sep"
-                if (cleaned.startsWith(prefix, ignoreCase = true)) {
-                    cleaned = cleaned.substring(prefix.length).trim()
-                    return cleaned
-                }
-            }
-        }
-        return cleaned
-    }
-
     private fun formatIncomeCategoryAndDescription(doc: DocumentSnapshot): String {
         val rawCat = safeString(doc, "category")
             .ifEmpty { safeString(doc, "incomeCategory") }
@@ -383,18 +355,24 @@ class CoconutDayBookActivity : AppCompatActivity() {
     }
 
     private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
-        val rawExp = safeString(doc, "expense")
+        val rawExpName = safeString(doc, "expense")
             .ifEmpty { safeString(doc, "expenseName") }
             .ifEmpty { safeString(doc, "account") }
             .ifEmpty { safeString(doc, "accountName") }
             .ifEmpty { safeString(doc, "head") }
 
-        val expPart = stripCategoryPrefix(rawExp, categoryLabel)
-        val descPart = stripCategoryPrefix(extractAnyDescription(doc), categoryLabel).let { found ->
-            if (found.equals(expPart, ignoreCase = true) ||
-                found.equals(categoryLabel, ignoreCase = true) ||
-                found.equals("Expense", ignoreCase = true) ||
-                found.equals("Expenses", ignoreCase = true)
+        val expName = if (rawExpName.equals(categoryLabel, ignoreCase = true) ||
+            rawExpName.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true)
+        ) {
+            ""
+        } else {
+            rawExpName
+        }
+
+        val descText = extractAnyDescription(doc).let { found ->
+            if (found.equals(categoryLabel, ignoreCase = true) ||
+                found.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true) ||
+                found.equals(expName, ignoreCase = true)
             ) {
                 ""
             } else {
@@ -403,10 +381,9 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
 
         return when {
-            expPart.isNotEmpty() && descPart.isNotEmpty() && !expPart.equals(descPart, ignoreCase = true) ->
-                "$expPart - $descPart"
-            expPart.isNotEmpty() -> expPart
-            descPart.isNotEmpty() -> descPart
+            expName.isNotEmpty() && descText.isNotEmpty() -> "$expName - $descText"
+            expName.isNotEmpty() -> expName
+            descText.isNotEmpty() -> descText
             else -> categoryLabel
         }
     }
@@ -520,7 +497,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & Category-wise Expenses (Account/Expense + Description only)
+                        // 3. Other Incomes & Category-wise Expenses (Expense/Account Name + Description)
                         val expenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
                         for (eDoc in expSnap.documents) {
