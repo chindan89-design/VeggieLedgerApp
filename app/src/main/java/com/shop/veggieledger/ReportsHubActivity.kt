@@ -85,6 +85,18 @@ class ReportsHubActivity : AppCompatActivity() {
         val amount: Double
     )
 
+    private data class PurchaseWiseSaleRow(
+        val sortKey: Long,
+        val dateStr: String,
+        val billNo: String,
+        val supplierName: String,
+        val customerName: String,
+        val itemName: String,
+        val qty: Double,
+        val rate: Double,
+        val amount: Double
+    )
+
     private data class SupplierStatementRow(
         val sortKey: Long,
         val ymdDate: Long,
@@ -134,6 +146,7 @@ class ReportsHubActivity : AppCompatActivity() {
             isDaybookReport() -> loadAndRenderDaybook()
             reportType == "PUR_STATEMENT" -> loadAndRenderSupplierStatementReport()
             reportType == "PUR_OUTSTANDING" -> loadAndRenderSupplierOutstandingReport()
+            reportType == "PUR_WISE_SALES" -> loadAndRenderPurchaseWiseSalesReport()
             else -> loadAndRenderPurchaseGridReport()
         }
     }
@@ -639,8 +652,164 @@ class ReportsHubActivity : AppCompatActivity() {
             isDaybookReport() -> loadAndRenderDaybook()
             reportType == "PUR_STATEMENT" -> loadAndRenderSupplierStatementReport()
             reportType == "PUR_OUTSTANDING" -> loadAndRenderSupplierOutstandingReport()
+            reportType == "PUR_WISE_SALES" -> loadAndRenderPurchaseWiseSalesReport()
             else -> loadAndRenderPurchaseGridReport()
         }
+    }
+
+    private fun loadAndRenderPurchaseWiseSalesReport() {
+        val selectedItem = spItemFilter.selectedItem?.toString()?.trim() ?: "ALL ITEMS"
+        val selectedSup = spPartyFilter.selectedItem?.toString()?.trim() ?: "ALL SUPPLIERS"
+        val isSingleItem = selectedItem.isNotEmpty() && !selectedItem.equals("ALL ITEMS", ignoreCase = true)
+        val isSingleSupplier = selectedSup.isNotEmpty() && !selectedSup.equals("ALL SUPPLIERS", ignoreCase = true)
+        val fromYmd = dateToYmd(fromDateStr)
+        val toYmd = dateToYmd(toDateStr)
+
+        daybookContainer.visibility = View.GONE
+        tvLeftMeta.text = "ITEM: $selectedItem | SUPPLIER: $selectedSup"
+        tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
+        tvSummary.text = "Loading Purchase-wise Sales Report..."
+
+        val purTask = db.collection("purchases").get()
+        val salTask = db.collection("sales").get()
+
+        Tasks.whenAllComplete(purTask, salTask).addOnSuccessListener {
+            val stockSupplierMap = HashMap<String, String>()
+            val stockItemMap = HashMap<String, String>()
+
+            if (purTask.isSuccessful) {
+                for (doc in (purTask.result as? QuerySnapshot)?.documents.orEmpty()) {
+                    val sup = (doc.getString("supplierName") ?: doc.getString("partyName") ?: "").trim()
+                    val item = (doc.getString("itemName") ?: doc.getString("item") ?: "").trim()
+                    val stockId = (doc.getString("stockId") ?: "").trim()
+                    if (stockId.isNotEmpty()) {
+                        if (sup.isNotEmpty()) stockSupplierMap[stockId] = sup
+                        if (item.isNotEmpty()) stockItemMap[stockId] = item
+                    }
+                    stockSupplierMap[doc.id] = sup
+                    if (item.isNotEmpty()) stockItemMap[doc.id] = item
+                }
+            }
+
+            val rows = arrayListOf<PurchaseWiseSaleRow>()
+            if (salTask.isSuccessful) {
+                for ((pos, doc) in (salTask.result as? QuerySnapshot)?.documents.orEmpty().withIndex()) {
+                    val dStr = (doc.getString("date") ?: "").trim()
+                    val dYmd = dateToYmd(dStr)
+                    if (fromYmd != -1 && dYmd != -1 && dYmd < fromYmd) continue
+                    if (toYmd != -1 && dYmd != -1 && dYmd > toYmd) continue
+
+                    val stockId = (doc.getString("stockId") ?: "").trim()
+                    val sup = (doc.getString("supplierName")
+                        ?: stockSupplierMap[stockId]
+                        ?: stockSupplierMap[doc.id]
+                        ?: "-").trim()
+                    if (isSingleSupplier && !sup.equals(selectedSup, ignoreCase = true)) continue
+
+                    val item = (doc.getString("itemName")
+                        ?: doc.getString("item")
+                        ?: stockItemMap[stockId]
+                        ?: stockItemMap[doc.id]
+                        ?: "COCONUT").trim()
+                    if (isSingleItem && !item.equals(selectedItem, ignoreCase = true)) continue
+
+                    val billNo = (doc.getString("billNo") ?: doc.id).trim()
+                    val cust = (doc.getString("customerName") ?: doc.getString("partyName") ?: "CASH").trim()
+                    val qty = safeDouble(doc, "netKgs").let {
+                        if (it > 0.0) it else safeDouble(doc, "quantity").let { q ->
+                            if (q > 0.0) q else safeDouble(doc, "qty")
+                        }
+                    }
+                    val rate = safeDouble(doc, "rate").let {
+                        if (it > 0.0) it else safeDouble(doc, "ratePerKg")
+                    }
+                    val amt = safeDouble(doc, "grandTotal").let {
+                        if (it > 0.0) it else safeDouble(doc, "amount").let { a ->
+                            if (a > 0.0) a else (qty * rate)
+                        }
+                    }
+
+                    val ts = safeLong(doc, "timestamp")
+                    val sortKey = (if (dYmd > 0) dYmd.toLong() else 0L) * 1_000_000L +
+                        (if (ts > 0L) (ts % 1_000_000L) else pos.toLong())
+
+                    rows.add(
+                        PurchaseWiseSaleRow(
+                            sortKey = sortKey,
+                            dateStr = dStr,
+                            billNo = billNo,
+                            supplierName = sup,
+                            customerName = cust,
+                            itemName = item,
+                            qty = qty,
+                            rate = rate,
+                            amount = amt
+                        )
+                    )
+                }
+            }
+
+            rows.sortBy { it.sortKey }
+            renderPurchaseWiseSalesTable(rows, selectedItem, selectedSup)
+        }.addOnFailureListener { e ->
+            tvSummary.text = "Error: ${e.message}"
+        }
+    }
+
+    private fun renderPurchaseWiseSalesTable(
+        rows: List<PurchaseWiseSaleRow>,
+        selectedItem: String,
+        selectedSup: String
+    ) {
+        tableLayout.removeAllViews()
+        val headers = listOf("Date", "Bill No", "Supplier", "Customer", "Qty", "Rate", "Amount")
+        val hRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#607D8B")) }
+        for (h in headers) {
+            hRow.addView(makeTableCell(h, "#1B5E20", "#FFFFFF", h in listOf("Qty", "Rate", "Amount"), true))
+        }
+        tableLayout.addView(hRow)
+
+        var totQty = 0.0
+        var totAmt = 0.0
+        val shareSb = StringBuilder("SUPPLIER WISE SALES REPORT ($selectedItem | $selectedSup)\nDate: $fromDateStr to $toDateStr\n\n")
+
+        rows.forEachIndexed { idx, r ->
+            totQty += r.qty
+            totAmt += r.amount
+
+            val bg = if (idx % 2 == 0) "#FFFFFF" else "#F1F8E9"
+            val tr = TableRow(this).apply { setBackgroundColor(Color.parseColor("#607D8B")) }
+            tr.addView(makeTableCell(r.dateStr, bg, "#000000", false, true))
+            tr.addView(makeTableCell(r.billNo, bg, "#1565C0", false, true))
+            tr.addView(makeTableCell(r.supplierName, bg, "#1B5E20", false, true))
+            tr.addView(makeTableCell(r.customerName, bg, "#000000", false, false))
+            tr.addView(makeTableCell(fmtQty(r.qty), bg, "#000000", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.rate), bg, "#000000", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.amount), bg, "#000000", true, true))
+            tableLayout.addView(tr)
+
+            shareSb.append(
+                "${r.dateStr} | ${r.billNo} | ${r.supplierName} | ${r.customerName} | Qty: ${fmtQty(r.qty)} | Amt: %.2f\n".format(
+                    Locale.getDefault(), r.amount
+                )
+            )
+        }
+
+        val totRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#607D8B")) }
+        totRow.addView(makeTableCell("TOTAL", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell("${rows.size} Bills", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell("", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell("", "#FFF9C4", "#000000", false, true))
+        totRow.addView(makeTableCell(fmtQty(totQty), "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("-", "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("%.2f".format(Locale.getDefault(), totAmt), "#FFF9C4", "#C62828", true, true))
+        tableLayout.addView(totRow)
+
+        tvSummary.text = "Bills: ${rows.size} | Qty: ${fmtQty(totQty)} | Sales Amount: Rs. %.2f".format(
+            Locale.getDefault(), totAmt
+        )
+        shareSb.append("\nTotal Sales Amount: Rs. %.2f".format(Locale.getDefault(), totAmt))
+        shareReportText = shareSb.toString()
     }
 
     private fun extractPurchaseLinesForDoc(
