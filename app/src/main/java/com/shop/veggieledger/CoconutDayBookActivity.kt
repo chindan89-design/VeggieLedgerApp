@@ -265,7 +265,24 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
     }
 
-    private fun extractDescriptionField(doc: DocumentSnapshot): String {
+    private fun isCategoryWord(text: String, categoryLabel: String): Boolean {
+        val t = text.trim()
+        if (t.isEmpty() || t == "-") return true
+        val cat = categoryLabel.trim()
+        val catSingular = cat.removeSuffix("s").trim()
+        return t.equals(cat, ignoreCase = true) ||
+            (catSingular.isNotEmpty() && t.equals(catSingular, ignoreCase = true)) ||
+            t.equals("Shop Expenses", ignoreCase = true) ||
+            t.equals("Shop Expense", ignoreCase = true) ||
+            t.equals("Vehicle Expenses", ignoreCase = true) ||
+            t.equals("Vehicle Expense", ignoreCase = true) ||
+            t.equals("Other Expenses", ignoreCase = true) ||
+            t.equals("Other Expense", ignoreCase = true) ||
+            t.equals("Expenses", ignoreCase = true) ||
+            t.equals("Expense", ignoreCase = true)
+    }
+
+    private fun extractDescriptionField(doc: DocumentSnapshot, categoryLabel: String, expDropdownVal: String): String {
         val descKeys = listOf(
             "description",
             "desc",
@@ -282,7 +299,13 @@ class CoconutDayBookActivity : AppCompatActivity() {
         )
         for (k in descKeys) {
             val v = safeString(doc, k)
-            if (v.isNotEmpty() && v != "-") return v
+            if (v.isNotEmpty() &&
+                v != "-" &&
+                !isCategoryWord(v, categoryLabel) &&
+                !v.equals(expDropdownVal, ignoreCase = true)
+            ) {
+                return v
+            }
         }
         return ""
     }
@@ -320,7 +343,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
             .ifEmpty { safeString(doc, "head") }
 
         val catPart = stripRedundantIncomePrefix(rawCat)
-        val descRaw = stripRedundantIncomePrefix(extractDescriptionField(doc))
+        val descRaw = stripRedundantIncomePrefix(extractDescriptionField(doc, "Other Incomes", catPart))
         val descPart = if (descRaw.equals(catPart, ignoreCase = true) ||
             descRaw.equals("Income", ignoreCase = true) ||
             descRaw.equals("Other Income", ignoreCase = true) ||
@@ -338,8 +361,9 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
     }
 
+    // Only Expense dropdown box value + Description text box value (never Category name inside row)
     private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
-        val expKeys = listOf(
+        val expDropdownKeys = listOf(
             "expense",
             "expenses",
             "expenseName",
@@ -350,38 +374,22 @@ class CoconutDayBookActivity : AppCompatActivity() {
             "title",
             "name"
         )
-        var expName = ""
-        for (k in expKeys) {
+        var expDropdownVal = ""
+        for (k in expDropdownKeys) {
             val v = safeString(doc, k)
-            if (v.isNotEmpty() &&
-                v != "-" &&
-                !v.equals(categoryLabel, ignoreCase = true) &&
-                !v.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true) &&
-                !v.equals("Expense", ignoreCase = true) &&
-                !v.equals("Expenses", ignoreCase = true)
-            ) {
-                expName = v
+            if (!isCategoryWord(v, categoryLabel)) {
+                expDropdownVal = v
                 break
             }
         }
 
-        val descText = extractDescriptionField(doc).let { found ->
-            if (found.isEmpty() ||
-                found.equals(categoryLabel, ignoreCase = true) ||
-                found.equals(categoryLabel.removeSuffix("s").trim(), ignoreCase = true) ||
-                found.equals(expName, ignoreCase = true)
-            ) {
-                ""
-            } else {
-                found
-            }
-        }
+        val descTextVal = extractDescriptionField(doc, categoryLabel, expDropdownVal)
 
         return when {
-            expName.isNotEmpty() && descText.isNotEmpty() -> "$expName $descText"
-            expName.isNotEmpty() -> expName
-            descText.isNotEmpty() -> descText
-            else -> categoryLabel
+            expDropdownVal.isNotEmpty() && descTextVal.isNotEmpty() -> "$expDropdownVal $descTextVal"
+            expDropdownVal.isNotEmpty() -> expDropdownVal
+            descTextVal.isNotEmpty() -> descTextVal
+            else -> ""
         }
     }
 
@@ -494,7 +502,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & Category-wise Expenses (Expense Name + Description)
+                        // 3. Other Incomes & Category-wise Expenses (Expense Dropdown + Description Text)
                         val expenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
                         for (eDoc in expSnap.documents) {
