@@ -1069,7 +1069,7 @@ class ReportsHubActivity : AppCompatActivity() {
         sheetBox.setPadding(18, 20, 18, 20)
 
         tvSheetShopName = TextView(this)
-        tvSheetShopName.text = "THIRUVENI COCONUTS[span_0](start_span)"[span_0](end_span)
+        tvSheetShopName.text = "THIRUVENI COCONUTS"
         tvSheetShopName.textSize = 20f
         tvSheetShopName.setTypeface(null, Typeface.BOLD)
         tvSheetShopName.setTextColor(Color.BLACK)
@@ -1077,7 +1077,7 @@ class ReportsHubActivity : AppCompatActivity() {
         sheetBox.addView(tvSheetShopName)
 
         tvSheetShopAddr = TextView(this)
-        tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU[span_1](start_span)"[span_1](end_span)
+        tvSheetShopAddr.text = "SHOP NO B98, PERIYAR VEGETABLE MARKET, KOYAMBEDU"
         tvSheetShopAddr.textSize = 12.5f
         tvSheetShopAddr.setTypeface(null, Typeface.BOLD)
         tvSheetShopAddr.setTextColor(Color.DKGRAY)
