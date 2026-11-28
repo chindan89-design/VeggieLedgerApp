@@ -59,12 +59,12 @@ class ReportsHubActivity : AppCompatActivity() {
     private lateinit var etToDate: EditText
     private lateinit var toCol: LinearLayout
     private lateinit var lblFrom: TextView
-    private lateinit var spPartyFilter: Spinner
-    private lateinit var layoutPartyBox: LinearLayout
-    private lateinit var tvPartyLabel: TextView
     private lateinit var spItemFilter: Spinner
     private lateinit var layoutItemBox: LinearLayout
     private lateinit var tvItemLabel: TextView
+    private lateinit var spPartyFilter: Spinner
+    private lateinit var layoutPartyBox: LinearLayout
+    private lateinit var tvPartyLabel: TextView
     private lateinit var tableLayout: TableLayout
     private lateinit var daybookContainer: LinearLayout
     private lateinit var hScrollTable: HorizontalScrollView
@@ -127,8 +127,10 @@ class ReportsHubActivity : AppCompatActivity() {
 
     private var fromDateStr: String = ""
     private var toDateStr: String = ""
-    private val partyNames = arrayListOf("ALL SUPPLIERS")
     private val itemNames = arrayListOf("ALL ITEMS")
+    private val partyNames = arrayListOf("ALL SUPPLIERS")
+    private val allKnownSuppliers = linkedSetOf<String>()
+    private val itemToSuppliersMap = HashMap<String, LinkedHashSet<String>>()
     private val partyOpBalMap = HashMap<String, Double>()
     private val partyIdMap = HashMap<String, String>()
     private var shareReportText: String = ""
@@ -146,7 +148,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
         buildUiProgrammatically()
         setupDates()
-        setupPartyAndItemDropdowns()
+        setupItemAndSupplierDropdowns()
 
         when {
             isDaySalesReport() -> loadAndRenderDaySalesReport()
@@ -930,27 +932,12 @@ class ReportsHubActivity : AppCompatActivity() {
         tvTitle.setPadding(0, 0, 0, 10)
         filterCard.addView(tvTitle)
 
-        // 1. Supplier Name
-        layoutPartyBox = LinearLayout(this)
-        layoutPartyBox.orientation = LinearLayout.VERTICAL
-        layoutPartyBox.setPadding(0, 0, 0, 8)
-        tvPartyLabel = TextView(this)
-        tvPartyLabel.text = "1. Supplier Name"
-        tvPartyLabel.textSize = 12.5f
-        tvPartyLabel.setTypeface(null, Typeface.BOLD)
-        tvPartyLabel.setTextColor(Color.parseColor("#1B5E20"))
-        spPartyFilter = Spinner(this)
-        spPartyFilter.setBackgroundResource(android.R.drawable.btn_dropdown)
-        layoutPartyBox.addView(tvPartyLabel)
-        layoutPartyBox.addView(spPartyFilter)
-        filterCard.addView(layoutPartyBox)
-
-        // Item Filter
+        // 1. Item Filter (First)
         layoutItemBox = LinearLayout(this)
         layoutItemBox.orientation = LinearLayout.VERTICAL
         layoutItemBox.setPadding(0, 0, 0, 8)
         tvItemLabel = TextView(this)
-        tvItemLabel.text = "Item"
+        tvItemLabel.text = "1. Item Name"
         tvItemLabel.textSize = 12.5f
         tvItemLabel.setTypeface(null, Typeface.BOLD)
         tvItemLabel.setTextColor(Color.parseColor("#1B5E20"))
@@ -960,7 +947,22 @@ class ReportsHubActivity : AppCompatActivity() {
         layoutItemBox.addView(spItemFilter)
         filterCard.addView(layoutItemBox)
 
-        // 2. From Date to To Date
+        // 2. Supplier Name (Filtered based on selected Item)
+        layoutPartyBox = LinearLayout(this)
+        layoutPartyBox.orientation = LinearLayout.VERTICAL
+        layoutPartyBox.setPadding(0, 0, 0, 8)
+        tvPartyLabel = TextView(this)
+        tvPartyLabel.text = "2. Supplier Name"
+        tvPartyLabel.textSize = 12.5f
+        tvPartyLabel.setTypeface(null, Typeface.BOLD)
+        tvPartyLabel.setTextColor(Color.parseColor("#1B5E20"))
+        spPartyFilter = Spinner(this)
+        spPartyFilter.setBackgroundResource(android.R.drawable.btn_dropdown)
+        layoutPartyBox.addView(tvPartyLabel)
+        layoutPartyBox.addView(spPartyFilter)
+        filterCard.addView(layoutPartyBox)
+
+        // 3. From Date to To Date
         val dateRow = LinearLayout(this)
         dateRow.orientation = LinearLayout.HORIZONTAL
         dateRow.weightSum = 2f
@@ -972,7 +974,7 @@ class ReportsHubActivity : AppCompatActivity() {
             setMargins(0, 0, 6, 0)
         }
         lblFrom = TextView(this)
-        lblFrom.text = if (isDaybookReport() || isDaySalesReport()) "Date" else "2. From Date"
+        lblFrom.text = if (isDaybookReport() || isDaySalesReport()) "Date" else "3. From Date"
         lblFrom.textSize = 12.5f
         lblFrom.setTypeface(null, Typeface.BOLD)
         lblFrom.setTextColor(Color.parseColor("#1B5E20"))
@@ -1100,7 +1102,7 @@ class ReportsHubActivity : AppCompatActivity() {
         metaRow.setPadding(4, 4, 4, 8)
 
         tvLeftMeta = TextView(this)
-        tvLeftMeta.text = "SUPPLIER: ALL SUPPLIERS | ITEM: ALL ITEMS"
+        tvLeftMeta.text = "ITEM: ALL ITEMS | SUPPLIER: ALL SUPPLIERS"
         tvLeftMeta.textSize = 12.5f
         tvLeftMeta.setTypeface(null, Typeface.BOLD)
         tvLeftMeta.setTextColor(Color.BLACK)
@@ -1159,33 +1161,34 @@ class ReportsHubActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupPartyAndItemDropdowns() {
+    private fun setupItemAndSupplierDropdowns() {
         if (isDaybookReport() || isDaySalesReport()) {
-            layoutPartyBox.visibility = View.GONE
             layoutItemBox.visibility = View.GONE
+            layoutPartyBox.visibility = View.GONE
             toCol.visibility = View.GONE
             lblFrom.text = "Date"
             return
         }
 
-        layoutPartyBox.visibility = View.VISIBLE
         layoutItemBox.visibility = View.VISIBLE
-        tvPartyLabel.text = "1. Supplier Name"
-        tvItemLabel.text = "Item"
+        layoutPartyBox.visibility = View.VISIBLE
+        tvItemLabel.text = "1. Item Name"
+        tvPartyLabel.text = "2. Supplier Name"
 
         val supTask = db.collection("suppliers").get()
         val purTask = db.collection("purchases").get()
         val itemsTask = db.collection("items").get()
 
         Tasks.whenAllComplete(supTask, purTask, itemsTask).addOnSuccessListener {
-            val uniqueSuppliers = linkedSetOf<String>()
+            allKnownSuppliers.clear()
+            itemToSuppliersMap.clear()
             val uniqueItems = linkedSetOf<String>()
 
             if (supTask.isSuccessful) {
                 for (doc in (supTask.result as? QuerySnapshot)?.documents.orEmpty()) {
                     val n = (doc.getString("name") ?: "").trim()
                     if (n.isNotEmpty()) {
-                        uniqueSuppliers.add(n)
+                        allKnownSuppliers.add(n)
                         val key = n.lowercase(Locale.getDefault())
                         partyOpBalMap[key] = safeDouble(doc, "openingBalance")
                         partyIdMap[key] = doc.id
@@ -1202,33 +1205,34 @@ class ReportsHubActivity : AppCompatActivity() {
 
             if (purTask.isSuccessful) {
                 for (doc in (purTask.result as? QuerySnapshot)?.documents.orEmpty()) {
-                    val s = (doc.getString("supplierName") ?: doc.getString("partyName") ?: "").trim()
-                    if (s.isNotEmpty()) uniqueSuppliers.add(s)
+                    val sup = (doc.getString("supplierName") ?: doc.getString("partyName") ?: "").trim()
+                    if (sup.isNotEmpty()) allKnownSuppliers.add(sup)
 
-                    val topItem = (doc.getString("itemName") ?: doc.getString("item") ?: "").trim()
-                    if (topItem.isNotEmpty()) uniqueItems.add(topItem)
-
+                    val docItemDefault = (doc.getString("itemName") ?: doc.getString("item") ?: "").trim()
                     val rawItems = doc.get("items") as? List<*>
-                    if (rawItems != null) {
+                    if (rawItems != null && rawItems.isNotEmpty()) {
                         for (entry in rawItems) {
                             val m = entry as? Map<*, *> ?: continue
-                            val lineItem = (m["itemName"] as? String ?: m["name"] as? String ?: m["item"] as? String ?: "").trim()
-                            if (lineItem.isNotEmpty()) uniqueItems.add(lineItem)
+                            val lineItem = (m["itemName"] as? String
+                                ?: m["name"] as? String
+                                ?: m["item"] as? String
+                                ?: docItemDefault).trim()
+                            if (lineItem.isNotEmpty()) {
+                                uniqueItems.add(lineItem)
+                                if (sup.isNotEmpty()) {
+                                    val iKey = lineItem.lowercase(Locale.getDefault())
+                                    itemToSuppliersMap.getOrPut(iKey) { linkedSetOf() }.add(sup)
+                                }
+                            }
+                        }
+                    } else if (docItemDefault.isNotEmpty()) {
+                        uniqueItems.add(docItemDefault)
+                        if (sup.isNotEmpty()) {
+                            val iKey = docItemDefault.lowercase(Locale.getDefault())
+                            itemToSuppliersMap.getOrPut(iKey) { linkedSetOf() }.add(sup)
                         }
                     }
                 }
-            }
-
-            partyNames.clear()
-            partyNames.add("ALL SUPPLIERS")
-            partyNames.addAll(uniqueSuppliers.sortedBy { it.lowercase(Locale.getDefault()) })
-
-            val supAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, partyNames)
-            supAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            spPartyFilter.adapter = supAdapter
-            spPartyFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {}
-                override fun onNothingSelected(p0: AdapterView<*>?) {}
             }
 
             itemNames.clear()
@@ -1238,9 +1242,40 @@ class ReportsHubActivity : AppCompatActivity() {
             val itemAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
             itemAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spItemFilter.adapter = itemAdapter
+
+            updateSuppliersForSelectedItem("ALL ITEMS")
+
             spItemFilter.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {}
-                override fun onNothingSelected(p0: AdapterView<*>?) {}
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                    val chosenItem = itemNames.getOrNull(pos) ?: "ALL ITEMS"
+                    updateSuppliersForSelectedItem(chosenItem)
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+        }
+    }
+
+    private fun updateSuppliersForSelectedItem(selectedItem: String) {
+        val previousSup = spPartyFilter.selectedItem?.toString()?.trim()
+        partyNames.clear()
+        partyNames.add("ALL SUPPLIERS")
+
+        val listToShow = if (selectedItem.equals("ALL ITEMS", ignoreCase = true)) {
+            allKnownSuppliers
+        } else {
+            itemToSuppliersMap[selectedItem.lowercase(Locale.getDefault())] ?: emptySet()
+        }
+
+        partyNames.addAll(listToShow.sortedBy { it.lowercase(Locale.getDefault()) })
+
+        val supAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, partyNames)
+        supAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spPartyFilter.adapter = supAdapter
+
+        if (!previousSup.isNullOrEmpty()) {
+            val matchIdx = partyNames.indexOfFirst { it.equals(previousSup, ignoreCase = true) }
+            if (matchIdx >= 0) {
+                spPartyFilter.setSelection(matchIdx)
             }
         }
     }
@@ -1254,15 +1289,15 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     private fun loadAndRenderPurchaseGridReport() {
-        val selectedSup = spPartyFilter.selectedItem?.toString()?.trim() ?: "ALL SUPPLIERS"
         val selectedItem = spItemFilter.selectedItem?.toString()?.trim() ?: "ALL ITEMS"
-        val isSingleSupplier = selectedSup.isNotEmpty() && !selectedSup.equals("ALL SUPPLIERS", ignoreCase = true)
+        val selectedSup = spPartyFilter.selectedItem?.toString()?.trim() ?: "ALL SUPPLIERS"
         val isSingleItem = selectedItem.isNotEmpty() && !selectedItem.equals("ALL ITEMS", ignoreCase = true)
+        val isSingleSupplier = selectedSup.isNotEmpty() && !selectedSup.equals("ALL SUPPLIERS", ignoreCase = true)
         val fromYmd = dateToYmd(fromDateStr)
         val toYmd = dateToYmd(toDateStr)
 
         daybookContainer.visibility = View.GONE
-        tvLeftMeta.text = "SUPPLIER: $selectedSup | ITEM: $selectedItem"
+        tvLeftMeta.text = "ITEM: $selectedItem | SUPPLIER: $selectedSup"
         tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
         tvSummary.text = "Loading..."
 
@@ -1372,7 +1407,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 }
 
                 rows.sortBy { it.sortKey }
-                renderPurchaseGrid(rows, selectedSup, selectedItem, isSingleSupplier)
+                renderPurchaseGrid(rows, selectedItem, selectedSup, isSingleSupplier)
             }
             .addOnFailureListener { e ->
                 tvSummary.text = "Error: ${e.message}"
@@ -1381,8 +1416,8 @@ class ReportsHubActivity : AppCompatActivity() {
 
     private fun renderPurchaseGrid(
         rows: List<PurchaseGridRow>,
-        selectedSup: String,
         selectedItem: String,
+        selectedSup: String,
         isSingleSupplier: Boolean
     ) {
         tableLayout.removeAllViews()
@@ -1406,7 +1441,7 @@ class ReportsHubActivity : AppCompatActivity() {
         var totNetKgs = 0.0
         var totAmt = 0.0
 
-        val shareSb = StringBuilder("DATEWISE PURCHASE REPORT ($selectedSup | $selectedItem)\nDate: $fromDateStr to $toDateStr\n\n")
+        val shareSb = StringBuilder("DATEWISE PURCHASE REPORT ($selectedItem | $selectedSup)\nDate: $fromDateStr to $toDateStr\n\n")
 
         rows.forEachIndexed { idx, r ->
             totQty += r.qty
