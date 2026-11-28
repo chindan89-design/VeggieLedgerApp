@@ -389,8 +389,14 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 2. Credit Bill Received by Cash
+                        // 2. Credit Bill Received by Cash (exclude direct Cash Sales auto-receipts)
                         for (rDoc in recSnap.documents) {
+                            val src = safeString(rDoc, "source")
+                            if (src.equals("AUTO_SALES", ignoreCase = true)) continue
+
+                            val rNo = safeString(rDoc, "receiptNo", rDoc.id)
+                            if (rNo.startsWith("REC-SAL-", ignoreCase = true)) continue
+
                             val dYmd = dateToYmd(safeString(rDoc, "date"))
                             val amt = safeDouble(rDoc, "amount")
                             if (amt <= 0.0) continue
@@ -400,7 +406,9 @@ class CoconutDayBookActivity : AppCompatActivity() {
 
                             val cid = safeString(rDoc, "customerId")
                             val cname = safeString(rDoc, "customerName", "Customer")
-                            val rNo = safeString(rDoc, "receiptNo", rDoc.id)
+                            if (cname.equals("Cash", ignoreCase = true) || cname.startsWith("Cash ", ignoreCase = true)) {
+                                continue
+                            }
 
                             var matchesCoconut = (cid.isNotEmpty() && coconutCustomerIds.contains(cid)) ||
                                 (cname.isNotEmpty() && coconutCustomerNames.contains(cname.lowercase(Locale.getDefault())))
