@@ -146,7 +146,7 @@ class ReportsHubActivity : AppCompatActivity() {
         when {
             isDaySalesReport() -> loadAndRenderDaySalesReport()
             isDaybookReport() -> loadAndRenderDaybook()
-            isPurchaseReport() -> loadAndRenderPurchaseGridReport()
+            else -> loadAndRenderPurchaseGridReport()
         }
     }
 
@@ -160,12 +160,6 @@ class ReportsHubActivity : AppCompatActivity() {
     private fun isDaybookReport(): Boolean {
         return reportType.equals("DAILY_CLOSING", ignoreCase = true) ||
             reportType.equals("DAYBOOK", ignoreCase = true)
-    }
-
-    private fun isPurchaseReport(): Boolean {
-        return reportType == "PUR_DETAILS" ||
-            reportType == "PUR_SUPPLIER" ||
-            reportType == "PUR_ITEMWISE"
     }
 
     private fun setupMinimalSupplierStatementScreen() {
@@ -933,7 +927,6 @@ class ReportsHubActivity : AppCompatActivity() {
         tvTitle.setPadding(0, 0, 0, 10)
         filterCard.addView(tvTitle)
 
-        // 1. Supplier Name
         layoutPartyBox = LinearLayout(this)
         layoutPartyBox.orientation = LinearLayout.VERTICAL
         layoutPartyBox.setPadding(0, 0, 0, 8)
@@ -948,7 +941,6 @@ class ReportsHubActivity : AppCompatActivity() {
         layoutPartyBox.addView(spPartyFilter)
         filterCard.addView(layoutPartyBox)
 
-        // 2. From Date to To Date
         val dateRow = LinearLayout(this)
         dateRow.orientation = LinearLayout.HORIZONTAL
         dateRow.weightSum = 2f
@@ -996,7 +988,6 @@ class ReportsHubActivity : AppCompatActivity() {
         dateRow.addView(toCol)
         filterCard.addView(dateRow)
 
-        // SUBMIT & SHARE
         val btnRow = LinearLayout(this)
         btnRow.orientation = LinearLayout.HORIZONTAL
         btnRow.weightSum = 2f
@@ -1169,8 +1160,9 @@ class ReportsHubActivity : AppCompatActivity() {
                     val n = (doc.getString("name") ?: "").trim()
                     if (n.isNotEmpty()) {
                         uniqueSuppliers.add(n)
-                        partyOpBalMap[n.lowercase(Locale.getDefault())] = safeDouble(doc, "openingBalance")
-                        partyIdMap[n.lowercase(Locale.getDefault())] = doc.id
+                        val key = n.lowercase(Locale.getDefault())
+                        partyOpBalMap[key] = safeDouble(doc, "openingBalance")
+                        partyIdMap[key] = doc.id
                     }
                 }
             }
