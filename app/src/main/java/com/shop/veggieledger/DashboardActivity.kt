@@ -185,14 +185,7 @@ class DashboardActivity : AppCompatActivity() {
             ID_PUR_OUTSTANDING -> openReport("PUR_OUTSTANDING")
 
             // SALES REPORT
-                        // SALES REPORT
             ID_SAL_DAYSALES -> openReport("DAY_SALES_REPORT")
-
-            ID_SAL_DAYSALES -> openScreenSmart(
-                listOf("com.shop.veggieledger.DailySalesEditActivity", "com.shop.veggieledger.ReportsHubActivity"),
-                "DAYSALES REPORT",
-                "DAY_SALES_REPORT"
-            )
             ID_SAL_SUPPLIER_WISE -> openReport("PUR_WISE_SALES")
             ID_SAL_STATEMENT -> openReport("SAL_STATEMENT")
             ID_SAL_OUTSTANDING -> openScreenSmart(
