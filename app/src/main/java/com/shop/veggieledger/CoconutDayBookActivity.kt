@@ -270,6 +270,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
             "description",
             "desc",
             "expenseDescription",
+            "incomeDescription",
             "remarks",
             "remark",
             "particulars",
@@ -288,9 +289,9 @@ class CoconutDayBookActivity : AppCompatActivity() {
             if (valStr.isNotEmpty()) return valStr
         }
         val skipKeys = setOf(
-            "date", "type", "category", "expenseCategory", "account", "accountName",
-            "expense", "expenseName", "head", "payMode", "paymentMode", "mode",
-            "amount", "expenseAmount", "timestamp", "createdAt", "updatedAt", "id"
+            "date", "type", "category", "expenseCategory", "incomeCategory", "account", "accountName",
+            "expense", "expenseName", "income", "incomeName", "head", "payMode", "paymentMode", "mode",
+            "amount", "expenseAmount", "incomeAmount", "timestamp", "createdAt", "updatedAt", "id"
         )
         val data = doc.data ?: return ""
         for ((k, v) in data) {
@@ -302,26 +303,111 @@ class CoconutDayBookActivity : AppCompatActivity() {
         return ""
     }
 
+    private fun stripRedundantIncomePrefix(rawText: String): String {
+        var cleaned = rawText.trim()
+        val prefixes = listOf(
+            "Other Incomes - ",
+            "Other Incomes-",
+            "Other Income - ",
+            "Other Income-",
+            "Other Incomes : ",
+            "Other Income : ",
+            "Incomes - ",
+            "Income - ",
+            "Other Incomes ",
+            "Other Income "
+        )
+        for (p in prefixes) {
+            if (cleaned.startsWith(p, ignoreCase = true)) {
+                cleaned = cleaned.substring(p.length).trim()
+                break
+            }
+        }
+        return cleaned.ifEmpty { "Income" }
+    }
+
+    private fun stripCategoryPrefix(rawText: String, categoryLabel: String): String {
+        var cleaned = rawText.trim()
+        val variants = linkedSetOf(
+            categoryLabel.trim(),
+            categoryLabel.removeSuffix("s").trim(),
+            "${categoryLabel.trim()}s",
+            "Shop Expenses",
+            "Shop Expense",
+            "Vehicle Expenses",
+            "Vehicle Expense",
+            "Other Expenses",
+            "Other Expense",
+            "Expenses",
+            "Expense"
+        )
+        for (base in variants) {
+            if (base.isEmpty()) continue
+            for (sep in listOf(" - ", "-", " : ", ":", " ")) {
+                val prefix = "$base$sep"
+                if (cleaned.startsWith(prefix, ignoreCase = true)) {
+                    cleaned = cleaned.substring(prefix.length).trim()
+                    return cleaned
+                }
+            }
+        }
+        return cleaned
+    }
+
+    private fun formatIncomeCategoryAndDescription(doc: DocumentSnapshot): String {
+        val rawCat = safeString(doc, "category")
+            .ifEmpty { safeString(doc, "incomeCategory") }
+            .ifEmpty { safeString(doc, "account") }
+            .ifEmpty { safeString(doc, "accountName") }
+            .ifEmpty { safeString(doc, "income") }
+            .ifEmpty { safeString(doc, "incomeName") }
+            .ifEmpty { safeString(doc, "head") }
+
+        val catPart = stripRedundantIncomePrefix(rawCat)
+        val descRaw = stripRedundantIncomePrefix(extractAnyDescription(doc))
+        val descPart = if (descRaw.equals(catPart, ignoreCase = true) ||
+            descRaw.equals("Income", ignoreCase = true) ||
+            descRaw.equals("Other Income", ignoreCase = true) ||
+            descRaw.equals("Other Incomes", ignoreCase = true)
+        ) {
+            ""
+        } else {
+            descRaw
+        }
+
+        return if (descPart.isNotEmpty() && !catPart.equals(descPart, ignoreCase = true)) {
+            "$catPart - $descPart"
+        } else {
+            catPart
+        }
+    }
+
     private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
-        val expPart = safeString(doc, "expense")
+        val rawExp = safeString(doc, "expense")
             .ifEmpty { safeString(doc, "expenseName") }
             .ifEmpty { safeString(doc, "account") }
             .ifEmpty { safeString(doc, "accountName") }
             .ifEmpty { safeString(doc, "head") }
-            .ifEmpty { categoryLabel }
 
-        val descPart = extractAnyDescription(doc).let { found ->
-            if (found.equals(expPart, ignoreCase = true) || found.equals(categoryLabel, ignoreCase = true)) {
+        val expPart = stripCategoryPrefix(rawExp, categoryLabel)
+        val descPart = stripCategoryPrefix(extractAnyDescription(doc), categoryLabel).let { found ->
+            if (found.equals(expPart, ignoreCase = true) ||
+                found.equals(categoryLabel, ignoreCase = true) ||
+                found.equals("Expense", ignoreCase = true) ||
+                found.equals("Expenses", ignoreCase = true)
+            ) {
                 ""
             } else {
                 found
             }
         }
 
-        return if (descPart.isNotEmpty()) {
-            "$expPart - $descPart"
-        } else {
-            expPart
+        return when {
+            expPart.isNotEmpty() && descPart.isNotEmpty() && !expPart.equals(descPart, ignoreCase = true) ->
+                "$expPart - $descPart"
+            expPart.isNotEmpty() -> expPart
+            descPart.isNotEmpty() -> descPart
+            else -> categoryLabel
         }
     }
 
@@ -434,7 +520,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & Separate Category-wise Expenses ("Expense - Description")
+                        // 3. Other Incomes & Category-wise Expenses (Account/Expense + Description only)
                         val expenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
                         for (eDoc in expSnap.documents) {
@@ -444,7 +530,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
                                 .ifEmpty { safeString(eDoc, "expenseCategory") }
                                 .ifEmpty { safeString(eDoc, "account") }
                             val catName = normalizeExpenseCategory(rawCat)
-                            val labelText = formatExpenseAndDescription(eDoc, catName)
                             val amt = safeDouble(eDoc, "amount").let {
                                 if (it > 0.0) it else safeDouble(eDoc, "expenseAmount")
                             }
@@ -455,12 +540,14 @@ class CoconutDayBookActivity : AppCompatActivity() {
                                 if (dYmd in 1 until targetYmd) {
                                     prevCashIn += amt
                                 } else if (dYmd == targetYmd) {
-                                    collectionTree["Other Incomes"]?.add(TreeEntry(labelText, mode, amt))
+                                    val incLabel = formatIncomeCategoryAndDescription(eDoc)
+                                    collectionTree["Other Incomes"]?.add(TreeEntry(incLabel, mode, amt))
                                 }
                             } else {
                                 if (dYmd in 1 until targetYmd) {
                                     prevCashOut += amt
                                 } else if (dYmd == targetYmd) {
+                                    val labelText = formatExpenseAndDescription(eDoc, catName)
                                     val list = expenseCategoryMap.getOrPut(catName) { arrayListOf() }
                                     list.add(TreeEntry(labelText, mode, amt))
                                 }
@@ -630,7 +717,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             canvas.drawText("Rs. ${fmt(lastOpBal)}", pageWidth - margin - 8f, y + 16f, pCatRight)
             y += 32f
 
-            // Collection section: Cash Sales total only + other tree nodes
             y = newPageIfNeeded(y, 44f)
             pFill.color = Color.parseColor("#1B5E20")
             canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
@@ -694,7 +780,6 @@ class CoconutDayBookActivity : AppCompatActivity() {
             canvas.drawText("Rs. ${fmt(lastTotalAvailable)}", pageWidth - margin - 8f, y + 15f, pCatRight)
             y += 30f
 
-            // Expenses section: Separate Category-wise blocks with Expense - Description inside each
             y = newPageIfNeeded(y, 44f)
             pFill.color = Color.parseColor("#C62828")
             canvas.drawRect(margin, y, pageWidth - margin, y + 22f, pFill)
