@@ -104,6 +104,18 @@ class ReportsHubActivity : AppCompatActivity() {
         val credit: Double
     )
 
+    private data class PurchaseGridRow(
+        val sortKey: Long,
+        val dateStr: String,
+        val supplierName: String,
+        val qty: Double,
+        val suit: Double,
+        val kudumi: Double,
+        val netKgs: Double,
+        val rate: Double,
+        val amount: Double
+    )
+
     private val minSupplierNames = arrayListOf<String>()
     private val minSupplierOpBalMap = HashMap<String, Double>()
     private lateinit var minSupplierAdapter: ArrayAdapter<String>
@@ -111,7 +123,7 @@ class ReportsHubActivity : AppCompatActivity() {
 
     private var fromDateStr: String = ""
     private var toDateStr: String = ""
-    private val partyNames = arrayListOf("ALL CUSTOMERS")
+    private val partyNames = arrayListOf("ALL SUPPLIERS")
     private val partyOpBalMap = HashMap<String, Double>()
     private val partyIdMap = HashMap<String, String>()
     private var shareReportText: String = ""
@@ -119,7 +131,7 @@ class ReportsHubActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        reportType = intent.getStringExtra("REPORT_TYPE") ?: "DAILY_CLOSING"
+        reportType = intent.getStringExtra("REPORT_TYPE") ?: "PUR_DETAILS"
         supportActionBar?.title = getReportTitle(reportType)
 
         if (reportType == "PUR_STATEMENT") {
@@ -134,6 +146,7 @@ class ReportsHubActivity : AppCompatActivity() {
         when {
             isDaySalesReport() -> loadAndRenderDaySalesReport()
             isDaybookReport() -> loadAndRenderDaybook()
+            isPurchaseReport() -> loadAndRenderPurchaseGridReport()
         }
     }
 
@@ -147,6 +160,12 @@ class ReportsHubActivity : AppCompatActivity() {
     private fun isDaybookReport(): Boolean {
         return reportType.equals("DAILY_CLOSING", ignoreCase = true) ||
             reportType.equals("DAYBOOK", ignoreCase = true)
+    }
+
+    private fun isPurchaseReport(): Boolean {
+        return reportType == "PUR_DETAILS" ||
+            reportType == "PUR_SUPPLIER" ||
+            reportType == "PUR_ITEMWISE"
     }
 
     private fun setupMinimalSupplierStatementScreen() {
@@ -171,9 +190,9 @@ class ReportsHubActivity : AppCompatActivity() {
 
         val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
         val calTo = Calendar.getInstance()
-        toDateStr = sdf.format(calTo.time)
-        val calFrom = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -30) }
+        val calFrom = Calendar.getInstance()
         fromDateStr = sdf.format(calFrom.time)
+        toDateStr = sdf.format(calTo.time)
 
         minEtFromDate = EditText(this).apply {
             hint = "From Date"
@@ -253,7 +272,7 @@ class ReportsHubActivity : AppCompatActivity() {
         }
 
         minBtnExportPdf = Button(this).apply {
-            text = "EXPORT TO PDF"
+            text = "SHARE"
             setBackgroundColor(Color.parseColor("#1565C0"))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
@@ -315,8 +334,8 @@ class ReportsHubActivity : AppCompatActivity() {
             this.text = text
             setBackgroundColor(Color.parseColor(bgColorHex))
             setTextColor(Color.parseColor(textColorHex))
-            textSize = 12f
-            setPadding(14, 11, 14, 11)
+            textSize = 12.5f
+            setPadding(16, 12, 16, 12)
             gravity = if (alignRight) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
             if (bold) setTypeface(null, Typeface.BOLD)
             val lp = TableRow.LayoutParams(
@@ -881,7 +900,7 @@ class ReportsHubActivity : AppCompatActivity() {
             "SAL_DETAILS" -> "Sales Bill Details"
             "SAL_ITEMWISE" -> "Itemwise Sales Report"
             "SAL_STATEMENT" -> "Customer Ledger Statement"
-            else -> "Report"
+            else -> "Purchase Bill Details"
         }
     }
 
@@ -914,12 +933,13 @@ class ReportsHubActivity : AppCompatActivity() {
         tvTitle.setPadding(0, 0, 0, 10)
         filterCard.addView(tvTitle)
 
+        // 1. Supplier Name
         layoutPartyBox = LinearLayout(this)
         layoutPartyBox.orientation = LinearLayout.VERTICAL
         layoutPartyBox.setPadding(0, 0, 0, 8)
         tvPartyLabel = TextView(this)
-        tvPartyLabel.text = "1. Customer Name"
-        tvPartyLabel.textSize = 12f
+        tvPartyLabel.text = "1. Supplier Name"
+        tvPartyLabel.textSize = 12.5f
         tvPartyLabel.setTypeface(null, Typeface.BOLD)
         tvPartyLabel.setTextColor(Color.parseColor("#1B5E20"))
         spPartyFilter = Spinner(this)
@@ -928,6 +948,7 @@ class ReportsHubActivity : AppCompatActivity() {
         layoutPartyBox.addView(spPartyFilter)
         filterCard.addView(layoutPartyBox)
 
+        // 2. From Date to To Date
         val dateRow = LinearLayout(this)
         dateRow.orientation = LinearLayout.HORIZONTAL
         dateRow.weightSum = 2f
@@ -935,29 +956,39 @@ class ReportsHubActivity : AppCompatActivity() {
 
         val fromCol = LinearLayout(this)
         fromCol.orientation = LinearLayout.VERTICAL
-        fromCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        fromCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            setMargins(0, 0, 6, 0)
+        }
         lblFrom = TextView(this)
         lblFrom.text = if (isDaybookReport() || isDaySalesReport()) "Date" else "2. From Date"
-        lblFrom.textSize = 12f
+        lblFrom.textSize = 12.5f
         lblFrom.setTypeface(null, Typeface.BOLD)
+        lblFrom.setTextColor(Color.parseColor("#1B5E20"))
         etFromDate = EditText(this)
         etFromDate.isFocusable = false
         etFromDate.isClickable = true
         etFromDate.setBackgroundResource(android.R.drawable.edit_text)
+        etFromDate.textSize = 13f
+        etFromDate.setTypeface(null, Typeface.BOLD)
         fromCol.addView(lblFrom)
         fromCol.addView(etFromDate)
 
         toCol = LinearLayout(this)
         toCol.orientation = LinearLayout.VERTICAL
-        toCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        toCol.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            setMargins(6, 0, 0, 0)
+        }
         val lblTo = TextView(this)
-        lblTo.text = "3. To Date"
-        lblTo.textSize = 12f
+        lblTo.text = "To Date"
+        lblTo.textSize = 12.5f
         lblTo.setTypeface(null, Typeface.BOLD)
+        lblTo.setTextColor(Color.parseColor("#1B5E20"))
         etToDate = EditText(this)
         etToDate.isFocusable = false
         etToDate.isClickable = true
         etToDate.setBackgroundResource(android.R.drawable.edit_text)
+        etToDate.textSize = 13f
+        etToDate.setTypeface(null, Typeface.BOLD)
         toCol.addView(lblTo)
         toCol.addView(etToDate)
 
@@ -965,13 +996,14 @@ class ReportsHubActivity : AppCompatActivity() {
         dateRow.addView(toCol)
         filterCard.addView(dateRow)
 
+        // SUBMIT & SHARE
         val btnRow = LinearLayout(this)
         btnRow.orientation = LinearLayout.HORIZONTAL
         btnRow.weightSum = 2f
         btnRow.setPadding(0, 4, 0, 4)
 
         val btnFilter = Button(this)
-        btnFilter.text = if (isDaySalesReport()) "SEARCH" else "SUBMIT"
+        btnFilter.text = "SUBMIT"
         btnFilter.setBackgroundColor(Color.parseColor("#1B5E20"))
         btnFilter.setTextColor(Color.WHITE)
         btnFilter.setTypeface(null, Typeface.BOLD)
@@ -1001,11 +1033,11 @@ class ReportsHubActivity : AppCompatActivity() {
         mainCol.addView(filterCard)
 
         tvSummary = TextView(this)
-        tvSummary.text = "Tap SEARCH / SUBMIT to generate report"
+        tvSummary.text = "Tap SUBMIT to view Grid"
         tvSummary.setBackgroundColor(Color.parseColor("#FFF9C4"))
         tvSummary.setTextColor(Color.parseColor("#D84315"))
         tvSummary.setTypeface(null, Typeface.BOLD)
-        tvSummary.textSize = 14f
+        tvSummary.textSize = 13.5f
         tvSummary.setPadding(16, 12, 16, 12)
         val sumLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1057,7 +1089,7 @@ class ReportsHubActivity : AppCompatActivity() {
         metaRow.setPadding(4, 4, 4, 8)
 
         tvLeftMeta = TextView(this)
-        tvLeftMeta.text = "CUSTOMER NAME: ALL CUSTOMERS"
+        tvLeftMeta.text = "SUPPLIER: ALL SUPPLIERS"
         tvLeftMeta.textSize = 12.5f
         tvLeftMeta.setTypeface(null, Typeface.BOLD)
         tvLeftMeta.setTextColor(Color.BLACK)
@@ -1079,8 +1111,8 @@ class ReportsHubActivity : AppCompatActivity() {
         hScrollTable = HorizontalScrollView(this)
         hScrollTable.setBackgroundColor(Color.WHITE)
         tableLayout = TableLayout(this)
-        tableLayout.setBackgroundColor(Color.BLACK)
-        tableLayout.setPadding(1, 1, 1, 1)
+        tableLayout.setBackgroundColor(Color.parseColor("#607D8B"))
+        tableLayout.setPadding(2, 2, 2, 2)
         hScrollTable.addView(tableLayout)
         sheetBox.addView(hScrollTable)
 
@@ -1091,15 +1123,10 @@ class ReportsHubActivity : AppCompatActivity() {
     private fun setupDates() {
         val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
         val calTo = Calendar.getInstance()
-        toDateStr = sdf.format(calTo.time)
-
         val calFrom = Calendar.getInstance()
-        if (isDaybookReport() || isDaySalesReport()) {
-            fromDateStr = toDateStr
-        } else {
-            calFrom.set(Calendar.DAY_OF_MONTH, 1)
-            fromDateStr = sdf.format(calFrom.time)
-        }
+
+        fromDateStr = sdf.format(calFrom.time)
+        toDateStr = sdf.format(calTo.time)
 
         etFromDate.setText(fromDateStr)
         etToDate.setText(toDateStr)
@@ -1130,21 +1157,34 @@ class ReportsHubActivity : AppCompatActivity() {
         }
 
         layoutPartyBox.visibility = View.VISIBLE
-        tvPartyLabel.text = "1. Customer Name"
-        db.collection("customers").get().addOnSuccessListener { snap ->
-            partyNames.clear()
-            partyOpBalMap.clear()
-            partyIdMap.clear()
-            partyNames.add("ALL CUSTOMERS")
-            for (doc in snap) {
-                val n = (doc.getString("name") ?: "").trim()
-                if (n.isNotEmpty()) {
-                    val key = n.lowercase(Locale.getDefault())
-                    partyNames.add(n)
-                    partyOpBalMap[key] = safeDouble(doc, "openingBalance")
-                    partyIdMap[key] = doc.id
+        tvPartyLabel.text = "1. Supplier Name"
+
+        val supTask = db.collection("suppliers").get()
+        val purTask = db.collection("purchases").get()
+
+        Tasks.whenAllComplete(supTask, purTask).addOnSuccessListener {
+            val uniqueSuppliers = linkedSetOf<String>()
+            if (supTask.isSuccessful) {
+                for (doc in (supTask.result as? QuerySnapshot)?.documents.orEmpty()) {
+                    val n = (doc.getString("name") ?: "").trim()
+                    if (n.isNotEmpty()) {
+                        uniqueSuppliers.add(n)
+                        partyOpBalMap[n.lowercase(Locale.getDefault())] = safeDouble(doc, "openingBalance")
+                        partyIdMap[n.lowercase(Locale.getDefault())] = doc.id
+                    }
                 }
             }
+            if (purTask.isSuccessful) {
+                for (doc in (purTask.result as? QuerySnapshot)?.documents.orEmpty()) {
+                    val s = (doc.getString("supplierName") ?: doc.getString("partyName") ?: "").trim()
+                    if (s.isNotEmpty()) uniqueSuppliers.add(s)
+                }
+            }
+
+            partyNames.clear()
+            partyNames.add("ALL SUPPLIERS")
+            partyNames.addAll(uniqueSuppliers.sortedBy { it.lowercase(Locale.getDefault()) })
+
             val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, partyNames)
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spPartyFilter.adapter = adapter
@@ -1156,19 +1196,205 @@ class ReportsHubActivity : AppCompatActivity() {
     }
 
     private fun runReport() {
-        if (isDaySalesReport()) {
-            loadAndRenderDaySalesReport()
-            return
+        when {
+            isDaySalesReport() -> loadAndRenderDaySalesReport()
+            isDaybookReport() -> loadAndRenderDaybook()
+            else -> loadAndRenderPurchaseGridReport()
         }
-        if (isDaybookReport()) {
-            loadAndRenderDaybook()
-            return
+    }
+
+    private fun loadAndRenderPurchaseGridReport() {
+        val selectedSup = spPartyFilter.selectedItem?.toString()?.trim() ?: "ALL SUPPLIERS"
+        val isSingleSupplier = selectedSup.isNotEmpty() && !selectedSup.equals("ALL SUPPLIERS", ignoreCase = true)
+        val fromYmd = dateToYmd(fromDateStr)
+        val toYmd = dateToYmd(toDateStr)
+
+        daybookContainer.visibility = View.GONE
+        tvLeftMeta.text = "SUPPLIER: $selectedSup"
+        tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
+        tvSummary.text = "Loading..."
+
+        db.collection("purchases").get()
+            .addOnSuccessListener { snap ->
+                val rows = arrayListOf<PurchaseGridRow>()
+
+                for ((pos, doc) in snap.documents.withIndex()) {
+                    val sup = (doc.getString("supplierName") ?: doc.getString("partyName") ?: "SUPPLIER").trim()
+                    if (isSingleSupplier && !sup.equals(selectedSup, ignoreCase = true)) continue
+
+                    val dStr = (doc.getString("date") ?: "").trim()
+                    val dYmd = dateToYmd(dStr)
+                    if (fromYmd != -1 && dYmd != -1 && dYmd < fromYmd) continue
+                    if (toYmd != -1 && dYmd != -1 && dYmd > toYmd) continue
+
+                    val ts = safeLong(doc, "timestamp")
+                    val sortKey = (if (dYmd > 0) dYmd.toLong() else 0L) * 1_000_000L +
+                        (if (ts > 0L) (ts % 1_000_000L) else pos.toLong())
+
+                    val rawItems = doc.get("items") as? List<*>
+                    if (rawItems != null && rawItems.isNotEmpty()) {
+                        for (entry in rawItems) {
+                            val m = entry as? Map<*, *> ?: continue
+                            val purKgs = (m["purchaseKgs"] as? Number)?.toDouble() ?: 0.0
+                            val bags = (m["bags"] as? Number)?.toDouble() ?: 0.0
+                            val nos = (m["nos"] as? Number)?.toDouble() ?: 0.0
+                            val qtyVal = when {
+                                purKgs > 0.0 -> purKgs
+                                bags > 0.0 -> bags
+                                else -> nos
+                            }
+                            val suitVal = (m["suit"] as? Number)?.toDouble()
+                                ?: (m["thadukki"] as? Number)?.toDouble()
+                                ?: 0.0
+                            val kudumiVal = (m["kudumi"] as? Number)?.toDouble() ?: 0.0
+                            val savedNet = (m["netKgs"] as? Number)?.toDouble()
+                            val netKgsVal = savedNet ?: (qtyVal - suitVal - kudumiVal).coerceAtLeast(0.0)
+                            val rateVal = (m["ratePerKg"] as? Number)?.toDouble()
+                                ?: (m["rate"] as? Number)?.toDouble()
+                                ?: 0.0
+                            val amtVal = (m["lineTotal"] as? Number)?.toDouble()
+                                ?: (m["amount"] as? Number)?.toDouble()
+                                ?: (netKgsVal * rateVal)
+
+                            rows.add(
+                                PurchaseGridRow(
+                                    sortKey = sortKey,
+                                    dateStr = dStr,
+                                    supplierName = sup,
+                                    qty = qtyVal,
+                                    suit = suitVal,
+                                    kudumi = kudumiVal,
+                                    netKgs = netKgsVal,
+                                    rate = rateVal,
+                                    amount = amtVal
+                                )
+                            )
+                        }
+                    } else {
+                        val qtyVal = safeDouble(doc, "purchaseKgs").let {
+                            if (it > 0.0) it else safeDouble(doc, "netKgs").let { n ->
+                                if (n > 0.0) n else safeDouble(doc, "qty")
+                            }
+                        }
+                        val suitVal = safeDouble(doc, "suit").let {
+                            if (it > 0.0) it else safeDouble(doc, "thadukki")
+                        }
+                        val kudumiVal = safeDouble(doc, "kudumi")
+                        val netKgsVal = safeDouble(doc, "netKgs").let {
+                            if (it > 0.0) it else (qtyVal - suitVal - kudumiVal).coerceAtLeast(0.0)
+                        }
+                        val rateVal = safeDouble(doc, "ratePerKg").let {
+                            if (it > 0.0) it else safeDouble(doc, "rate")
+                        }
+                        val amtVal = safeDouble(doc, "grandTotal").let {
+                            if (it > 0.0) it else safeDouble(doc, "amount").let { a ->
+                                if (a > 0.0) a else (netKgsVal * rateVal)
+                            }
+                        }
+
+                        rows.add(
+                            PurchaseGridRow(
+                                sortKey = sortKey,
+                                dateStr = dStr,
+                                supplierName = sup,
+                                qty = qtyVal,
+                                suit = suitVal,
+                                kudumi = kudumiVal,
+                                netKgs = netKgsVal,
+                                rate = rateVal,
+                                amount = amtVal
+                            )
+                        )
+                    }
+                }
+
+                rows.sortBy { it.sortKey }
+                renderPurchaseGrid(rows, selectedSup, isSingleSupplier)
+            }
+            .addOnFailureListener { e ->
+                tvSummary.text = "Error: ${e.message}"
+            }
+    }
+
+    private fun renderPurchaseGrid(rows: List<PurchaseGridRow>, selectedSup: String, isSingleSupplier: Boolean) {
+        tableLayout.removeAllViews()
+
+        val headers = if (isSingleSupplier) {
+            listOf("Date", "Quantity", "Suit", "Kudumi", "Net Kgs", "Rate", "Amount")
+        } else {
+            listOf("Date", "Supplier", "Quantity", "Suit", "Kudumi", "Net Kgs", "Rate", "Amount")
         }
 
-        val selectedParty = spPartyFilter.selectedItem?.toString() ?: "ALL CUSTOMERS"
-        tvLeftMeta.text = "PARTY: $selectedParty"
-        tvRightMeta.text = "DATE: $fromDateStr TO $toDateStr"
-        tvSummary.text = "Report ready for $selectedParty ($fromDateStr to $toDateStr)"
+        val hRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#607D8B")) }
+        for (h in headers) {
+            val isRight = h in listOf("Quantity", "Suit", "Kudumi", "Net Kgs", "Rate", "Amount")
+            hRow.addView(makeTableCell(h, "#1B5E20", "#FFFFFF", isRight, true))
+        }
+        tableLayout.addView(hRow)
+
+        var totQty = 0.0
+        var totSuit = 0.0
+        var totKudumi = 0.0
+        var totNetKgs = 0.0
+        var totAmt = 0.0
+
+        val shareSb = StringBuilder("PURCHASE BILL DETAILS ($selectedSup)\nDate: $fromDateStr to $toDateStr\n\n")
+
+        rows.forEachIndexed { idx, r ->
+            totQty += r.qty
+            totSuit += r.suit
+            totKudumi += r.kudumi
+            totNetKgs += r.netKgs
+            totAmt += r.amount
+
+            val bg = if (idx % 2 == 0) "#FFFFFF" else "#F1F8E9"
+            val tr = TableRow(this).apply { setBackgroundColor(Color.parseColor("#607D8B")) }
+
+            tr.addView(makeTableCell(r.dateStr, bg, "#000000", false, true))
+            if (!isSingleSupplier) {
+                tr.addView(makeTableCell(r.supplierName, bg, "#1565C0", false, true))
+            }
+            tr.addView(makeTableCell(fmtQty(r.qty), bg, "#000000", true, false))
+            tr.addView(makeTableCell(fmtQty(r.suit), bg, "#000000", true, false))
+            tr.addView(makeTableCell(fmtQty(r.kudumi), bg, "#000000", true, false))
+            tr.addView(makeTableCell(fmtQty(r.netKgs), bg, "#1B5E20", true, true))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.rate), bg, "#000000", true, false))
+            tr.addView(makeTableCell("%.2f".format(Locale.getDefault(), r.amount), bg, "#000000", true, true))
+            tableLayout.addView(tr)
+
+            if (isSingleSupplier) {
+                shareSb.append(
+                    "${r.dateStr} | Qty: ${fmtQty(r.qty)} | Suit: ${fmtQty(r.suit)} | Kudumi: ${fmtQty(r.kudumi)} | Net: ${fmtQty(r.netKgs)} | Rate: %.2f | Amt: %.2f\n".format(
+                        Locale.getDefault(), r.rate, r.amount
+                    )
+                )
+            } else {
+                shareSb.append(
+                    "${r.dateStr} | ${r.supplierName} | Net: ${fmtQty(r.netKgs)} | Rate: %.2f | Amt: %.2f\n".format(
+                        Locale.getDefault(), r.rate, r.amount
+                    )
+                )
+            }
+        }
+
+        val totRow = TableRow(this).apply { setBackgroundColor(Color.parseColor("#607D8B")) }
+        totRow.addView(makeTableCell("TOTAL", "#FFF9C4", "#000000", false, true))
+        if (!isSingleSupplier) {
+            totRow.addView(makeTableCell("", "#FFF9C4", "#000000", false, true))
+        }
+        totRow.addView(makeTableCell(fmtQty(totQty), "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell(fmtQty(totSuit), "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell(fmtQty(totKudumi), "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell(fmtQty(totNetKgs), "#FFF9C4", "#1B5E20", true, true))
+        totRow.addView(makeTableCell("-", "#FFF9C4", "#000000", true, true))
+        totRow.addView(makeTableCell("%.2f".format(Locale.getDefault(), totAmt), "#FFF9C4", "#C62828", true, true))
+        tableLayout.addView(totRow)
+
+        tvSummary.text = "Qty: ${fmtQty(totQty)} | Suit: ${fmtQty(totSuit)} | Kudumi: ${fmtQty(totKudumi)} | Net Kgs: ${fmtQty(totNetKgs)} | Amount: Rs. %.2f".format(
+            Locale.getDefault(), totAmt
+        )
+        shareSb.append("\nTotal Net Kgs: ${fmtQty(totNetKgs)} | Total Amount: Rs. %.2f".format(Locale.getDefault(), totAmt))
+        shareReportText = shareSb.toString()
     }
 
     private fun loadAndRenderDaySalesReport() {
