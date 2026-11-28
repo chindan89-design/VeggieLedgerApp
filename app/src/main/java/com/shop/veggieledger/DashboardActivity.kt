@@ -43,38 +43,32 @@ class DashboardActivity : AppCompatActivity() {
     private var selectedDateStr: String = ""
 
     companion object {
-        // Group IDs
         private const val GRP_MASTERS = 100
         private const val GRP_ENTRIES = 200
         private const val GRP_PUR_REP = 300
         private const val GRP_SAL_REP = 400
         private const val GRP_OTH_REP = 500
 
-        // MASTERS IDs
         private const val ID_SUPPLIER = 101
         private const val ID_CUSTOMER = 102
         private const val ID_ITEMS = 103
 
-        // ENTRIES IDs
         private const val ID_PURCHASE = 201
         private const val ID_SALES = 202
         private const val ID_PAYMENT = 203
         private const val ID_RECEIPT = 204
         private const val ID_INCOME_EXPENSE = 205
 
-        // PURCHASE REPORT IDs
         private const val ID_PUR_DATEWISE = 301
         private const val ID_PUR_SUPPLIERWISE = 302
         private const val ID_PUR_STATEMENT = 303
         private const val ID_PUR_OUTSTANDING = 304
 
-        // SALES REPORT IDs
         private const val ID_SAL_DAYSALES = 401
         private const val ID_SAL_SUPPLIER_WISE = 402
         private const val ID_SAL_STATEMENT = 403
         private const val ID_SAL_OUTSTANDING = 404
 
-        // OTHER REPORT IDs
         private const val ID_OTH_COCONUT_DAYBOOK = 501
         private const val ID_OTH_PROFIT_LOSS = 502
         private const val ID_OTH_DAYBOOK = 503
@@ -108,13 +102,11 @@ class DashboardActivity : AppCompatActivity() {
     private fun populateFullMenu(menu: Menu) {
         menu.clear()
 
-        // MASTERS
         val mastersSub: SubMenu = menu.addSubMenu(0, 1, 1, "MASTERS")
         mastersSub.add(GRP_MASTERS, ID_SUPPLIER, 1, "SUPPLIER")
         mastersSub.add(GRP_MASTERS, ID_CUSTOMER, 2, "CUSTOMER")
         mastersSub.add(GRP_MASTERS, ID_ITEMS, 3, "ITEMS")
 
-        // ENTRIES
         val entriesSub: SubMenu = menu.addSubMenu(0, 2, 2, "ENTRIES")
         entriesSub.add(GRP_ENTRIES, ID_PURCHASE, 1, "PURCHASE")
         entriesSub.add(GRP_ENTRIES, ID_SALES, 2, "SALES")
@@ -122,24 +114,20 @@ class DashboardActivity : AppCompatActivity() {
         entriesSub.add(GRP_ENTRIES, ID_RECEIPT, 4, "RECEIPT")
         entriesSub.add(GRP_ENTRIES, ID_INCOME_EXPENSE, 5, "INCOME AND EXPENSES")
 
-        // REPORT
         val reportSub: SubMenu = menu.addSubMenu(0, 3, 3, "REPORT")
 
-        // REPORT -> PURCHASE REPORT
         val purReportSub: SubMenu = reportSub.addSubMenu(0, 31, 1, "PURCHASE REPORT")
         purReportSub.add(GRP_PUR_REP, ID_PUR_DATEWISE, 1, "DATEWISE REPORT")
         purReportSub.add(GRP_PUR_REP, ID_PUR_SUPPLIERWISE, 2, "SUPPLIERWISE REPORT")
         purReportSub.add(GRP_PUR_REP, ID_PUR_STATEMENT, 3, "SUPPLIER STATEMENT")
         purReportSub.add(GRP_PUR_REP, ID_PUR_OUTSTANDING, 4, "SUPPLIER OUTSTANDING")
 
-        // REPORT -> SALES REPORT
         val salReportSub: SubMenu = reportSub.addSubMenu(0, 32, 2, "SALES REPORT")
         salReportSub.add(GRP_SAL_REP, ID_SAL_DAYSALES, 1, "DAYSALES REPORT")
         salReportSub.add(GRP_SAL_REP, ID_SAL_SUPPLIER_WISE, 2, "SUPPLIER WISE SALES REPORT")
         salReportSub.add(GRP_SAL_REP, ID_SAL_STATEMENT, 3, "CUSTOMER STATEMENT")
         salReportSub.add(GRP_SAL_REP, ID_SAL_OUTSTANDING, 4, "CUSTOMER OUTSTANDING")
 
-        // REPORT -> OTHER REPORT
         val othReportSub: SubMenu = reportSub.addSubMenu(0, 33, 3, "OTHER REPORT")
         othReportSub.add(GRP_OTH_REP, ID_OTH_COCONUT_DAYBOOK, 1, "COCONUT DAY BOOK")
         othReportSub.add(GRP_OTH_REP, ID_OTH_PROFIT_LOSS, 2, "PROFIT AND LOSS")
@@ -159,104 +147,97 @@ class DashboardActivity : AppCompatActivity() {
         when (itemId) {
             // MASTERS
             ID_SUPPLIER -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.SupplierMasterActivity",
-                    "com.shop.veggieledger.SuppliersActivity",
-                    "com.shop.veggieledger.SupplierActivity"
-                ),
+                listOf("com.shop.veggieledger.SupplierMasterActivity"),
                 "SUPPLIER"
             )
             ID_CUSTOMER -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.CustomerMasterActivity",
-                    "com.shop.veggieledger.CustomersActivity",
-                    "com.shop.veggieledger.CustomerActivity"
-                ),
+                listOf("com.shop.veggieledger.CustomerMasterActivity"),
                 "CUSTOMER"
             )
             ID_ITEMS -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.ItemMasterActivity",
-                    "com.shop.veggieledger.ItemsActivity",
-                    "com.shop.veggieledger.ItemActivity"
-                ),
+                listOf("com.shop.veggieledger.ItemMasterActivity"),
                 "ITEMS"
             )
 
             // ENTRIES
             ID_PURCHASE -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.PurchaseEntryActivity",
-                    "com.shop.veggieledger.AddPurchaseActivity",
-                    "com.shop.veggieledger.PurchaseActivity"
-                ),
+                listOf("com.shop.veggieledger.PurchaseActivity"),
                 "PURCHASE"
             )
             ID_SALES -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.SalesEntryActivity",
-                    "com.shop.veggieledger.AddSalesActivity",
-                    "com.shop.veggieledger.SalesActivity"
-                ),
+                listOf("com.shop.veggieledger.SalesActivity"),
                 "SALES"
             )
             ID_PAYMENT -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.PaymentEntryActivity",
-                    "com.shop.veggieledger.AddPaymentActivity",
-                    "com.shop.veggieledger.PaymentActivity"
-                ),
+                listOf("com.shop.veggieledger.PurchasePaymentActivity"),
                 "PAYMENT"
             )
             ID_RECEIPT -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.ReceiptEntryActivity",
-                    "com.shop.veggieledger.AddReceiptActivity",
-                    "com.shop.veggieledger.ReceiptActivity"
-                ),
+                listOf("com.shop.veggieledger.SalesReceiptActivity"),
                 "RECEIPT"
             )
             ID_INCOME_EXPENSE -> openScreenSmart(
-                listOf(
-                    "com.shop.veggieledger.IncomeExpenseActivity",
-                    "com.shop.veggieledger.ExpenseEntryActivity",
-                    "com.shop.veggieledger.ExpenseActivity"
-                ),
+                listOf("com.shop.veggieledger.ExpenseIncomeActivity"),
                 "INCOME AND EXPENSES"
             )
 
             // PURCHASE REPORT
             ID_PUR_DATEWISE -> openReport("PUR_DETAILS")
             ID_PUR_SUPPLIERWISE -> openReport("PUR_SUPPLIER")
-            ID_PUR_STATEMENT -> openReport("PUR_STATEMENT")
-            ID_PUR_OUTSTANDING -> openReport("PUR_OUTSTANDING")
+            ID_PUR_STATEMENT -> openScreenSmart(
+                listOf("com.shop.veggieledger.SupplierStatementActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "SUPPLIER STATEMENT",
+                "PUR_STATEMENT"
+            )
+            ID_PUR_OUTSTANDING -> openScreenSmart(
+                listOf("com.shop.veggieledger.SupplierOutstandingActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "SUPPLIER OUTSTANDING",
+                "PUR_OUTSTANDING"
+            )
 
             // SALES REPORT
-            ID_SAL_DAYSALES -> openReport("DAY_SALES_REPORT")
+            ID_SAL_DAYSALES -> openScreenSmart(
+                listOf("com.shop.veggieledger.DailySalesEditActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "DAYSALES REPORT",
+                "DAY_SALES_REPORT"
+            )
             ID_SAL_SUPPLIER_WISE -> openReport("PUR_WISE_SALES")
             ID_SAL_STATEMENT -> openReport("SAL_STATEMENT")
-            ID_SAL_OUTSTANDING -> openReport("SAL_OUTSTANDING")
+            ID_SAL_OUTSTANDING -> openScreenSmart(
+                listOf("com.shop.veggieledger.CustomerOutstandingActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "CUSTOMER OUTSTANDING",
+                "SAL_OUTSTANDING"
+            )
 
             // OTHER REPORT
-            ID_OTH_COCONUT_DAYBOOK -> {
-                startActivity(Intent(this, CoconutDayBookActivity::class.java))
-            }
-            ID_OTH_PROFIT_LOSS -> openReport("PROFIT_LOSS")
-            ID_OTH_DAYBOOK -> openReport("DAILY_CLOSING")
+            ID_OTH_COCONUT_DAYBOOK -> openScreenSmart(
+                listOf("com.shop.veggieledger.CoconutDayBookActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "COCONUT DAY BOOK",
+                "COCONUT_DAYBOOK"
+            )
+            ID_OTH_PROFIT_LOSS -> openScreenSmart(
+                listOf("com.shop.veggieledger.ProfitLossActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "PROFIT AND LOSS",
+                "PROFIT_LOSS"
+            )
+            ID_OTH_DAYBOOK -> openScreenSmart(
+                listOf("com.shop.veggieledger.DailyClosingActivity", "com.shop.veggieledger.ReportsHubActivity"),
+                "DAYBOOK REPORTS",
+                "DAILY_CLOSING"
+            )
 
             else -> return false
         }
         return true
     }
 
-        private fun openReport(reportType: String) {
+    private fun openReport(reportType: String) {
         startActivity(
             Intent(this, ReportsHubActivity::class.java).apply {
                 putExtra("REPORT_TYPE", reportType)
             }
         )
-        }
-        
+    }
 
     private fun openScreenSmart(
         candidates: List<String>,
@@ -266,10 +247,15 @@ class DashboardActivity : AppCompatActivity() {
         for (clsName in candidates) {
             try {
                 val clazz = Class.forName(clsName)
-                startActivity(Intent(this, clazz))
+                startActivity(
+                    Intent(this, clazz).apply {
+                        if (reportTypeIfMissing != null) {
+                            putExtra("REPORT_TYPE", reportTypeIfMissing)
+                        }
+                    }
+                )
                 return
             } catch (_: ClassNotFoundException) {
-                // Try next candidate class name
             } catch (e: Exception) {
                 Toast.makeText(this, "Error opening $fallbackLabel: ${e.message}", Toast.LENGTH_SHORT).show()
                 return
@@ -278,11 +264,7 @@ class DashboardActivity : AppCompatActivity() {
         if (reportTypeIfMissing != null) {
             openReport(reportTypeIfMissing)
         } else {
-            Toast.makeText(
-                this,
-                "$fallbackLabel screen not found. Check class name in DashboardActivity.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "$fallbackLabel screen not found", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -300,7 +282,6 @@ class DashboardActivity : AppCompatActivity() {
             )
         }
 
-        // Top Bar with Menu button
         val topHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -328,7 +309,6 @@ class DashboardActivity : AppCompatActivity() {
         topHeader.addView(btnMenu)
         root.addView(topHeader)
 
-        // Quick Action Buttons (+ SALES, + PURCHASE)
         val quickRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 2f
@@ -344,14 +324,7 @@ class DashboardActivity : AppCompatActivity() {
                 setMargins(0, 0, 8, 0)
             }
             setOnClickListener {
-                openScreenSmart(
-                    listOf(
-                        "com.shop.veggieledger.SalesEntryActivity",
-                        "com.shop.veggieledger.AddSalesActivity",
-                        "com.shop.veggieledger.SalesActivity"
-                    ),
-                    "SALES"
-                )
+                openScreenSmart(listOf("com.shop.veggieledger.SalesActivity"), "SALES")
             }
         }
 
@@ -364,14 +337,7 @@ class DashboardActivity : AppCompatActivity() {
                 setMargins(8, 0, 0, 0)
             }
             setOnClickListener {
-                openScreenSmart(
-                    listOf(
-                        "com.shop.veggieledger.PurchaseEntryActivity",
-                        "com.shop.veggieledger.AddPurchaseActivity",
-                        "com.shop.veggieledger.PurchaseActivity"
-                    ),
-                    "PURCHASE"
-                )
+                openScreenSmart(listOf("com.shop.veggieledger.PurchaseActivity"), "PURCHASE")
             }
         }
 
@@ -379,7 +345,6 @@ class DashboardActivity : AppCompatActivity() {
         quickRow.addView(btnAddPurchase)
         root.addView(quickRow)
 
-        // Date Filter Row
         val dateCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -415,7 +380,6 @@ class DashboardActivity : AppCompatActivity() {
         dateCard.addView(etDashDate)
         root.addView(dateCard)
 
-        // 1. Live Available Stock Card
         val stockCard = makeSectionCard("1. LIVE AVAILABLE STOCK")
         tvLiveStock = TextView(this).apply {
             text = "Coconut : 0.00 Kgs"
@@ -428,7 +392,6 @@ class DashboardActivity : AppCompatActivity() {
         stockCard.addView(tvLiveStock)
         root.addView(stockCard)
 
-        // 2. Summary for Selected Date
         val sumCard = makeSectionCard("2. SUMMARY FOR SELECTED DATE")
         val row1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -464,7 +427,6 @@ class DashboardActivity : AppCompatActivity() {
 
         root.addView(sumCard)
 
-        // 3. Overall Balance Summary
         val balCard = makeSectionCard("3. OVERALL BALANCE SUMMARY")
         val balRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
