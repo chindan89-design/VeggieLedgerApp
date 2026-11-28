@@ -249,13 +249,14 @@ class DashboardActivity : AppCompatActivity() {
         return true
     }
 
-    private fun openReport(reportType: String) {
+        private fun openReport(reportType: String) {
         startActivity(
             Intent(this, ReportsHubActivity::class.java).apply {
                 putExtra("REPORT_TYPE", reportType)
             }
         )
-    }
+        }
+        
 
     private fun openScreenSmart(
         candidates: List<String>,
