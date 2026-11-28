@@ -939,7 +939,7 @@ class ReportsHubActivity : AppCompatActivity() {
                 }
             }
 
-            if (!isSingleItem) {
+            if (!isSingleItem || isSingleSupplier) {
                 for (doc in paymentDocs) {
                     val sup = (doc.getString("supplierName")
                         ?: doc.getString("partyName")
