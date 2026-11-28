@@ -265,7 +265,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
         }
     }
 
-    private fun isCategoryWord(text: String, categoryLabel: String): Boolean {
+    private fun isIgnoredHeaderOrMode(text: String, categoryLabel: String): Boolean {
         val t = text.trim()
         if (t.isEmpty() || t == "-") return true
         val cat = categoryLabel.trim()
@@ -279,11 +279,26 @@ class CoconutDayBookActivity : AppCompatActivity() {
             t.equals("Other Expenses", ignoreCase = true) ||
             t.equals("Other Expense", ignoreCase = true) ||
             t.equals("Expenses", ignoreCase = true) ||
-            t.equals("Expense", ignoreCase = true)
+            t.equals("Expense", ignoreCase = true) ||
+            t.equals("Income", ignoreCase = true) ||
+            t.equals("Incomes", ignoreCase = true) ||
+            t.equals("Cash", ignoreCase = true) ||
+            t.equals("GPay", ignoreCase = true) ||
+            t.equals("UPI", ignoreCase = true) ||
+            t.equals("Bank", ignoreCase = true)
     }
 
-    private fun extractDescriptionField(doc: DocumentSnapshot, categoryLabel: String, expDropdownVal: String): String {
-        val descKeys = listOf(
+    private fun extractExpenseOrIncomeParts(doc: DocumentSnapshot, categoryLabel: String): List<String> {
+        val preferredKeys = listOf(
+            "expense",
+            "expenses",
+            "expenseName",
+            "account",
+            "accountName",
+            "head",
+            "subCategory",
+            "title",
+            "name",
             "description",
             "desc",
             "expenseDescription",
@@ -297,17 +312,32 @@ class CoconutDayBookActivity : AppCompatActivity() {
             "narration",
             "details"
         )
-        for (k in descKeys) {
+        val result = arrayListOf<String>()
+
+        for (k in preferredKeys) {
             val v = safeString(doc, k)
-            if (v.isNotEmpty() &&
-                v != "-" &&
-                !isCategoryWord(v, categoryLabel) &&
-                !v.equals(expDropdownVal, ignoreCase = true)
-            ) {
-                return v
+            if (!isIgnoredHeaderOrMode(v, categoryLabel)) {
+                if (result.none { it.equals(v, ignoreCase = true) }) {
+                    result.add(v)
+                }
             }
         }
-        return ""
+
+        val skipKeys = setOf(
+            "date", "type", "category", "expenseCategory", "incomeCategory",
+            "payMode", "paymentMode", "mode", "amount", "expenseAmount",
+            "incomeAmount", "timestamp", "createdAt", "updatedAt", "id"
+        )
+        doc.data?.forEach { (k, v) ->
+            if (k !in skipKeys && k !in preferredKeys && v is String) {
+                val s = v.trim()
+                if (!isIgnoredHeaderOrMode(s, categoryLabel) && result.none { it.equals(s, ignoreCase = true) }) {
+                    result.add(s)
+                }
+            }
+        }
+
+        return result
     }
 
     private fun stripRedundantIncomePrefix(rawText: String): String {
@@ -334,62 +364,23 @@ class CoconutDayBookActivity : AppCompatActivity() {
     }
 
     private fun formatIncomeCategoryAndDescription(doc: DocumentSnapshot): String {
-        val rawCat = safeString(doc, "category")
-            .ifEmpty { safeString(doc, "incomeCategory") }
-            .ifEmpty { safeString(doc, "account") }
-            .ifEmpty { safeString(doc, "accountName") }
-            .ifEmpty { safeString(doc, "income") }
-            .ifEmpty { safeString(doc, "incomeName") }
-            .ifEmpty { safeString(doc, "head") }
-
-        val catPart = stripRedundantIncomePrefix(rawCat)
-        val descRaw = stripRedundantIncomePrefix(extractDescriptionField(doc, "Other Incomes", catPart))
-        val descPart = if (descRaw.equals(catPart, ignoreCase = true) ||
-            descRaw.equals("Income", ignoreCase = true) ||
-            descRaw.equals("Other Income", ignoreCase = true) ||
-            descRaw.equals("Other Incomes", ignoreCase = true)
-        ) {
-            ""
+        val parts = extractExpenseOrIncomeParts(doc, "Other Incomes")
+        return if (parts.isNotEmpty()) {
+            stripRedundantIncomePrefix(parts.joinToString(" "))
         } else {
-            descRaw
-        }
-
-        return if (descPart.isNotEmpty() && !catPart.equals(descPart, ignoreCase = true)) {
-            "$catPart $descPart"
-        } else {
-            catPart
+            val rawCat = safeString(doc, "category")
+                .ifEmpty { safeString(doc, "account") }
+                .ifEmpty { safeString(doc, "accountName") }
+            stripRedundantIncomePrefix(rawCat)
         }
     }
 
-    // Only Expense dropdown box value + Description text box value (never Category name inside row)
     private fun formatExpenseAndDescription(doc: DocumentSnapshot, categoryLabel: String): String {
-        val expDropdownKeys = listOf(
-            "expense",
-            "expenses",
-            "expenseName",
-            "account",
-            "accountName",
-            "head",
-            "subCategory",
-            "title",
-            "name"
-        )
-        var expDropdownVal = ""
-        for (k in expDropdownKeys) {
-            val v = safeString(doc, k)
-            if (!isCategoryWord(v, categoryLabel)) {
-                expDropdownVal = v
-                break
-            }
-        }
-
-        val descTextVal = extractDescriptionField(doc, categoryLabel, expDropdownVal)
-
-        return when {
-            expDropdownVal.isNotEmpty() && descTextVal.isNotEmpty() -> "$expDropdownVal $descTextVal"
-            expDropdownVal.isNotEmpty() -> expDropdownVal
-            descTextVal.isNotEmpty() -> descTextVal
-            else -> ""
+        val parts = extractExpenseOrIncomeParts(doc, categoryLabel)
+        return if (parts.isNotEmpty()) {
+            parts.joinToString(" ")
+        } else {
+            "-"
         }
     }
 
@@ -502,7 +493,7 @@ class CoconutDayBookActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 3. Other Incomes & Category-wise Expenses (Expense Dropdown + Description Text)
+                        // 3. Other Incomes & Category-wise Expenses (Expense + Description)
                         val expenseCategoryMap = LinkedHashMap<String, ArrayList<TreeEntry>>()
 
                         for (eDoc in expSnap.documents) {
